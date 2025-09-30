@@ -16,6 +16,15 @@ Core Modules
    module_manager
    demo_process_manager
 
+Command Line Interface
+----------------------
+
+.. toctree::
+   :maxdepth: 2
+
+   api/cli_typer
+   api/cli_types
+
 Utilities
 ---------
 

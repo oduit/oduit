@@ -275,8 +275,8 @@ class TestLanguageCommandBuilder:
 
         assert "--modules=sale" in cmd
         assert "--i18n-export=sale_fr.po" in cmd
-        assert "--language" in cmd
-        assert "fr_FR" in cmd
+        assert any("--language=" in part for part in cmd)
+        assert any("fr_FR" in part for part in cmd)
         assert "--no-http" in cmd
 
 

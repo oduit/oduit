@@ -51,6 +51,7 @@ Contents
 
    installation
    quickstart
+   cli
    configuration
    api
    examples

@@ -361,10 +361,10 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
         """Enable dev mode with specified features"""
         return self._set_parameter("dev", features)
 
-    def load_language(self, languages:str):
+    def load_language(self, languages: str):
         """specifies the languages (separated by commas) for the translations"""
         return self._set_parameter("load-language", languages)
-   
+
     def language(self, language: str):
         """Set the language of the translation file
         use it with i18n-export or i18n-import
@@ -386,7 +386,7 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
         else:
             self._remove_by_key("i18n-overwrite")
             return self
-   
+
     def modules(self, modules: str):
         """Set list of modules to export"""
         return self._set_parameter("modules", modules)

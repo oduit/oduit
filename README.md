@@ -4,6 +4,7 @@ A Python library for managing Odoo instances through a YAML configuration system
 
 ## Features
 
+- **Command Line Interface**: Simple CLI for common Odoo operations (run, install, test, shell)
 - **Configuration Management**: YAML/TOML-based configuration with support for multiple environments
 - **Process Management**: Run Odoo commands, shell commands, and manage processes
 - **Module Management**: Install, update, and test Odoo modules
@@ -27,6 +28,71 @@ pip install oduit
 
 ## Quick Start
 
+### Command Line Interface (CLI)
+
+The easiest way to use oduit is through the command line:
+
+```bash
+# Create configuration file at ~/.config/oduit/dev.yaml
+cat > ~/.config/oduit/dev.yaml << EOF
+binaries:
+  python_bin: "/usr/bin/python3"
+  odoo_bin: "/path/to/odoo-bin"
+
+odoo_params:
+  db_name: "mydb"
+  addons_path: "/path/to/addons"
+  config_file: "/path/to/odoo.conf"
+EOF
+
+# Run Odoo server
+oduit --env dev run
+
+# Install a module
+oduit --env dev install sale
+
+# Run tests
+oduit --env dev test --test-tags /sale
+
+# Start Odoo shell
+oduit --env dev shell
+
+# Update a module
+oduit --env dev update sale
+
+# Create a new addon
+oduit --env dev create-addon my_custom_module
+
+# Export translations
+oduit --env dev export-lang sale --language de_DE
+
+# List available addons
+oduit --env dev list-addons
+```
+
+**Local Project Configuration:**
+
+Create a `.oduit.toml` in your project directory to avoid specifying `--env`:
+
+```toml
+[binaries]
+python_bin = "./venv/bin/python"
+odoo_bin = "./odoo/odoo-bin"
+
+[odoo_params]
+addons_path = "./addons"
+db_name = "project_dev"
+dev = true
+```
+
+Then run commands without `--env`:
+
+```bash
+oduit run
+oduit install sale
+oduit test --test-tags /sale
+```
+
 ### 1. Configuration
 
 Create a configuration file (`~/.config/oduit/myenv.yaml`):
@@ -48,7 +114,9 @@ odoo_params:
   dev: true
 ```
 
-### 2. Basic Usage
+### 2. Python API
+
+For programmatic access and advanced usage, use the Python API:
 
 #### Enhanced Operation Execution (Recommended)
 

@@ -261,7 +261,7 @@ class OdooOperations:
             builder.i18n_overwrite(True)
         if language and isinstance(language, str):
             builder.load_language(language)
-        
+
         if no_http:
             builder._remove_http_config()
             builder.no_http(True)
@@ -345,7 +345,7 @@ class OdooOperations:
             builder.i18n_overwrite(True)
         if language and isinstance(language, str):
             builder.load_language(language)
- 
+
         if no_http:
             builder._remove_http_config()
             builder.no_http(True)

@@ -141,7 +141,6 @@ Examples:
 )
 
 
-
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
@@ -271,7 +270,6 @@ def install(
     i18n_overwrite: bool = typer.Option(
         False, "--i18n-overwrite", help="Overwrite existing translations during update"
     ),
- 
     max_cron_threads: int | None = typer.Option(
         None,
         "--max-cron-threads",
@@ -343,7 +341,6 @@ def update(
         "--compact",
         help="Suppress INFO logs at startup for cleaner output",
     ),
-
 ):
     """Update module."""
     if ctx.obj is None:
@@ -364,7 +361,7 @@ def update(
     if global_config.env_config is None:
         print_error("No environment configuration available")
         raise typer.Exit(1) from None
- 
+
     if i18n_overwrite:
         language = language or global_config.env_config.get("language", "de_DE")
         # Ensure language is a string
