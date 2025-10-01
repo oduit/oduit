@@ -203,7 +203,6 @@ class TestCLICommands(unittest.TestCase):
                 "all",
                 "--language",
                 "de_DE",
-                "--i18n-overwrite",
             ],
         )
 
@@ -211,7 +210,6 @@ class TestCLICommands(unittest.TestCase):
         args, kwargs = mock_ops_instance.install_module.call_args
         self.assertEqual(kwargs.get("without_demo"), "all")
         self.assertEqual(kwargs.get("language"), "de_DE")
-        self.assertTrue(kwargs.get("i18n_overwrite"))
 
     @patch("oduit.cli_typer.OdooOperations")
     @patch("oduit.cli_typer.ConfigLoader")

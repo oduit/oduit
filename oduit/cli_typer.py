@@ -268,9 +268,6 @@ def install(
         False, "--with-demo", help="Install with demo data (overrides config)"
     ),
     language: str | None = typer.Option(None, "--language"),
-    i18n_overwrite: bool = typer.Option(
-        False, "--i18n-overwrite", help="Overwrite existing translations during update"
-    ),
     max_cron_threads: int | None = typer.Option(
         None,
         "--max-cron-threads",
@@ -307,7 +304,6 @@ def install(
         without_demo=without_demo or False,
         with_demo=with_demo,
         language=language,
-        i18n_overwrite=i18n_overwrite,
     )
 
     # Optional JSON output

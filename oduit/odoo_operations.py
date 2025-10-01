@@ -316,7 +316,6 @@ class OdooOperations:
         max_cron_threads: int | None = None,
         log_level: str | None = None,
         without_demo: str | bool = False,
-        i18n_overwrite: bool = False,
         language: str | None = None,
         with_demo: bool = False,
         stop_after_init: bool = True,
@@ -341,11 +340,8 @@ class OdooOperations:
         """
         # Build command
         builder = InstallCommandBuilder(self.config, module)
-        if i18n_overwrite:
-            builder.i18n_overwrite(True)
         if language and isinstance(language, str):
             builder.load_language(language)
-
         if no_http:
             builder._remove_http_config()
             builder.no_http(True)
