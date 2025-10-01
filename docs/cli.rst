@@ -1,7 +1,7 @@
 Command Line Interface
 ======================
 
-oduit provides a command-line interface (CLI) for managing Odoo instances, testing modules, 
+oduit provides a command-line interface (CLI) for managing Odoo instances, testing modules,
 and performing common operations without writing Python code.
 
 .. contents:: Table of Contents
@@ -122,10 +122,10 @@ Run the Odoo server with the configured settings.
 
    # Run with specific environment
    oduit --env production run
-   
+
    # Run with verbose output
    oduit --env dev --verbose run
-   
+
    # Run without HTTP (for running alongside another Odoo instance)
    oduit --env dev --no-http run
 
@@ -149,10 +149,10 @@ Start an Odoo shell for interactive Python execution within the Odoo environment
 
    # Start default Python shell
    oduit --env dev shell
-   
+
    # Use IPython shell
    oduit --env dev shell --shell-interface ipython
-   
+
    # Compact output (no startup logs)
    oduit --env dev shell --compact
 
@@ -179,13 +179,13 @@ Install an Odoo module.
 
    # Install a module
    oduit --env dev install sale
-   
+
    # Install without demo data
    oduit --env dev install sale --without-demo all
-   
+
    # Install with specific language
    oduit --env dev install sale --language de_DE
-   
+
    # Install and overwrite translations
    oduit --env dev install sale --language de_DE --i18n-overwrite
 
@@ -212,10 +212,10 @@ Update an Odoo module.
 
    # Update a module
    oduit --env dev update sale
-   
+
    # Update with language overwrite
    oduit --env dev update sale --i18n-overwrite --language de_DE
-   
+
    # Update with compact output
    oduit --env dev update sale --compact
 
@@ -244,16 +244,16 @@ Run module tests with various options.
 
    # Test a specific module
    oduit --env dev test --test-tags /sale
-   
+
    # Install module and run tests
    oduit --env dev test --install sale --test-tags /sale
-   
+
    # Test with coverage report
    oduit --env dev test --test-tags /sale --coverage sale
-   
+
    # Run specific test file
    oduit --env dev test --test-file tests/test_sale.py
-   
+
    # Stop on first error with compact output
    oduit --env dev test --test-tags /sale --stop-on-error --compact
 
@@ -277,7 +277,7 @@ Create a new database for Odoo.
 
    # Create database
    oduit --env dev create-db
-   
+
    # Create database with role creation
    oduit --env dev create-db --create-role
 
@@ -304,10 +304,10 @@ Create a new Odoo addon with a template structure.
 
    # Create basic addon
    oduit --env dev create-addon my_custom_module
-   
+
    # Create addon with website template
    oduit --env dev create-addon my_website_module --template website
-   
+
    # Create addon in specific path
    oduit --env dev create-addon my_module --path /opt/custom/addons
 
@@ -330,7 +330,7 @@ List available addons in the configured addons path.
 
    # List all addons
    oduit --env dev list-addons
-   
+
    # List only installed addons (if supported)
    oduit --env dev list-addons --type installed
 
@@ -353,7 +353,7 @@ Export language translations for a module.
 
    # Export default language
    oduit --env dev export-lang sale
-   
+
    # Export specific language
    oduit --env dev export-lang sale --language fr_FR
 
@@ -374,7 +374,7 @@ Print the current environment configuration.
 
    # Print production config
    oduit --env production print-config
-   
+
    # Print local config
    oduit print-config
 
@@ -422,13 +422,13 @@ Development Workflow
 
    # Start development server
    oduit --env dev run
-   
+
    # In another terminal: Install module
    oduit --env dev install my_module
-   
+
    # Run tests
    oduit --env dev test --test-tags /my_module --compact
-   
+
    # Update after changes
    oduit --env dev update my_module --compact
 
@@ -440,7 +440,7 @@ Testing Workflow
    # Install module and run tests with coverage
    oduit --env test install sale --without-demo all
    oduit --env test test --test-tags /sale --coverage sale
-   
+
    # Run specific test file
    oduit --env test test --test-file tests/test_sale_flow.py
 
@@ -451,7 +451,7 @@ Translation Workflow
 
    # Export translations
    oduit --env dev export-lang my_module --language de_DE
-   
+
    # Update module with translation overwrite
    oduit --env dev update my_module --i18n-overwrite --language de_DE
 
@@ -462,10 +462,10 @@ Production Deployment
 
    # Install modules without demo data
    oduit --env production install sale,purchase,stock --without-demo all
-   
+
    # Update modules
    oduit --env production update sale,purchase,stock
-   
+
    # Run server
    oduit --env production run
 
@@ -495,7 +495,7 @@ Troubleshooting
 
    # Check available environments
    ls ~/.config/oduit/
-   
+
    # Print current config
    oduit --env dev print-config
 
@@ -512,7 +512,7 @@ Troubleshooting
 
    # Run with verbose output
    oduit --env dev --verbose test --test-tags /my_module
-   
+
    # Run with compact output to focus on failures
    oduit --env dev test --test-tags /my_module --compact
 

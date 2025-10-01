@@ -93,32 +93,11 @@ oduit install sale
 oduit test --test-tags /sale
 ```
 
-### 1. Configuration
-
-Create a configuration file (`~/.config/oduit/myenv.yaml`):
-
-```yaml
-# Binary paths
-binaries:
-  python_bin: "/usr/bin/python3"
-  odoo_bin: "/path/to/odoo-bin"
-  coverage_bin: "/usr/bin/coverage"
-
-# Odoo parameters
-odoo_params:
-  db_name: "mydb"
-  addons_path: "/path/to/addons"
-  config_file: "/path/to/odoo.conf"
-  http_port: 8069
-  workers: 4
-  dev: true
-```
-
-### 2. Python API
+### Python API
 
 For programmatic access and advanced usage, use the Python API:
 
-#### Enhanced Operation Execution (Recommended)
+#### Enhanced Operation Execution
 
 ```python
 from oduit.config_loader import ConfigLoader
@@ -289,12 +268,6 @@ result = pm.run_operation(update_operation)
 
 print(f"Modules Updated: {result.get('modules_updated', [])}")
 
-# Legacy command execution (still supported)
-result = pm.run_shell_command(
-    'echo "SELECT name FROM ir_module_module;" | psql mydb',
-    capture_output=True
-)
-
 # Run Odoo commands directly
 result = pm.run_command([
     "odoo-bin", "--db-name", "mydb", "--stop-after-init"
@@ -439,6 +412,8 @@ if not result["success"]:
 - **Error Handling**: Detailed error messages and tracebacks
 - **Multiple Code Blocks**: Execute sequences of related code in same transaction
 - **Odoo Environment**: Full access to `env`, `cr`, `uid`, and common Python modules
+
+### Manifest
 
 Parse and validate Odoo module manifests:
 
