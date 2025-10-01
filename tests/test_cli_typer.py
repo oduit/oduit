@@ -16,11 +16,15 @@ from oduit.cli_types import AddonTemplate, GlobalConfig, OutputFormat, ShellInte
 
 class TestCreateGlobalConfig(unittest.TestCase):
     @patch("oduit.cli_typer.configure_output")
-    @patch("oduit.cli_typer.load_config")
-    def test_create_global_config_with_env(self, mock_load_config, mock_configure):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_create_global_config_with_env(
+        self, mock_config_loader_class, mock_configure
+    ):
         """Test creating global config with environment."""
         mock_config = {"db_name": "test_db", "addons_path": "/test/addons"}
-        mock_load_config.return_value = mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
 
         result = create_global_config(env="dev", verbose=True)
 
@@ -29,18 +33,19 @@ class TestCreateGlobalConfig(unittest.TestCase):
         self.assertEqual(result.verbose, True)
         self.assertEqual(result.env_config, mock_config)
         self.assertEqual(result.env_name, "dev")
-        mock_load_config.assert_called_once_with("dev")
+        mock_loader_instance.load_config.assert_called_once_with("dev")
 
     @patch("oduit.cli_typer.configure_output")
-    @patch("oduit.cli_typer.has_local_config")
-    @patch("oduit.cli_typer.load_local_config")
+    @patch("oduit.cli_typer.ConfigLoader")
     def test_create_global_config_with_local_config(
-        self, mock_load_local, mock_has_local, mock_configure
+        self, mock_config_loader_class, mock_configure
     ):
         """Test creating global config with local .oduit.toml."""
-        mock_has_local.return_value = True
         mock_config = {"db_name": "local_db", "addons_path": "/local/addons"}
-        mock_load_local.return_value = mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.has_local_config.return_value = True
+        mock_loader_instance.load_local_config.return_value = mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
 
         result = create_global_config(verbose=True)
 
@@ -48,15 +53,17 @@ class TestCreateGlobalConfig(unittest.TestCase):
         self.assertIsNone(result.env)
         self.assertEqual(result.env_name, "local")
         self.assertEqual(result.env_config, mock_config)
-        mock_load_local.assert_called_once()
+        mock_loader_instance.load_local_config.assert_called_once()
 
     @patch("oduit.cli_typer.configure_output")
-    @patch("oduit.cli_typer.has_local_config")
+    @patch("oduit.cli_typer.ConfigLoader")
     def test_create_global_config_no_config_raises(
-        self, mock_has_local, mock_configure
+        self, mock_config_loader_class, mock_configure
     ):
         """Test that missing config raises typer.Exit."""
-        mock_has_local.return_value = False
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.has_local_config.return_value = False
+        mock_config_loader_class.return_value = mock_loader_instance
 
         with self.assertRaises(typer.Exit) as context:
             create_global_config()
@@ -64,12 +71,16 @@ class TestCreateGlobalConfig(unittest.TestCase):
         self.assertEqual(context.exception.exit_code, 1)
 
     @patch("oduit.cli_typer.configure_output")
-    @patch("oduit.cli_typer.load_config")
+    @patch("oduit.cli_typer.ConfigLoader")
     def test_create_global_config_handles_load_error(
-        self, mock_load_config, mock_configure
+        self, mock_config_loader_class, mock_configure
     ):
         """Test handling of config load errors."""
-        mock_load_config.side_effect = FileNotFoundError("Config not found")
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.side_effect = FileNotFoundError(
+            "Config not found"
+        )
+        mock_config_loader_class.return_value = mock_loader_instance
 
         with self.assertRaises(typer.Exit) as context:
             create_global_config(env="nonexistent")
@@ -98,10 +109,13 @@ class TestCLICommands(unittest.TestCase):
             self.assertIn("No environment specified", result.output)
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_run_command(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_run_command(self, mock_config_loader_class, mock_odoo_ops):
         """Test run command."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
 
@@ -112,10 +126,12 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.run_odoo.assert_called_once()
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_shell_command(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_shell_command(self, mock_config_loader_class, mock_odoo_ops):
         """Test shell command."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
 
@@ -125,10 +141,14 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.run_shell.assert_called_once()
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_shell_command_with_interface(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_shell_command_with_interface(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
         """Test shell command with custom interface."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
 
@@ -142,10 +162,12 @@ class TestCLICommands(unittest.TestCase):
         self.assertEqual(kwargs.get("shell_interface"), "ipython")
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_install_command(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_install_command(self, mock_config_loader_class, mock_odoo_ops):
         """Test install command."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_ops_instance.install_module.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
@@ -158,10 +180,14 @@ class TestCLICommands(unittest.TestCase):
         self.assertEqual(args[0], "sale")
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_install_command_with_options(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_install_command_with_options(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
         """Test install command with various options."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_ops_instance.install_module.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
@@ -188,10 +214,12 @@ class TestCLICommands(unittest.TestCase):
         self.assertTrue(kwargs.get("i18n_overwrite"))
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_update_command(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_update_command(self, mock_config_loader_class, mock_odoo_ops):
         """Test update command."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_ops_instance.update_module.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
@@ -202,10 +230,12 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.update_module.assert_called_once()
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_update_command_with_compact(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_update_command_with_compact(self, mock_config_loader_class, mock_odoo_ops):
         """Test update command with compact flag."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_ops_instance.update_module.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
@@ -219,10 +249,12 @@ class TestCLICommands(unittest.TestCase):
         self.assertTrue(kwargs.get("compact"))
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_test_command(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_test_command(self, mock_config_loader_class, mock_odoo_ops):
         """Test test command."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
 
@@ -234,10 +266,12 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.run_tests.assert_called_once()
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_test_command_with_coverage(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_test_command_with_coverage(self, mock_config_loader_class, mock_odoo_ops):
         """Test test command with coverage option."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
 
@@ -261,13 +295,15 @@ class TestCLICommands(unittest.TestCase):
         self.assertTrue(kwargs.get("compact"))
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
+    @patch("oduit.cli_typer.ConfigLoader")
     @patch("builtins.input")
     def test_create_db_with_confirmation(
-        self, mock_input, mock_load_config, mock_odoo_ops
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
     ):
         """Test create-db command with user confirmation."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "y"
@@ -278,11 +314,15 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.create_db.assert_called_once()
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
+    @patch("oduit.cli_typer.ConfigLoader")
     @patch("builtins.input")
-    def test_create_db_cancelled(self, mock_input, mock_load_config, mock_odoo_ops):
+    def test_create_db_cancelled(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
         """Test create-db command cancelled by user."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "n"
@@ -293,10 +333,12 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.create_db.assert_not_called()
         self.assertIn("cancelled", result.output)
 
-    @patch("oduit.cli_typer.load_config")
-    def test_print_config_command(self, mock_load_config):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_print_config_command(self, mock_config_loader_class):
         """Test print-config command."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
 
         result = self.runner.invoke(app, ["--env", "dev", "print-config"])
 
@@ -305,11 +347,15 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn("test_db", result.output)
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
+    @patch("oduit.cli_typer.ConfigLoader")
     @patch("oduit.cli_typer.validate_addon_name")
-    def test_create_addon_command(self, mock_validate, mock_load_config, mock_odoo_ops):
+    def test_create_addon_command(
+        self, mock_validate, mock_config_loader_class, mock_odoo_ops
+    ):
         """Test create-addon command."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_validate.return_value = True
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
@@ -322,13 +368,15 @@ class TestCLICommands(unittest.TestCase):
         self.assertEqual(args[0], "my_module")
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
+    @patch("oduit.cli_typer.ConfigLoader")
     @patch("oduit.cli_typer.validate_addon_name")
     def test_create_addon_invalid_name(
-        self, mock_validate, mock_load_config, mock_odoo_ops
+        self, mock_validate, mock_config_loader_class, mock_odoo_ops
     ):
         """Test create-addon with invalid name."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_validate.return_value = False
 
         result = self.runner.invoke(
@@ -339,10 +387,12 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn("Invalid addon name", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
-    @patch("oduit.cli_typer.load_config")
-    def test_list_addons_command(self, mock_load_config, mock_module_manager):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_addons_command(self, mock_config_loader_class, mock_module_manager):
         """Test list-addons command."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
         mock_manager_instance.find_module_dirs.return_value = ["sale", "purchase"]
         mock_module_manager.return_value = mock_manager_instance
@@ -355,14 +405,20 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli_typer.OdooOperations")
     @patch("oduit.cli_typer.ModuleManager")
-    @patch("oduit.cli_typer.load_config")
+    @patch("oduit.cli_typer.ConfigLoader")
     @patch("os.makedirs")
     def test_export_lang_command(
-        self, mock_makedirs, mock_load_config, mock_module_manager, mock_odoo_ops
+        self,
+        mock_makedirs,
+        mock_config_loader_class,
+        mock_module_manager,
+        mock_odoo_ops,
     ):
         """Test export-lang command."""
         mock_config = {**self.mock_config, "language": "de_DE"}
-        mock_load_config.return_value = mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
         mock_manager_instance.find_module_path.return_value = "/test/addons/sale"
         mock_module_manager.return_value = mock_manager_instance
@@ -375,10 +431,12 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.export_module_language.assert_called_once()
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_verbose_flag(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_verbose_flag(self, mock_config_loader_class, mock_odoo_ops):
         """Test verbose flag propagation."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
 
@@ -389,10 +447,12 @@ class TestCLICommands(unittest.TestCase):
         self.assertTrue(kwargs.get("verbose"))
 
     @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.load_config")
-    def test_no_http_flag(self, mock_load_config, mock_odoo_ops):
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_no_http_flag(self, mock_config_loader_class, mock_odoo_ops):
         """Test no-http flag propagation."""
-        mock_load_config.return_value = self.mock_config
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
 

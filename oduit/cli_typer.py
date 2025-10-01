@@ -19,7 +19,7 @@ from .cli_types import (
     OutputFormat,
     ShellInterface,
 )
-from .config_loader import has_local_config, load_config, load_local_config
+from .config_loader import ConfigLoader
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
 from .output import configure_output, print_error, print_info, print_warning
@@ -64,13 +64,14 @@ def create_global_config(
     # Handle environment and config loading
     env_config = None
     env_name = None
+    config_loader = ConfigLoader()
 
     if env is None:
-        if has_local_config():
+        if config_loader.has_local_config():
             if verbose:
                 typer.echo("Using local .oduit.toml configuration")
             try:
-                env_config = load_local_config()
+                env_config = config_loader.load_local_config()
                 env_name = "local"
             except (FileNotFoundError, ImportError, ValueError) as e:
                 print_error(f"[ERROR] {str(e)}")
@@ -83,7 +84,7 @@ def create_global_config(
     else:
         env_name = env.strip()
         try:
-            env_config = load_config(env_name)
+            env_config = config_loader.load_config(env_name)
         except (FileNotFoundError, ImportError, ValueError) as e:
             print_error(f"[ERROR] {str(e)}")
             raise typer.Exit(1) from e
@@ -175,7 +176,7 @@ def main(
         "verbose": verbose,
         "no_http": no_http,
     }
-    if len(sys.argv) == 1:
+    if not ctx.invoked_subcommand:
         # Check if there's a local config file
         print_error("Usage: oduit [--env ENV] [command] [arguments]")
         print_error(

@@ -9,7 +9,7 @@ This example demonstrates:
 4. Comparison between demo and real execution patterns
 """
 
-from oduit.config_loader import load_demo_config
+from oduit.config_loader import ConfigLoader
 from oduit.odoo_operations import ModuleUpdateError, OdooOperations
 
 
@@ -17,8 +17,8 @@ def test_streaming_logs():
     """Test the new streaming log functionality"""
     print("=== Testing Enhanced Demo Mode with Log Streaming ===")
 
-    # Load demo configuration
-    env_config = load_demo_config()
+    config_loader = ConfigLoader()
+    env_config = config_loader.load_demo_config()
     ops = OdooOperations(env_config, verbose=True)
 
     # Test successful module with log streaming
@@ -73,7 +73,8 @@ def test_error_scenarios():
     """Test various error scenarios with detailed logging"""
     print("\n=== Testing Error Scenarios ===")
 
-    env_config = load_demo_config()
+    config_loader = ConfigLoader()
+    env_config = config_loader.load_demo_config()
     ops = OdooOperations(env_config, verbose=True)
 
     # Test with exception handling

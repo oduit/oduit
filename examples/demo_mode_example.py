@@ -8,7 +8,7 @@ This example shows:
 3. Using all operations in demo mode for development and testing
 """
 
-from oduit.config_loader import load_demo_config
+from oduit.config_loader import ConfigLoader
 from oduit.odoo_operations import ModuleInstallError, OdooOperations
 
 
@@ -16,8 +16,8 @@ def test_module_operations():
     """Test module install/update operations in demo mode"""
     print("=== Testing Module Operations in Demo Mode ===")
 
-    # Load demo configuration
-    env_config = load_demo_config()
+    config_loader = ConfigLoader()
+    env_config = config_loader.load_demo_config()
     ops = OdooOperations(env_config, verbose=True)
 
     # Test successful module update
@@ -58,7 +58,8 @@ def test_other_operations():
     """Test other operations in demo mode"""
     print("\n=== Testing Other Operations in Demo Mode ===")
 
-    env_config = load_demo_config()
+    config_loader = ConfigLoader()
+    env_config = config_loader.load_demo_config()
     ops = OdooOperations(env_config, verbose=True)
 
     # Test database creation
@@ -85,8 +86,8 @@ def test_demo_vs_real_mode():
     """Demonstrate difference between demo and real mode"""
     print("\n=== Demo Mode vs Real Mode Comparison ===")
 
-    # Demo mode
-    demo_config = load_demo_config()
+    config_loader = ConfigLoader()
+    demo_config = config_loader.load_demo_config()
     print(f"Demo mode enabled: {demo_config.get('demo_mode', False)}")
     print(f"Available demo modules: {demo_config['available_modules']}")
 

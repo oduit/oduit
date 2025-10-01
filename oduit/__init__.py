@@ -8,15 +8,7 @@
 """Oduit - Odoo development utilities."""
 
 from ._version import __version__, version_tuple
-from .config_loader import (
-    ConfigLoader,
-    get_available_environments,
-    get_config_path,
-    has_local_config,
-    load_config,
-    load_local_config,
-    load_demo_config,
-)
+from .config_loader import ConfigLoader
 from .demo_process_manager import DemoProcessManager
 from .exceptions import (
     ConfigError,
@@ -54,12 +46,6 @@ __all__ = [
     "__version__",
     "version_tuple",
     "ConfigLoader",
-    "get_config_path",
-    "load_config",
-    "has_local_config",
-    "load_local_config",
-    "get_available_environments",
-    "load_demo_config",
     "Manifest",
     "ManifestError",
     "InvalidManifestError",

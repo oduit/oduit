@@ -9,12 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
-from oduit.config_loader import (
-    ConfigLoader,
-    get_config_path,
-    has_local_config,
-    load_local_config,
-)
+from oduit.config_loader import ConfigLoader
 
 
 class TestConfigLoader(unittest.TestCase):
@@ -127,22 +122,6 @@ class TestConfigLoader(unittest.TestCase):
             self.assertEqual(sorted(environments), ["env1", "env2", "env3"])
 
     @patch("os.path.exists")
-    def test_backward_compatibility_functions(self, mock_exists):
-        """Test that backward compatibility functions work."""
-
-        def exists_side_effect(path):
-            return path.endswith("test.yaml")
-
-        mock_exists.side_effect = exists_side_effect
-
-        # Test get_config_path wrapper
-        result = get_config_path("test")
-        self.assertTrue(result.endswith("test.yaml"))
-
-        # Note: We can't easily test load_config wrapper without setting up files
-        # since it calls sys.exit on missing files
-
-    @patch("os.path.exists")
     @patch("os.path.expanduser")
     def test_detect_config_format(self, mock_expanduser, mock_exists):
         """Test _detect_config_format method."""
@@ -234,12 +213,14 @@ addons_path = ["/path1", "/path2"]
 db_name = "test_db"
 """)
 
+                config_loader = ConfigLoader()
+
                 # Test has_local_config
-                self.assertTrue(has_local_config())
+                self.assertTrue(config_loader.has_local_config())
 
                 # Test load_local_config (will only work if tomli is available)
                 try:
-                    config = load_local_config()
+                    config = config_loader.load_local_config()
                     self.assertEqual(config["python_bin"], "/usr/bin/python3")
                     self.assertEqual(config["addons_path"], "/path1,/path2")
                 except SystemExit:
@@ -248,16 +229,6 @@ db_name = "test_db"
 
             finally:
                 os.chdir(original_cwd)
-
-    @patch("os.path.exists")
-    def test_wrapper_functions(self, mock_exists):
-        """Test wrapper functions for local config."""
-        mock_exists.return_value = True
-
-        # Test has_local_config wrapper
-        result = has_local_config()
-        self.assertTrue(result)
-        mock_exists.assert_called_with(".oduit.toml")
 
 
 if __name__ == "__main__":

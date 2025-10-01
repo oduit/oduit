@@ -6,7 +6,7 @@
 
 import unittest
 
-from oduit.config_loader import load_demo_config
+from oduit.config_loader import ConfigLoader
 from oduit.demo_process_manager import DEMO_MODULES, DemoProcessManager
 from oduit.odoo_operations import OdooOperations
 
@@ -16,7 +16,8 @@ class TestDemoMode(unittest.TestCase):
 
     def test_load_demo_config(self):
         """Test that load_demo_config returns valid demo configuration"""
-        config = load_demo_config()
+        config_loader = ConfigLoader()
+        config = config_loader.load_demo_config()
 
         # Check required keys
         self.assertIn("demo_mode", config)
@@ -58,7 +59,8 @@ class TestDemoMode(unittest.TestCase):
 
     def test_demo_operations_integration(self):
         """Test OdooOperations with demo mode"""
-        config = load_demo_config()
+        config_loader = ConfigLoader()
+        config = config_loader.load_demo_config()
         ops = OdooOperations(config)
 
         # Test module update in demo mode
@@ -98,7 +100,8 @@ class TestDemoMode(unittest.TestCase):
 
     def test_demo_vs_real_mode_detection(self):
         """Test that demo mode is properly detected"""
-        demo_config = load_demo_config()
+        config_loader = ConfigLoader()
+        demo_config = config_loader.load_demo_config()
         ops = OdooOperations(demo_config)
 
         # Test that demo process manager is used
@@ -113,7 +116,8 @@ class TestDemoMode(unittest.TestCase):
 
     def test_fastapi_reseller_dependency_error(self):
         """Test fastapi_reseller module with unmet dependencies in demo mode"""
-        config = load_demo_config()
+        config_loader = ConfigLoader()
+        config = config_loader.load_demo_config()
         ops = OdooOperations(config)
 
         # Test installing fastapi_reseller which has unmet dependencies

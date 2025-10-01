@@ -6,7 +6,7 @@ This script demonstrates how the enhanced demo mode provides
 realistic log streaming that closely mimics real Odoo behavior.
 """
 
-from oduit.config_loader import load_demo_config
+from oduit.config_loader import ConfigLoader
 from oduit.odoo_operations import OdooOperations
 
 
@@ -15,8 +15,8 @@ def demo_mode_example():
     print("🎭 DEMO MODE - Simulated Execution")
     print("=" * 50)
 
-    # Load demo configuration
-    env_config = load_demo_config()
+    config_loader = ConfigLoader()
+    env_config = config_loader.load_demo_config()
     ops = OdooOperations(env_config, verbose=True)
 
     print("\n1. Testing successful module update in demo mode:")
