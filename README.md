@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/github/oduit/oduit/graph/badge.svg?token=6K8YL60OXJ)](https://codecov.io/github/oduit/oduit)
+
 # oduit
 
 A Python library for managing Odoo instances through a YAML configuration system. oduit helps start odoo-bin, run tests, and install/update addons with support for multiple environments.
