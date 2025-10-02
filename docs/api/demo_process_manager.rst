@@ -24,9 +24,10 @@ Demo Mode Operations
 
 .. code-block:: python
 
-   from oduit import DemoProcessManager, load_demo_config
+   from oduit import DemoProcessManager, ConfigLoader
 
-   config = load_demo_config()
+   loader = ConfigLoader()
+   config = loader.load_demo_config()
    demo_manager = DemoProcessManager(config)
 
    # Run demo scenario

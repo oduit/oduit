@@ -19,10 +19,11 @@ Quick Start
 
 .. code-block:: python
 
-   from oduit import load_config, OdooOperations
+   from oduit import ConfigLoader, OdooOperations
 
    # Load configuration from environment file
-   env_config = load_config('development')
+   loader = ConfigLoader()
+   env_config = loader.load_config('development')
 
    # Create operations manager
    ops = OdooOperations(env_config, verbose=True)

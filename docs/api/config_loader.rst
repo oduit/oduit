@@ -16,15 +16,18 @@ Class Reference
    :undoc-members:
    :show-inheritance:
 
-Functions
----------
+Methods
+-------
 
-.. autofunction:: oduit.config_loader.load_config
-.. autofunction:: oduit.config_loader.get_config_path
-.. autofunction:: oduit.config_loader.has_local_config
-.. autofunction:: oduit.config_loader.load_local_config
-.. autofunction:: oduit.config_loader.get_available_environments
-.. autofunction:: oduit.config_loader.load_demo_config
+These are instance methods of the ConfigLoader class:
+
+.. automethod:: oduit.config_loader.ConfigLoader.load_config
+.. automethod:: oduit.config_loader.ConfigLoader.get_config_path
+.. automethod:: oduit.config_loader.ConfigLoader.has_local_config
+.. automethod:: oduit.config_loader.ConfigLoader.load_local_config
+.. automethod:: oduit.config_loader.ConfigLoader.get_available_environments
+.. automethod:: oduit.config_loader.ConfigLoader.load_demo_config
+.. automethod:: oduit.config_loader.ConfigLoader.import_odoo_conf
 
 Usage Examples
 --------------
@@ -34,29 +37,31 @@ Loading Configurations
 
 .. code-block:: python
 
-   from oduit import load_config
+   from oduit.config_loader import ConfigLoader
+
+   loader = ConfigLoader()
 
    # Load configuration by environment name
-   config = load_config('dev')      # Loads ~/.config/oduit/dev.yaml or dev.toml
-   config = load_config('prod')     # Loads ~/.config/oduit/prod.yaml or prod.toml
+   config = loader.load_config('dev')      # Loads ~/.config/oduit/dev.yaml or dev.toml
+   config = loader.load_config('prod')     # Loads ~/.config/oduit/prod.yaml or prod.toml
 
    # Load local configuration from current directory
-   from oduit import load_local_config, has_local_config
-
-   if has_local_config():
-       config = load_local_config()  # Loads .oduit.toml
+   if loader.has_local_config():
+       config = loader.load_local_config()  # Loads .oduit.toml
 
 Environment Management
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from oduit import get_available_environments, load_demo_config
+   from oduit.config_loader import ConfigLoader
+
+   loader = ConfigLoader()
 
    # Get available environments
-   environments = get_available_environments()
+   environments = loader.get_available_environments()
    print(f"Available environments: {environments}")
 
    # Load demo configuration for testing
-   demo_config = load_demo_config()
+   demo_config = loader.load_demo_config()
    print(f"Demo mode: {demo_config.get('demo_mode', False)}")

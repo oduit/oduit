@@ -24,9 +24,10 @@ Module Management
 
 .. code-block:: python
 
-   from oduit import OdooOperations, load_config
+   from oduit import OdooOperations, ConfigLoader
 
-   config = load_config('dev')
+   loader = ConfigLoader()
+   config = loader.load_config('dev')
    ops = OdooOperations(config)
 
    # Install modules

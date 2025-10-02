@@ -77,11 +77,12 @@ For testing and development, you can use the demo configuration:
 
 .. code-block:: python
 
-   from oduit.config_loader import load_demo_config
+   from oduit.config_loader import ConfigLoader
    from oduit.odoo_operations import OdooOperations
 
    # Load demo configuration (no Odoo installation required)
-   env_config = load_demo_config()
+   config_loader = ConfigLoader()
+   env_config = config_loader.load_demo_config()
    ops = OdooOperations(env_config, verbose=True)
 
 Core Operations
@@ -238,11 +239,12 @@ For testing without requiring a real Odoo installation:
 
 .. code-block:: python
 
-   from oduit.config_loader import load_demo_config
+   from oduit.config_loader import ConfigLoader
    from oduit.odoo_operations import OdooOperations
 
    # Load demo configuration
-   env_config = load_demo_config()
+   config_loader = ConfigLoader()
+   env_config = config_loader.load_demo_config()
    ops = OdooOperations(env_config, verbose=True)
 
    # All operations work in demo mode with simulated output

@@ -24,9 +24,10 @@ Basic Module Operations
 
 .. code-block:: python
 
-   from oduit import ModuleManager, load_config
+   from oduit import ModuleManager, ConfigLoader
 
-   config = load_config('dev')
+   loader = ConfigLoader()
+   config = loader.load_config('dev')
    manager = ModuleManager(config)
 
    # List available modules

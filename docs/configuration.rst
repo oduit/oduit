@@ -121,17 +121,17 @@ Load configuration in your Python code using environment names:
 
 .. code-block:: python
 
-   from oduit import load_config
+   from oduit.config_loader import ConfigLoader
+
+   loader = ConfigLoader()
 
    # Load environment-specific config from ~/.config/oduit/
-   dev_config = load_config('dev')       # Loads dev.yaml or dev.toml
-   prod_config = load_config('prod')     # Loads prod.yaml or prod.toml
+   dev_config = loader.load_config('dev')       # Loads dev.yaml or dev.toml
+   prod_config = loader.load_config('prod')     # Loads prod.yaml or prod.toml
 
    # Load local config from current directory
-   from oduit import load_local_config, has_local_config
-
-   if has_local_config():
-       local_config = load_local_config()  # Loads .oduit.toml
+   if loader.has_local_config():
+       local_config = loader.load_local_config()  # Loads .oduit.toml
 
 Configuration files are loaded from:
 
@@ -142,9 +142,10 @@ Configuration files are loaded from:
 
 .. code-block:: python
 
-   from oduit import get_available_environments
+   from oduit.config_loader import ConfigLoader
 
-   envs = get_available_environments()
+   loader = ConfigLoader()
+   envs = loader.get_available_environments()
    print(f"Available environments: {envs}")
 
 Configuration Validation
@@ -156,10 +157,11 @@ If validation fails, a ``ConfigError`` will be raised with details about missing
 .. code-block:: python
 
    from oduit.exceptions import ConfigError
-   from oduit import load_config
+   from oduit.config_loader import ConfigLoader
 
+   loader = ConfigLoader()
    try:
-       config = load_config('my_env')
+       config = loader.load_config('my_env')
    except ConfigError as e:
        print(f"Configuration error: {e}")
 
@@ -198,7 +200,8 @@ For testing without a real Odoo installation:
 
 .. code-block:: python
 
-   from oduit import load_demo_config
+   from oduit.config_loader import ConfigLoader
 
-   demo_config = load_demo_config()
+   loader = ConfigLoader()
+   demo_config = loader.load_demo_config()
    # Returns configuration with demo_mode=True flag
