@@ -572,9 +572,8 @@ def list_db(
 
     if global_config.format == OutputFormat.JSON:
         output_result_to_json(result)
-    elif result.get("success"):
-        if result.get("stdout"):
-            typer.echo(result["stdout"])
+    elif not result.get("success"):
+        raise typer.Exit(1)
 
 
 @app.command("print-config")
