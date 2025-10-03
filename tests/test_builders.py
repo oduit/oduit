@@ -369,3 +369,39 @@ class TestDatabaseCommandBuilder:
         cmd = builder.create_command().build()
 
         assert cmd == ["sudo", "-S", "su", "-", "postgres", "-c", 'createdb "test_db"']
+
+    def test_list_db_command_with_sudo(self, config_provider):
+        """Test database list command with sudo"""
+        builder = DatabaseCommandBuilder(config_provider)
+        cmd = builder.list_db_command().build()
+
+        assert cmd == ["sudo", "-S", "su", "-", "postgres", "-c", 'psql -l -U "odoo"']
+
+    def test_list_db_command_with_sudo_and_user(self, config_provider):
+        """Test database list command with sudo and db_user"""
+        builder = DatabaseCommandBuilder(config_provider)
+        cmd = builder.list_db_command(db_user="custom_user").build()
+
+        assert cmd == [
+            "sudo",
+            "-S",
+            "su",
+            "-",
+            "postgres",
+            "-c",
+            'psql -l -U "custom_user"',
+        ]
+
+    def test_list_db_command_without_sudo(self, config_provider):
+        """Test database list command without sudo"""
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        cmd = builder.list_db_command().build()
+
+        assert cmd == ["psql", "-l", "-U", "odoo"]
+
+    def test_list_db_command_without_sudo_with_user(self, config_provider):
+        """Test database list command without sudo but with db_user"""
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        cmd = builder.list_db_command(db_user="custom_user").build()
+
+        assert cmd == ["psql", "-l", "-U", "custom_user"]

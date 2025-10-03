@@ -737,6 +737,76 @@ class OdooOperations:
 
         return final_result
 
+    def list_db(
+        self,
+        with_sudo: bool = True,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        db_user: str | None = None,
+    ) -> dict:
+        """List all databases and return operation result
+
+        Args:
+            with_sudo: Use sudo for database operations (default True)
+            suppress_output: Suppress all output (for programmatic use)
+            raise_on_error: Raise exception on failure instead of returning error
+            db_user: Database user to connect as (optional)
+
+        Returns:
+            Dictionary with operation result including success status and command.
+
+        Raises:
+            DatabaseOperationError: If raise_on_error=True and operation fails
+            ConfigError: If configuration is invalid
+        """
+        builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
+        list_operation = builder.list_db_command(db_user=db_user).build_operation()
+
+        try:
+            if self.verbose and not suppress_output:
+                print_info("Listing databases...")
+
+            list_result = self.process_manager.run_operation(
+                list_operation, verbose=self.verbose
+            )
+
+            list_success = list_result.get("success", False) if list_result else False
+
+            final_result = {
+                "success": list_success,
+                "return_code": list_result.get("return_code", 1) if list_result else 1,
+                "command": list_operation.command,
+                "operation": "list_db",
+            }
+
+            if list_result:
+                final_result.update(
+                    {
+                        "stdout": list_result.get("stdout", ""),
+                        "stderr": list_result.get("stderr", ""),
+                    }
+                )
+
+        except ConfigError as e:
+            final_result = {
+                "success": False,
+                "error": str(e),
+                "error_type": "ConfigError",
+            }
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(e), 1)
+                else:
+                    print_error(str(e))
+
+        if raise_on_error and not final_result.get("success", False):
+            raise DatabaseOperationError(
+                final_result.get("error", "Database list operation failed"),
+                operation_result=final_result,
+            )
+
+        return final_result
+
     def create_addon(
         self,
         addon_name: str,

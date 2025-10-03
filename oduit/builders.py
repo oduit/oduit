@@ -809,7 +809,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         else:
             self._set_command("dropdb")
             self._set_flag("if-exists")
-            self._set_value(f'"{db_name}"')
+            self._set_value(f"{db_name}")
         return self
 
     def create_role_command(self, db_user: str | None = None):
@@ -850,7 +850,24 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
             self._set_command("createdb")
             if db_user:
                 self._set_parameter("owner", db_user)
-            self._set_value(f'"{db_name}"')
+            self._set_value(f"{db_name}")
+        return self
+
+    def list_db_command(self, db_user: str | None = None):
+        """Build database list command"""
+        if db_user is None:
+            db_user = self.config.get_optional("db_user")
+
+        if self.with_sudo:
+            if db_user:
+                self._set_command(f'psql -l -U "{db_user}"')
+            else:
+                self._set_command("psql -l")
+        else:
+            self._set_command("psql")
+            self._set_flag("l", prefix="-")
+            if db_user:
+                self._set_parameter("U", db_user, prefix="-", sep=" ")
         return self
 
     def reset(self):
@@ -883,13 +900,19 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                 elif "create extension" in command_value:
                     operation_type = "create_extension"
                     break
+                elif "psql -l" in command_value:
+                    operation_type = "list_db"
+                    break
+            elif part.get("type") == "flag" and part.get("key") == "l":
+                operation_type = "list_db"
+                break
 
         return CommandOperation(
             command=self.build(),
             operation_type=operation_type,
             database=self.config.get_optional("db_name"),
             modules=[],
-            is_odoo_command=False,  # These are direct postgres commands
+            is_odoo_command=False,
             expected_result_fields={
                 "database": self.config.get_optional("db_name"),
                 "with_sudo": self.with_sudo,

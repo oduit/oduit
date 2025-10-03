@@ -79,7 +79,7 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
         builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
         result = builder.drop_command().build()
 
-        expected = ["dropdb", "--if-exists", '"test_db"']
+        expected = ["dropdb", "--if-exists", "test_db"]
         self.assertEqual(result, expected)
 
     def test_build_create_command(self):
@@ -140,6 +140,48 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
             "postgres",
             "-c",
             'psql -c "CREATE ROLE \\"test_user\\"";',
+        ]
+        self.assertEqual(result, expected)
+
+    def test_build_list_db_command(self):
+        """Test the list_db_command method."""
+        env_config = {
+            "db_name": "test_db",
+            "db_user": "test_user",
+        }
+
+        config_provider = ConfigProvider(env_config)
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=True)
+        result = builder.list_db_command().build()
+
+        expected = [
+            "sudo",
+            "-S",
+            "su",
+            "-",
+            "postgres",
+            "-c",
+            'psql -l -U "test_user"',
+        ]
+        self.assertEqual(result, expected)
+
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        result = builder.list_db_command().build()
+
+        expected = ["psql", "-l", "-U", "test_user"]
+        self.assertEqual(result, expected)
+
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=True)
+        result = builder.list_db_command(db_user="custom_user").build()
+
+        expected = [
+            "sudo",
+            "-S",
+            "su",
+            "-",
+            "postgres",
+            "-c",
+            'psql -l -U "custom_user"',
         ]
         self.assertEqual(result, expected)
 

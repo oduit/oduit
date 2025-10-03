@@ -529,6 +529,54 @@ def create_db(
         print_info("Database creation cancelled.")
 
 
+@app.command("list-db")
+def list_db(
+    ctx: typer.Context,
+    with_sudo: bool = typer.Option(
+        False,
+        "--with-sudo/--no-sudo",
+        help="Use sudo for database listing (default: False)",
+    ),
+    db_user: str | None = typer.Option(
+        None,
+        "--db-user",
+        help="Specify the database user (overrides config setting)",
+    ),
+):
+    """List all databases."""
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    odoo_operations = OdooOperations(
+        global_config.env_config, verbose=global_config.verbose
+    )
+    result = odoo_operations.list_db(
+        with_sudo=with_sudo,
+        db_user=db_user,
+    )
+
+    if global_config.format == OutputFormat.JSON:
+        output_result_to_json(result)
+    elif result.get("success"):
+        if result.get("stdout"):
+            typer.echo(result["stdout"])
+
+
 @app.command("print-config")
 def print_config_cmd(ctx: typer.Context):
     """Print environment config."""
