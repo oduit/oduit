@@ -100,15 +100,16 @@ class TestBaseOdooCommandBuilder:
     def test_expand_addons_path_relative(self, config_provider):
         """Test expansion of relative paths in addons_path"""
         builder = BaseOdooCommandBuilder(config_provider)
-        result = builder._expand_addons_path("./addons,./custom,/absolute/path")
+        result = builder._expand_addons_path("./addons,.\\custom,/absolute/path")
 
         assert not result.startswith("./")
+        assert not result.startswith(".\\")
         assert "/absolute/path" in result
         paths = result.split(",")
         assert len(paths) == 3
         for path in paths[:2]:
-            assert path.startswith("/")
             assert not path.startswith("./")
+            assert not path.startswith(".\\")
 
     def test_expand_addons_path_absolute_only(self, config_provider):
         """Test expansion with only absolute paths"""

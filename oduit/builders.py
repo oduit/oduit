@@ -171,7 +171,7 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
         expanded_paths = []
         for path in paths:
             path = path.strip()
-            if path.startswith("./") or path.startswith(".\\"):
+            if not os.path.isabs(path):
                 path = os.path.abspath(path)
             expanded_paths.append(path)
         return ",".join(expanded_paths)
