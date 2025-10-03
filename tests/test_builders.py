@@ -120,11 +120,13 @@ class TestBaseOdooCommandBuilder:
 
     def test_expand_addons_path_single_relative(self, config_provider):
         """Test expansion with single relative path"""
+        import os
+
         builder = BaseOdooCommandBuilder(config_provider)
         result = builder._expand_addons_path("./addons")
 
         assert not result.startswith("./")
-        assert result.startswith("/")
+        assert os.path.isabs(result)
 
     def test_apply_default_config_expands_paths(self, sample_config):
         """Test that _apply_default_config expands relative paths"""
