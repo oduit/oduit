@@ -350,7 +350,7 @@ class ConfigLoader:
         # Use python3 (more likely to work with virtual envs) instead of python
         oduit_config["python_bin"] = "python3"
         oduit_config["coverage_bin"] = "coverage"
-        oduit_config["odoo_bin"] = "odoo-bin"  # Default fallback
+        oduit_config["odoo_bin"] = "odoo"  # Default fallback
 
         # Parse config sections first to get addons_path
         self._parse_database_config(options, oduit_config)

@@ -97,6 +97,51 @@ class TestBaseOdooCommandBuilder:
         assert "--database=test_db" in cmd
         assert "--addons-path=/opt/odoo/addons,/opt/custom/addons" in cmd
 
+    def test_expand_addons_path_relative(self, config_provider):
+        """Test expansion of relative paths in addons_path"""
+        builder = BaseOdooCommandBuilder(config_provider)
+        result = builder._expand_addons_path("./addons,./custom,/absolute/path")
+
+        assert not result.startswith("./")
+        assert "/absolute/path" in result
+        paths = result.split(",")
+        assert len(paths) == 3
+        for path in paths[:2]:
+            assert path.startswith("/")
+            assert not path.startswith("./")
+
+    def test_expand_addons_path_absolute_only(self, config_provider):
+        """Test expansion with only absolute paths"""
+        builder = BaseOdooCommandBuilder(config_provider)
+        result = builder._expand_addons_path("/opt/odoo/addons,/opt/custom/addons")
+
+        assert result == "/opt/odoo/addons,/opt/custom/addons"
+
+    def test_expand_addons_path_single_relative(self, config_provider):
+        """Test expansion with single relative path"""
+        builder = BaseOdooCommandBuilder(config_provider)
+        result = builder._expand_addons_path("./addons")
+
+        assert not result.startswith("./")
+        assert result.startswith("/")
+
+    def test_apply_default_config_expands_paths(self, sample_config):
+        """Test that _apply_default_config expands relative paths"""
+        config = sample_config.copy()
+        config["addons_path"] = "./addons,./custom"
+        provider = ConfigProvider(config)
+
+        builder = BaseOdooCommandBuilder(provider)
+        builder._setup_base_command()
+        builder._apply_default_config()
+        cmd = builder.build()
+
+        addons_path_param = [part for part in cmd if part.startswith("--addons-path=")][
+            0
+        ]
+        assert "./addons" not in addons_path_param
+        assert "./custom" not in addons_path_param
+
     def test_fluent_interface(self, config_provider):
         """Test fluent interface works correctly"""
         builder = BaseOdooCommandBuilder(config_provider)
@@ -288,7 +333,15 @@ class TestDatabaseCommandBuilder:
         builder = DatabaseCommandBuilder(config_provider)
         cmd = builder.drop_command().build()
 
-        assert cmd == ["sudo", "-S", "su", "-", "postgres", "-c", 'dropdb "test_db"']
+        assert cmd == [
+            "sudo",
+            "-S",
+            "su",
+            "-",
+            "postgres",
+            "-c",
+            'dropdb --if-exists "test_db"',
+        ]
 
     def test_create_command_with_user(self, config_provider):
         """Test database create command with user"""

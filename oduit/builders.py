@@ -67,6 +67,11 @@ class AbstractCommandBuilder(ABC):
         self._command_parts.append({"type": "command", "value": command})
         return self
 
+    def _set_value(self, value: str):
+        """Set a value (like 'db_name')"""
+        self._command_parts.append({"type": "value", "value": value})
+        return self
+
     def _set_flag(self, flag: str, prefix: str = "--"):
         """Set a boolean flag without value (like --no-http, --stop-after-init)"""
         self._remove_by_key(flag)
@@ -110,6 +115,8 @@ class AbstractCommandBuilder(ABC):
 
             if part_type == "command":
                 result.append(str(part["value"]))
+            elif part_type == "value":
+                result.append(str(part["value"]))
             elif part_type == "flag":
                 result.append(f"{part['prefix']}{part['key']}")
             elif part_type == "parameter":
@@ -140,10 +147,10 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
 
     def _setup_base_command(self) -> None:
         """Setup base python + odoo-bin command structure"""
-        python_bin = self.config.get_required("python_bin")
+        python_bin = self.config.get_optional("python_bin")
         odoo_bin = self.config.get_required("odoo_bin")
-
-        self._set_command(python_bin)
+        if python_bin:
+            self._set_command(python_bin)
         self._set_command(odoo_bin)
 
     def _apply_full_config(self) -> None:
@@ -158,10 +165,22 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
         # Apply multiprocessing configuration
         self._apply_multiprocessing_config()
 
+    def _expand_addons_path(self, addons_path: str) -> str:
+        """Expand relative paths in addons_path with current directory"""
+        paths = addons_path.split(",")
+        expanded_paths = []
+        for path in paths:
+            path = path.strip()
+            if path.startswith("./"):
+                path = os.path.abspath(path)
+            expanded_paths.append(path)
+        return ",".join(expanded_paths)
+
     def _apply_default_config(self) -> None:
         """Apply default configuration from config provider"""
         if addons_path := self.config.get_optional("addons_path"):
-            self.addons_path(addons_path)
+            expanded_path = self._expand_addons_path(addons_path)
+            self.addons_path(expanded_path)
         if load := self.config.get_optional("load"):
             self.load(load)
         if data_dir := self.config.get_optional("data_dir"):
@@ -466,9 +485,7 @@ class RunCommandBuilder(BaseOdooCommandBuilder):
 
     def __init__(self, config_provider: ConfigProvider):
         super().__init__(config_provider)
-        config_provider.validate_keys(
-            ["python_bin", "odoo_bin", "addons_path", "db_name"], "Odoo run command"
-        )
+        config_provider.validate_keys(["odoo_bin", "db_name"], "Odoo run command")
         self._setup_base_command()
         self._apply_full_config()
 
@@ -634,7 +651,7 @@ class ShellCommandBuilder(BaseOdooCommandBuilder):
     def __init__(self, config_provider: ConfigProvider):
         super().__init__(config_provider)
         config_provider.validate_keys(
-            ["python_bin", "odoo_bin", "db_name", "addons_path"],
+            ["odoo_bin", "db_name", "addons_path"],
             "Odoo shell command",
         )
 
@@ -667,7 +684,7 @@ class UpdateCommandBuilder(BaseOdooCommandBuilder):
         self._module = module
 
         config_provider.validate_keys(
-            ["python_bin", "odoo_bin", "addons_path", "db_name"], "update command"
+            ["odoo_bin", "addons_path", "db_name"], "update command"
         )
 
         self._setup_base_command()
@@ -698,7 +715,7 @@ class InstallCommandBuilder(BaseOdooCommandBuilder):
         self._module = module
 
         config_provider.validate_keys(
-            ["python_bin", "odoo_bin", "addons_path", "db_name"], "install command"
+            ["odoo_bin", "addons_path", "db_name"], "install command"
         )
         self._setup_base_command()
         self._apply_full_config()
@@ -732,7 +749,7 @@ class LanguageCommandBuilder(BaseOdooCommandBuilder):
         self._language = language
 
         config_provider.validate_keys(
-            ["python_bin", "odoo_bin", "addons_path", "db_name"], "lang command"
+            ["odoo_bin", "addons_path", "db_name"], "lang command"
         )
 
         self._setup_base_command()
@@ -768,8 +785,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         super().__init__(config_provider)
         config_provider.validate_keys(["db_name"], "database command")
         self.with_sudo = with_sudo
-        if with_sudo:
-            self._setup_sudo_command()
+        self._setup_base_command()
 
     def _setup_base_command(self) -> None:
         if self.with_sudo:
@@ -788,13 +804,19 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         """Build database drop command"""
         self.config.validate_keys(["db_name"], "database drop command")
         db_name = self.config.get_required("db_name")
-        self._set_command(f'dropdb "{db_name}"')
+        if self.with_sudo:
+            self._set_command(f'dropdb --if-exists "{db_name}"')
+        else:
+            self._set_command("dropdb")
+            self._set_flag("if-exists")
+            self._set_value(f'"{db_name}"')
         return self
 
-    def create_role_command(self):
+    def create_role_command(self, db_user: str | None = None):
         """Build database create role command"""
-        self.config.validate_keys(["db_user"], "database create role command")
-        db_user = self.config.get_optional("db_user")
+        if db_user is None:
+            self.config.validate_keys(["db_user"], "database create role command")
+            db_user = self.config.get_optional("db_user")
 
         self._set_command(f'psql -c "CREATE ROLE \\"{db_user}\\"";')
         return self
@@ -806,23 +828,29 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         self._set_command(f'psql -c "CREATE EXTENSION \\"{extension}\\"";')
         return self
 
-    def alter_role_command(self):
+    def alter_role_command(self, db_user: str | None = None):
         """Build database alter role command to add login and createdb privileges"""
-        self.config.validate_keys(["db_user"], "database alter role command")
-        db_user = self.config.get_optional("db_user")
+        if db_user is None:
+            self.config.validate_keys(["db_user"], "database alter role command")
+            db_user = self.config.get_optional("db_user")
         self._set_command(f'psql -c "ALTER ROLE \\"{db_user}\\" WITH LOGIN CREATEDB";')
         return self
 
-    def create_command(self):
+    def create_command(self, db_user: str | None = None):
         """Build database create command"""
         self.config.validate_keys(["db_name"], "database create command")
         db_name = self.config.get_required("db_name")
-        db_user = self.config.get_optional("db_user")
-
-        if db_user:
+        if db_user is None:
+            db_user = self.config.get_optional("db_user")
+        if self.with_sudo and db_user:
             self._set_command(f'createdb -O "{db_user}" "{db_name}"')
-        else:
+        elif self.with_sudo and not db_user:
             self._set_command(f'createdb "{db_name}"')
+        else:
+            self._set_command("createdb")
+            if db_user:
+                self._set_parameter("owner", db_user)
+            self._set_value(f'"{db_name}"')
         return self
 
     def reset(self):

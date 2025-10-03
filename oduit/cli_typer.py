@@ -474,6 +474,21 @@ def create_db(
         "--alter-role",
         help="Alter DB Role",
     ),
+    with_sudo: bool = typer.Option(
+        False,
+        "--with-sudo",
+        help="Use sudo for database creation (if required by PostgreSQL setup)",
+    ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Run without confirmation prompt (use with caution)",
+    ),
+    db_user: str | None = typer.Option(
+        None,
+        "--db-user",
+        help="Specify the database user (overrides config setting)",
+    ),
 ):
     """Create database."""
     if ctx.obj is None:
@@ -495,14 +510,21 @@ def create_db(
         raise typer.Exit(1) from None
 
     db_name = global_config.env_config.get("db_name", "Unknown")
-    print_warning(f"This will create a new database named '{db_name}'.")
-    message = "Are you sure you want to create a new database?"
-    confirmation = input(f"{message} (y/N): ").strip().lower()
-    if confirmation == "y":
+    confirmation = "N"
+    if not non_interactive:
+        print_warning(f"This will create a new database named '{db_name}'.")
+        message = "Are you sure you want to create a new database?"
+        confirmation = input(f"{message} (y/N): ").strip().lower()
+    if confirmation == "y" or non_interactive:
         odoo_operations = OdooOperations(
             global_config.env_config, verbose=global_config.verbose
         )
-        odoo_operations.create_db(create_role=create_role, alter_role=alter_role)
+        odoo_operations.create_db(
+            create_role=create_role,
+            alter_role=alter_role,
+            with_sudo=with_sudo,
+            db_user=db_user,
+        )
     else:
         print_info("Database creation cancelled.")
 

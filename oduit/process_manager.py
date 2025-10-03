@@ -367,7 +367,7 @@ class ProcessManager(BaseProcessManager):
             should_show_line = True
             if compact:
                 should_show_line = self._should_show_line_in_compact(
-                    line, failure_patterns
+                    line,
                 )
 
             # Handle output
@@ -469,8 +469,8 @@ class ProcessManager(BaseProcessManager):
                 "command": " ".join(cmd),
             }
 
-        except FileNotFoundError:
-            error_msg = f"Command not found: {cmd[0]}"
+        except FileNotFoundError as e:
+            error_msg = f"Command not successful: {cmd[0]} due to {e}"
             if not suppress_output:
                 print_error(error_msg)
             return {"success": False, "error": error_msg, "command": " ".join(cmd)}
@@ -530,7 +530,7 @@ class ProcessManager(BaseProcessManager):
             should_show_line = True
             if compact:
                 should_show_line = self._should_show_line_in_compact(
-                    line, failure_patterns
+                    line,
                 )
 
             is_error = any(p.search(line) for p in failure_patterns)

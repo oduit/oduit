@@ -598,6 +598,7 @@ class OdooOperations:
         alter_role: bool = False,
         extension: str | None = None,
         raise_on_error: bool = False,
+        db_user: str | None = None,
     ) -> dict:
         """Drop and create database and return operation result
 
@@ -623,10 +624,10 @@ class OdooOperations:
         builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
         if create_role:
             builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
-            cmd_role = builder.create_role_command().build()
+            cmd_role = builder.create_role_command(db_user=db_user).build()
         if alter_role:
             builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
-            cmd_alter = builder.alter_role_command().build()
+            cmd_alter = builder.alter_role_command(db_user=db_user).build()
         if extension is not None:
             builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
             cmd_extension = builder.create_extension_command(extension).build()

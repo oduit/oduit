@@ -60,7 +60,15 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
         builder = DatabaseCommandBuilder(config_provider, with_sudo=True)
         result = builder.drop_command().build()
 
-        expected = ["sudo", "-S", "su", "-", "postgres", "-c", 'dropdb "test_db"']
+        expected = [
+            "sudo",
+            "-S",
+            "su",
+            "-",
+            "postgres",
+            "-c",
+            'dropdb --if-exists "test_db"',
+        ]
         self.assertEqual(result, expected)
 
         # Test with missing configuration
@@ -71,7 +79,7 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
         builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
         result = builder.drop_command().build()
 
-        expected = ['dropdb "test_db"']
+        expected = ["dropdb", "--if-exists", '"test_db"']
         self.assertEqual(result, expected)
 
     def test_build_create_command(self):
