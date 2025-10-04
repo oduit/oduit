@@ -176,15 +176,46 @@ def main(
         "no_http": no_http,
     }
     if not ctx.invoked_subcommand:
-        # Check if there's a local config file
-        print_error("Usage: oduit [--env ENV] [command] [arguments]")
-        print_error(
-            "No environment specified and no .oduit.toml found in current directory"
-        )
-        print_error("Examples:")
-        print_error("  oduit --env dev                   # Interactive mode with env")
-        print_error("  oduit --env dev run               # Run Odoo server")
-        print_error("  oduit --env dev update sale      # Update module 'sale'")
+        config_loader = ConfigLoader()
+        has_local = config_loader.has_local_config()
+
+        if has_local:
+            print_info("Available commands:")
+            print_info("  run                Run Odoo server")
+            print_info("  shell              Start Odoo shell")
+            print_info("  install MODULE     Install a module")
+            print_info("  update MODULE      Update a module")
+            print_info("  test               Run tests")
+            print_info("  create-db          Create database")
+            print_info("  list-db            List databases")
+            print_info("  list-env           List available environments")
+            print_info("  create-addon NAME  Create new addon")
+            print_info("  list-addons        List available addons")
+            print_info("  export-lang MODULE Export language translations")
+            print_info("  print-config       Print environment configuration")
+            print_info("")
+            print_info("Examples:")
+            print_info(
+                "  oduit run                         # Run with local .oduit.toml"
+            )
+            print_info("  oduit test --test-tags /sale      # Test sale module")
+            print_info("  oduit update sale                 # Update sale module")
+        else:
+            print_error(
+                "No command specified and no .oduit.toml found in current directory"
+            )
+            print_info("")
+            print_info("Usage: oduit [--env ENV] COMMAND [arguments]")
+            print_info("")
+            print_info("Available commands:")
+            print_info(
+                "  run, shell, install, update, test, create-db, list-db, list-env"
+            )
+            print_info("  create-addon, list-addons, export-lang, print-config")
+            print_info("")
+            print_info("Examples:")
+            print_info("  oduit --env dev run               # Run Odoo server")
+            print_info("  oduit --env dev update sale       # Update module 'sale'")
         raise typer.Exit(1) from None
 
 
@@ -574,6 +605,36 @@ def list_db(
         output_result_to_json(result)
     elif not result.get("success"):
         raise typer.Exit(1)
+
+
+@app.command("list-env")
+def list_env():
+    """List available environments."""
+    from rich.console import Console
+    from rich.table import Table
+
+    from oduit.config_loader import ConfigLoader
+
+    try:
+        environments = ConfigLoader().get_available_environments()
+        if not environments:
+            print_info("No environments found in .oduit directory")
+            return
+
+        table = Table(title="Available Environments", show_header=True)
+        table.add_column("Environment", style="cyan", no_wrap=True)
+
+        for env in environments:
+            table.add_row(env)
+
+        console = Console()
+        console.print(table)
+    except FileNotFoundError:
+        print_error("No .oduit directory found in current directory")
+        raise typer.Exit(1) from None
+    except Exception as e:
+        print_error(f"Failed to list environments: {e}")
+        raise typer.Exit(1) from None
 
 
 @app.command("print-config")
