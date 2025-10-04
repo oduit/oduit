@@ -106,7 +106,7 @@ class TestCLICommands(unittest.TestCase):
             result = self.runner.invoke(app, [])
 
             self.assertEqual(result.exit_code, 1)
-            self.assertIn("No environment specified", result.output)
+            self.assertIn("No command specified", result.output)
 
     @patch("oduit.cli_typer.OdooOperations")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -303,12 +303,14 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "y"
 
         result = self.runner.invoke(app, ["--env", "dev", "create-db"])
 
         self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.db_exists.assert_called_once()
         mock_ops_instance.create_db.assert_called_once()
 
     @patch("oduit.cli_typer.OdooOperations")
@@ -322,12 +324,14 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "n"
 
         result = self.runner.invoke(app, ["--env", "dev", "create-db"])
 
         self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.db_exists.assert_called_once()
         mock_ops_instance.create_db.assert_not_called()
         self.assertIn("cancelled", result.output)
 

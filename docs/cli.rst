@@ -270,19 +270,67 @@ Create a new database for Odoo.
 
 - ``--create-role``: Create database role
 - ``--alter-role``: Alter database role
+- ``--with-sudo``: Use sudo for database creation (if required by PostgreSQL setup)
+- ``--drop``: Drop database if it exists before creating
+- ``--non-interactive``: Run without confirmation prompt (use with caution)
+- ``--db-user TEXT``: Specify the database user (overrides config setting)
 
 **Examples:**
 
 .. code-block:: bash
 
-   # Create database
+   # Create database (prompts for confirmation)
    oduit --env dev create-db
 
    # Create database with role creation
    oduit --env dev create-db --create-role
 
+   # Drop existing database and create new one
+   oduit --env dev create-db --drop
+
+   # Non-interactive mode (auto-confirm)
+   oduit --env dev create-db --non-interactive
+
+   # Use sudo for PostgreSQL operations
+   oduit --env dev create-db --with-sudo
+
+   # Combine options: drop, create role, non-interactive
+   oduit --env dev create-db --drop --create-role --non-interactive
+
+.. note::
+   The command checks if the database exists before attempting to create it.
+   Use ``--drop`` to automatically drop an existing database before creating.
+
 .. warning::
-   This command will prompt for confirmation before creating the database.
+   This command will prompt for confirmation before creating the database
+   unless ``--non-interactive`` is specified.
+
+list-db
+^^^^^^^
+
+List all databases in PostgreSQL.
+
+.. code-block:: bash
+
+   oduit --env dev list-db [OPTIONS]
+
+**Options:**
+
+- ``--with-sudo/--no-sudo``: Use sudo for database listing (default: False)
+- ``--db-user TEXT``: Specify the database user (overrides config setting)
+
+**Examples:**
+
+.. code-block:: bash
+
+   # List databases
+   oduit --env dev list-db
+
+   # List databases with sudo
+   oduit --env dev list-db --with-sudo
+
+   # List databases as specific user
+   oduit --env dev list-db --db-user postgres
 
 create-addon
 ^^^^^^^^^^^^

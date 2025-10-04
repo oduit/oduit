@@ -510,6 +510,11 @@ def create_db(
         "--with-sudo",
         help="Use sudo for database creation (if required by PostgreSQL setup)",
     ),
+    drop: bool = typer.Option(
+        False,
+        "--drop",
+        help="Drop database if it exists before creating",
+    ),
     non_interactive: bool = typer.Option(
         False,
         "--non-interactive",
@@ -541,15 +546,56 @@ def create_db(
         raise typer.Exit(1) from None
 
     db_name = global_config.env_config.get("db_name", "Unknown")
-    confirmation = "N"
-    if not non_interactive:
+
+    odoo_operations = OdooOperations(
+        global_config.env_config, verbose=global_config.verbose
+    )
+
+    # Check if database exists
+    exists_result = odoo_operations.db_exists(
+        with_sudo=with_sudo,
+        suppress_output=True,
+        db_user=db_user,
+    )
+
+    db_exists = exists_result.get("exists", False)
+
+    # Handle existing database
+    if db_exists:
+        if drop:
+            confirmation = "y"
+            if not non_interactive:
+                print_warning(f"Database '{db_name}' already exists.")
+                message = "Do you want to drop it before creating?"
+                confirmation = input(f"{message} (y/N): ").strip().lower()
+
+            if confirmation == "y":
+                print_info(f"Dropping existing database '{db_name}'...")
+                drop_result = odoo_operations.drop_db(
+                    with_sudo=with_sudo,
+                    suppress_output=False,
+                )
+                if not drop_result.get("success", False):
+                    print_error("Failed to drop database")
+                    raise typer.Exit(1) from None
+            else:
+                print_info("Database drop cancelled.")
+                raise typer.Exit(0) from None
+        else:
+            print_error(
+                f"Database '{db_name}' already exists. "
+                f"Use --drop flag to drop it first."
+            )
+            raise typer.Exit(1) from None
+
+    # Create database
+    confirmation = "y"
+    if not non_interactive and not db_exists:
         print_warning(f"This will create a new database named '{db_name}'.")
         message = "Are you sure you want to create a new database?"
         confirmation = input(f"{message} (y/N): ").strip().lower()
-    if confirmation == "y" or non_interactive:
-        odoo_operations = OdooOperations(
-            global_config.env_config, verbose=global_config.verbose
-        )
+
+    if confirmation == "y":
         odoo_operations.create_db(
             create_role=create_role,
             alter_role=alter_role,

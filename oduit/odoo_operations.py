@@ -590,19 +590,104 @@ class OdooOperations:
             }
         return final_result
 
-    def create_db(
+    def db_exists(
         self,
         with_sudo: bool = True,
         suppress_output: bool = False,
-        create_role: bool = False,
-        alter_role: bool = False,
-        extension: str | None = None,
         raise_on_error: bool = False,
         db_user: str | None = None,
     ) -> dict:
-        """Drop and create database and return operation result
+        """Check if database exists and return operation result
 
         Args:
+            with_sudo: Use sudo for database operations (default True)
+            suppress_output: Suppress all output (for programmatic use)
+            raise_on_error: Raise exception on failure instead of returning error
+            db_user: Database user to connect as (optional)
+
+        Returns:
+            Dictionary with operation result including success status, exists flag,
+            and command details. The 'exists' key indicates if database exists.
+
+        Raises:
+            DatabaseOperationError: If raise_on_error=True and operation fails
+            ConfigError: If configuration is invalid
+
+        Example:
+            >>> ops = OdooOperations(config)
+            >>> result = ops.db_exists()
+            >>> if result['exists']:
+            >>>     print("Database exists")
+        """
+        db_name = self.config.get_optional("db_name", "unknown")
+
+        builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
+        exists_operation = builder.exists_db_command(db_user=db_user).build_operation()
+
+        try:
+            if self.verbose and not suppress_output:
+                print_info(f"Checking if database exists: {db_name}")
+
+            exists_result = self.process_manager.run_operation(
+                exists_operation, verbose=self.verbose
+            )
+
+            # grep -qw returns 0 if match found (exists), 1 if not found
+            exists = exists_result.get("return_code", 1) == 0
+            check_success = (
+                exists_result.get("success", False) if exists_result else False
+            )
+
+            final_result = {
+                "success": check_success,
+                "exists": exists,
+                "return_code": exists_result.get("return_code", 1)
+                if exists_result
+                else 1,
+                "command": exists_operation.command,
+                "operation": "exists_db",
+                "database": db_name,
+            }
+
+            if exists_result:
+                final_result.update(
+                    {
+                        "stdout": exists_result.get("stdout", ""),
+                        "stderr": exists_result.get("stderr", ""),
+                    }
+                )
+
+        except ConfigError as e:
+            final_result = {
+                "success": False,
+                "exists": False,
+                "error": str(e),
+                "error_type": "ConfigError",
+            }
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(e), 1)
+                else:
+                    print_error(str(e))
+
+        if raise_on_error and not final_result.get("success", False):
+            raise DatabaseOperationError(
+                final_result.get("error", "Database exists check operation failed"),
+                operation_result=final_result,
+            )
+
+        return final_result
+
+    def drop_db(
+        self,
+        with_sudo: bool = True,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+    ) -> dict:
+        """Drop database and return operation result
+
+        Args:
+            with_sudo: Use sudo for database operations (default True)
             suppress_output: Suppress all output (for programmatic use)
             raise_on_error: Raise exception on failure instead of returning error
 
@@ -615,7 +700,85 @@ class OdooOperations:
         """
         db_name = self.config.get_optional("db_name", "unknown")
 
-        drop_result = None
+        builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
+        drop_operation = builder.drop_command().build_operation()
+
+        try:
+            if self.verbose and not suppress_output:
+                print_info(f"Dropping database: {db_name}")
+
+            drop_result = self.process_manager.run_operation(
+                drop_operation, verbose=self.verbose
+            )
+
+            drop_success = drop_result.get("success", False) if drop_result else False
+
+            final_result = {
+                "success": drop_success,
+                "return_code": drop_result.get("return_code", 1) if drop_result else 1,
+                "command": drop_operation.command,
+                "operation": "drop_database",
+                "database": db_name,
+            }
+
+            if drop_result:
+                final_result.update(
+                    {
+                        "stdout": drop_result.get("stdout", ""),
+                        "stderr": drop_result.get("stderr", ""),
+                    }
+                )
+
+        except ConfigError as e:
+            final_result = {
+                "success": False,
+                "error": str(e),
+                "error_type": "ConfigError",
+            }
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(e), 1)
+                else:
+                    print_error(str(e))
+
+        if raise_on_error and not final_result.get("success", False):
+            raise DatabaseOperationError(
+                final_result.get("error", "Database drop operation failed"),
+                operation_result=final_result,
+            )
+
+        return final_result
+
+    def create_db(
+        self,
+        with_sudo: bool = True,
+        suppress_output: bool = False,
+        create_role: bool = False,
+        alter_role: bool = False,
+        extension: str | None = None,
+        raise_on_error: bool = False,
+        db_user: str | None = None,
+    ) -> dict:
+        """Create database and return operation result
+
+        Args:
+            with_sudo: Use sudo for database operations (default True)
+            suppress_output: Suppress all output (for programmatic use)
+            create_role: Create database role before creating database
+            alter_role: Alter database role before creating database
+            extension: Create extension in database (e.g., 'postgis')
+            raise_on_error: Raise exception on failure instead of returning error
+            db_user: Database user for role operations (optional)
+
+        Returns:
+            Dictionary with operation result including success status and command.
+
+        Raises:
+            DatabaseOperationError: If raise_on_error=True and operation fails
+            ConfigError: If configuration is invalid
+        """
+        db_name = self.config.get_optional("db_name", "unknown")
+
         create_result = None
         cmd_role = None
         cmd_alter = None
@@ -633,33 +796,25 @@ class OdooOperations:
             cmd_extension = builder.create_extension_command(extension).build()
 
         builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
-        drop_operation = builder.drop_command().build_operation()
-
-        builder = DatabaseCommandBuilder(self.config, with_sudo=with_sudo)
         create_operation = builder.create_command().build_operation()
 
         try:
-            # Optional verbose output (if not suppress_output)
             if self.verbose and not suppress_output:
-                print_info(f"Dropping and Creating database: {db_name}")
+                print_info(f"Creating database: {db_name}")
 
-            # Create role if specified
             if cmd_role:
                 role_result = self.process_manager.run_command(
                     cmd_role, verbose=self.verbose
                 )
-                # Log role creation result but do not fail operation if it fails
                 if role_result and not role_result.get("success", False):
                     print_error(
                         f"Warning: Role creation command failed: "
                         f"{role_result.get('stderr', '').strip()}"
                     )
-            # Alter role if specified
             if cmd_alter:
                 alter_result = self.process_manager.run_command(
                     cmd_alter, verbose=self.verbose
                 )
-                # Log alter role result but do not fail operation if it fails
                 if alter_result and not alter_result.get("success", False):
                     print_error(
                         f"Warning: Role alteration command failed: "
@@ -669,45 +824,31 @@ class OdooOperations:
                 extension_result = self.process_manager.run_command(
                     cmd_extension, verbose=self.verbose
                 )
-                # Log extension creation result but do not fail operation if it fails
                 if extension_result and not extension_result.get("success", False):
                     print_error(
                         f"Warning: Extension creation command failed: "
                         f"{extension_result.get('stderr', '').strip()}"
                     )
 
-            # Drop database
-            drop_result = self.process_manager.run_operation(
-                drop_operation, verbose=self.verbose
-            )
-
-            # Create database
             create_result = self.process_manager.run_operation(
                 create_operation, verbose=self.verbose
             )
 
-            # Determine overall success
-            drop_success = drop_result.get("success", False) if drop_result else False
             create_success = (
                 create_result.get("success", False) if create_result else False
             )
-            overall_success = drop_success and create_success
 
-            # Build final result
             create_return_code = (
                 create_result.get("return_code", 1) if create_result else 1
             )
             final_result = {
-                "success": overall_success,
+                "success": create_success,
                 "return_code": create_return_code,
                 "command": create_operation.command,
                 "operation": "create_database",
                 "database": db_name,
-                "drop_success": drop_success,
-                "create_success": create_success,
             }
 
-            # Set output from create operation
             if create_result:
                 final_result.update(
                     {
@@ -728,7 +869,6 @@ class OdooOperations:
                 else:
                     print_error(str(e))
 
-        # Raise exception if requested and operation failed
         if raise_on_error and not final_result.get("success", False):
             raise DatabaseOperationError(
                 final_result.get("error", "Database operation failed"),
@@ -767,7 +907,7 @@ class OdooOperations:
                 print_info("Listing databases...")
 
             list_result = self.process_manager.run_operation(
-                list_operation, verbose=self.verbose
+                list_operation, verbose=self.verbose, suppress_output=suppress_output
             )
 
             list_success = list_result.get("success", False) if list_result else False

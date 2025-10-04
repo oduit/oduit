@@ -870,6 +870,32 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                 self._set_parameter("U", db_user, prefix="-", sep=" ")
         return self
 
+    def exists_db_command(self, db_user: str | None = None):
+        """Build database exists check command"""
+        self.config.validate_keys(["db_name"], "database exists command")
+        db_name = self.config.get_required("db_name")
+
+        if db_user is None:
+            db_user = self.config.get_optional("db_user")
+
+        if self.with_sudo:
+            if db_user:
+                self._set_command(
+                    f'psql -lqt -U "{db_user}" | cut -d \\| -f 1 | grep -qw "{db_name}"'
+                )
+            else:
+                self._set_command(f'psql -lqt | cut -d \\| -f 1 | grep -qw "{db_name}"')
+        else:
+            self._set_command("sh")
+            self._set_flag("c", prefix="-")
+            if db_user:
+                self._set_command(
+                    f'psql -lqt -U "{db_user}" | cut -d \\| -f 1 | grep -qw "{db_name}"'
+                )
+            else:
+                self._set_command(f'psql -lqt | cut -d \\| -f 1 | grep -qw "{db_name}"')
+        return self
+
     def reset(self):
         """Reset builder to initial state"""
         self._command_parts.clear()
@@ -902,6 +928,9 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                     break
                 elif "psql -l" in command_value:
                     operation_type = "list_db"
+                    break
+                elif "grep -qw" in command_value:
+                    operation_type = "exists_db"
                     break
             elif part.get("type") == "flag" and part.get("key") == "l":
                 operation_type = "list_db"
