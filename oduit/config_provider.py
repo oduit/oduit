@@ -125,6 +125,14 @@ class ConfigProvider:
                 param_name = "database"
             elif key == "addons_path":
                 param_name = "addons-path"
+            elif key == "db_user":
+                param_name = "db_user"
+            elif key == "db_host":
+                param_name = "db_host"
+            elif key == "db_password":
+                param_name = "db_password"
+            elif key == "db_port":
+                param_name = "db_port"
             elif replace_underscore:
                 param_name = key.replace("_", "-")
             else:
