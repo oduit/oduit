@@ -104,45 +104,90 @@ class ConfigProvider:
         return self._odoo_params.copy()
 
     def get_odoo_params_list(
-        self, skip_keys: list, replace_underscore=True
+        self, skip_keys: list | None = None, replace_underscore: bool = True
     ) -> list[str]:
         """Get Odoo parameters as a list of command line arguments.
 
         Converts the odoo_params configuration into a list format suitable
-        for passing directly to Odoo command line, e.g.:
-        ["--db-name=test", "--addons-path=/path/to/addons", "--http-port=8069"]
+        for passing directly to Odoo's parse_config method, e.g.:
+        ["--database=test", "--addons-path=/path/to/addons", "--http-port=8069"]
+
+        This method properly maps parameter names to match Odoo's expected
+        command-line option names as defined in odoo/tools/config.py.
+
+        Args:
+            skip_keys: List of keys to skip when building the parameter list
 
         Returns:
-            List of formatted command line arguments for Odoo
+            List of formatted command line arguments compatible with
+            odoo.tools.config.parse_config()
         """
+        key_mappings = {
+            "db_name": "database",
+            "addons_path": "addons-path",
+            "upgrade_path": "upgrade-path",
+            "pre_upgrade_scripts": "pre-upgrade-scripts",
+            "server_wide_modules": "load",
+            "data_dir": "data-dir",
+            "http_interface": "http-interface",
+            "http_port": "http-port",
+            "longpolling_port": "longpolling-port",
+            "gevent_port": "gevent-port",
+            "http_enable": "http-enable",
+            "proxy_mode": "proxy-mode",
+            "x_sendfile": "x-sendfile",
+            "dbfilter": "db-filter",
+            "test_file": "test-file",
+            "test_enable": "test-enable",
+            "test_tags": "test-tags",
+            "log_handler": "log-handler",
+            "log_web": "log-web",
+            "log_sql": "log-sql",
+            "log_db": "log-db",
+            "log_db_level": "log-db-level",
+            "log_level": "log-level",
+            "email_from": "email-from",
+            "from_filter": "from-filter",
+            "smtp_server": "smtp",
+            "smtp_port": "smtp-port",
+            "smtp_ssl": "smtp-ssl",
+            "smtp_user": "smtp-user",
+            "smtp_password": "smtp-password",
+            "smtp_ssl_certificate_filename": "smtp-ssl-certificate-filename",
+            "smtp_ssl_private_key_filename": "smtp-ssl-private-key-filename",
+            "db_template": "db-template",
+            "load_language": "load-language",
+            "translate_out": "i18n-export",
+            "translate_in": "i18n-import",
+            "overwrite_existing_translations": "i18n-overwrite",
+            "translate_modules": "modules",
+            "list_db": "database-list",
+            "no_http": "no-http",
+            "db_user": "db_user",
+            "db_host": "db_host",
+            "db_port": "db_port",
+            "db_password": "db_password",
+        }
+
         params_list = []
 
         for key, value in self._odoo_params.items():
-            # Convert underscores to hyphens for command line format
-            if key in skip_keys:
+            if skip_keys and key in skip_keys:
                 continue
-            if key == "db_name":
-                param_name = "database"
-            elif key == "addons_path":
-                param_name = "addons-path"
-            elif key == "db_user":
-                param_name = "db_user"
-            elif key == "db_host":
-                param_name = "db_host"
-            elif key == "db_password":
-                param_name = "db_password"
-            elif key == "db_port":
-                param_name = "db_port"
+
+            if key in key_mappings:
+                param_name = key_mappings[key]
             elif replace_underscore:
                 param_name = key.replace("_", "-")
             else:
                 param_name = key
-            # Handle different value types
+
             if isinstance(value, bool):
                 if value:
                     params_list.append(f"--{param_name}")
             elif value is not None and str(value).strip():
                 params_list.append(f"--{param_name}={value}")
+
         return params_list
 
     def get_full_config(self) -> dict[str, Any]:
