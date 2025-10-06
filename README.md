@@ -1,3 +1,6 @@
+![PyPI - Version](https://img.shields.io/pypi/v/oduit)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/oduit)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/oduit)
 [![codecov](https://codecov.io/github/oduit/oduit/graph/badge.svg?token=6K8YL60OXJ)](https://codecov.io/github/oduit/oduit)
 
 # oduit
