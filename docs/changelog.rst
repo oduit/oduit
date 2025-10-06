@@ -1,6 +1,25 @@
 Changelog
 =========
 
+0.1.6
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- (config) Improved get_odoo_params_list
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Automatically generate changelog through cliff
+
+- Add pypi badge
+
+
 0.1.5
 ----------
 

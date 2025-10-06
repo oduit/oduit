@@ -44,6 +44,13 @@ dynamic=["version"]
 [project.scripts]
 oduit = "oduit.cli_typer:cli_main"
 
+[project.urls]
+Homepage = "https://github.com/oduit/oduit"
+Documentation = "https://oduit.readthedocs.io/en/stable"
+Repository = "https://github.com/oduit/oduit"
+Issues = "https://github.com/oduit/oduit/issues"
+Changelog = "https://oduit.readthedocs.io/en/stable/changelog.html"
+
 [tool.setuptools_scm]
 write_to = "oduit/_version.py"
 

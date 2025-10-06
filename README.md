@@ -1,4 +1,4 @@
-![PyPI - Version](https://img.shields.io/pypi/v/oduit)
+[![PyPI - Version](https://img.shields.io/pypi/v/oduit)](https://pypi.org/project/oduit/)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/oduit)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/oduit)
 [![codecov](https://codecov.io/github/oduit/oduit/graph/badge.svg?token=6K8YL60OXJ)](https://codecov.io/github/oduit/oduit)
@@ -30,6 +30,12 @@ pip install oduit
 - PyYAML 5.4+
 - tomli 1.2.0+ (Python < 3.11)
 - tomli-w 1.0.0+
+
+## Invoking oduit without installing it
+
+```
+uvx oduit
+```
 
 ## Quick Start
 
@@ -646,4 +652,4 @@ The oduit Authors
 
 ---
 
-For more detailed documentation, see the [docs](docs/) directory or visit the project documentation.
+For more detailed documentation, see the [docs](docs/) directory or visit the [project documentation](https://oduit.readthedocs.io/).
