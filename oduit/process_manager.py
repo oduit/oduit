@@ -586,7 +586,8 @@ class ProcessManager(BaseProcessManager):
         Yields:
             For each line:
 
-            - dict: {'line': str, 'formatted': str, 'should_show': bool, 'is_error': bool, 'process_running': bool}
+            - dict: {'line': str, 'formatted': str, 'should_show': bool,
+              'is_error': bool, 'process_running': bool}
 
             Final yield:
 
