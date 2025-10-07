@@ -8,14 +8,6 @@ The OdooCodeExecutor class provides a way to execute Python code within an Odoo 
    :undoc-members:
    :show-inheritance:
 
-Class Reference
----------------
-
-.. autoclass:: oduit.odoo_code_executor.OdooCodeExecutor
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Features
 --------
 

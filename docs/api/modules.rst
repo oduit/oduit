@@ -7,6 +7,7 @@ This page contains the complete API reference for all oduit modules.
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Core Classes
 ------------
@@ -18,6 +19,7 @@ ProcessManager
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 ConfigLoader
 ~~~~~~~~~~~~
@@ -26,6 +28,7 @@ ConfigLoader
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 OdooOperations
 ~~~~~~~~~~~~~~
@@ -34,6 +37,7 @@ OdooOperations
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 ModuleManager
 ~~~~~~~~~~~~~
@@ -42,6 +46,7 @@ ModuleManager
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 DemoProcessManager
 ~~~~~~~~~~~~~~~~~~
@@ -50,6 +55,7 @@ DemoProcessManager
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Utility Classes
 ---------------
@@ -61,6 +67,7 @@ OperationResult
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 OutputFormatter
 ~~~~~~~~~~~~~~~
@@ -69,6 +76,7 @@ OutputFormatter
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Exceptions
 ----------
@@ -77,3 +85,4 @@ Exceptions
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:

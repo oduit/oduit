@@ -51,20 +51,6 @@ This example showcases:
 * **Error scenario simulation** with detailed logging
 * **Enhanced result processing** beyond simple success/failure
 
-Execution Mode Comparison
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. literalinclude:: ../examples/embedded_vs_subprocess_example.py
-   :language: python
-   :caption: Embedded vs subprocess execution comparison
-
-This example demonstrates:
-
-* **Embedded process management** for improved performance
-* **Subprocess fallback** for compatibility
-* **Performance comparison** between execution modes
-* **Integration patterns** for different use cases
-
 Real-Time Processing
 ~~~~~~~~~~~~~~~~~~~~
 

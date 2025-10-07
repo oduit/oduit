@@ -584,18 +584,13 @@ class ProcessManager(BaseProcessManager):
             suppress_output: Don't print lines to console (only yield them)
 
         Yields:
-            dict: For each line: {
-                'line': str,           # Raw line content
-                'formatted': str,      # Colorized/formatted line
-                'should_show': bool,   # Whether line should be shown in compact mode
-                'is_error': bool,      # Whether line matches error patterns
-                'process_running': bool # Whether process is still active
-            }
+            For each line:
 
-        Final yield: {
-            'result': dict,        # Final command result (same as run_command)
-            'process_running': False
-        }
+            - dict: {'line': str, 'formatted': str, 'should_show': bool, 'is_error': bool, 'process_running': bool}
+
+            Final yield:
+
+            - dict: {'result': dict, 'process_running': False}
         """
         if verbose and not suppress_output:
             print_info(f"Running command: {' '.join(cmd)}")

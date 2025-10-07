@@ -53,7 +53,6 @@ napoleon_use_rtype = True
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
-    "yaml": ("https://pyyaml.org/wiki/PyYAMLDocumentation", None),
 }
 
 todo_include_todos = True

@@ -185,7 +185,7 @@ Enhanced Operation Execution
        print(f"Parsed Results: {result['parsed_results']}")
 
 Test Operation with Enhanced Results
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -204,7 +204,7 @@ Test Operation with Enhanced Results
        print(f"Test Results: {result['test_results']}")
 
 Update Operation with Metadata
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -222,7 +222,7 @@ Update Operation with Metadata
    print(f"Modules Updated: {result.get('modules_updated', [])}")
 
 Database Operations
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -241,7 +241,7 @@ Database Operations
    print(f"With Sudo: {result.get('with_sudo', False)}")
 
 Backward Compatible Command Execution
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -259,7 +259,7 @@ Backward Compatible Command Execution
    )
 
 Interactive Shell Support
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -268,7 +268,7 @@ Interactive Shell Support
    print(f"Shell exited with code: {exit_code}")
 
 Streaming Command Execution
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -281,10 +281,10 @@ Streaming Command Execution
            print(f"Final Result: {item['result']}")
 
 Result Structure
----------------
+----------------
 
 Enhanced Results from run_operation()
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``run_operation()`` method returns structured results with automatic parsing:
 

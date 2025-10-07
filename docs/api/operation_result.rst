@@ -17,7 +17,7 @@ Class Reference
    :show-inheritance:
 
 Enhanced Result Processing
--------------------------
+--------------------------
 
 Factory Method from CommandOperation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -54,7 +54,7 @@ Usage Examples
 --------------
 
 Creating Results from Operations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -77,10 +77,10 @@ Creating Results from Operations
    result_builder.process_with_parsers(output)
 
    # Finalize and get structured result
-   final_result = result_builder.finalize()
+    final_result = result_builder.finalize()
 
 Install Operation Results
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -104,10 +104,10 @@ Install Operation Results
    if result.get('dependency_errors'):
        print("Dependency Errors:")
        for error in result['dependency_errors']:
-           print(f"  - {error}")
+            print(f"  - {error}")
 
 Test Operation Results
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -208,10 +208,10 @@ Custom Data and Metadata
    print(f"Metrics: {final_result['custom_metrics']}")
 
 Result Structure
----------------
+----------------
 
 Standard Result Fields
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 All OperationResult instances include these standard fields:
 
@@ -238,11 +238,11 @@ All OperationResult instances include these standard fields:
 
        # Timing
        'duration': float,            # Operation duration in seconds
-       'timestamp': str,             # ISO timestamp
-   }
+        'timestamp': str,             # ISO timestamp
+    }
 
 Install Operation Results
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Install operations provide additional parsed fields:
 
@@ -269,10 +269,10 @@ Example unmet_dependencies structure:
            'module': 'sale_extended',
            'dependencies': ['account', 'stock', 'sale']
        }
-   ]
+    ]
 
 Test Operation Results
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Test operations provide detailed test statistics and failure information:
 
@@ -304,26 +304,24 @@ Example failures structure:
    ]
 
 Semantic Success Logic
----------------------
-
-OperationResult implements intelligent semantic success detection that goes beyond simple exit codes:
+----------------------
 
 Install Operations
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 - **Exit Code Success but Dependency Errors**: Marked as failure if unmet dependencies exist
 - **Module Loading Failures**: Marked as failure if modules fail to load
 - **Error Messages**: Marked as failure if installation-related ERROR lines are detected
 
 Test Operations
-~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
 
 - **Test Failures**: Marked as failure if any tests fail, regardless of exit code
 - **Test Errors**: Marked as failure if any tests have errors
 - **Combines Exit Code and Test Results**: Provides comprehensive success assessment
 
 Custom Operations
-~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 - **Extensible**: Custom parsers can implement domain-specific success logic
 - **Override Capability**: Manual success setting takes precedence when needed

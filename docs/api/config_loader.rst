@@ -8,27 +8,6 @@ The config_loader module handles loading and parsing YAML and TOML configuration
    :undoc-members:
    :show-inheritance:
 
-Class Reference
----------------
-
-.. autoclass:: oduit.config_loader.ConfigLoader
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Methods
--------
-
-These are instance methods of the ConfigLoader class:
-
-.. automethod:: oduit.config_loader.ConfigLoader.load_config
-.. automethod:: oduit.config_loader.ConfigLoader.get_config_path
-.. automethod:: oduit.config_loader.ConfigLoader.has_local_config
-.. automethod:: oduit.config_loader.ConfigLoader.load_local_config
-.. automethod:: oduit.config_loader.ConfigLoader.get_available_environments
-.. automethod:: oduit.config_loader.ConfigLoader.load_demo_config
-.. automethod:: oduit.config_loader.ConfigLoader.import_odoo_conf
-
 Usage Examples
 --------------
 

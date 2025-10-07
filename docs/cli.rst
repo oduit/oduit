@@ -574,6 +574,7 @@ CLI Types
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 CLI Implementation
 ^^^^^^^^^^^^^^^^^^
@@ -582,6 +583,7 @@ CLI Implementation
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 See Also
 --------
