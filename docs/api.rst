@@ -9,12 +9,12 @@ Core Modules
 .. toctree::
    :maxdepth: 2
 
-   process_manager
-   config_loader
-   odoo_operations
-   odoo_code_executor
-   module_manager
-   demo_process_manager
+   api/process_manager
+   api/config_loader
+   api/odoo_operations
+   api/odoo_code_executor
+   api/module_manager
+   api/demo_process_manager
 
 Command Line Interface
 ----------------------
@@ -31,11 +31,11 @@ Utilities
 .. toctree::
    :maxdepth: 2
 
-   operation_result
-   output
-   exceptions
-   builders
-   utils
+   api/operation_result
+   api/output
+   api/exceptions
+   api/builders
+   api/utils
 
 Complete API
 ------------
@@ -43,4 +43,4 @@ Complete API
 .. toctree::
    :maxdepth: 1
 
-   modules
+   api/modules
