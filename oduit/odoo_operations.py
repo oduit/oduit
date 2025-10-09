@@ -84,7 +84,13 @@ class OdooOperations:
         else:
             self.process_manager: BaseProcessManager = ProcessManager()
 
-    def run_odoo(self, no_http: bool = False):
+    def run_odoo(
+        self,
+        no_http: bool = False,
+        dev: str | None = None,
+        log_level: str | None = None,
+        stop_after_init: bool = False,
+    ):
         """Start the Odoo server with the specified configuration.
 
         Launches the Odoo server process using the provided environment configuration.
@@ -94,6 +100,8 @@ class OdooOperations:
         Args:
             no_http (bool, optional): Disable HTTP server during startup.
                 Defaults to False.
+            dev (str | None, optional): Enable dev mode with specified features
+                (e.g., 'all', 'xml'). Defaults to None.
 
         Returns:
             None: This method handles the server startup process but doesn't
@@ -111,15 +119,18 @@ class OdooOperations:
 
         if self.verbose:
             print_info("Starting Odoo...")
-        dev = self.config.get_optional("dev", False)
+        dev_mode = dev or self.config.get_optional("dev", False)
         builder = RunCommandBuilder(self.config)
 
         if no_http:
             builder._remove_http_config()
             builder.no_http(True)
-        if dev and isinstance(dev, str):
-            builder.dev(dev)
+        if dev_mode and isinstance(dev_mode, str):
+            builder.dev(dev_mode)
+        if log_level and isinstance(log_level, str):
+            builder.log_level(log_level)
 
+        builder.stop_after_init(stop_after_init)
         try:
             operation = builder.build_operation()
             self.process_manager.run_operation(operation, verbose=self.verbose)

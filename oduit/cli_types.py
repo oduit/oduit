@@ -42,6 +42,32 @@ class ShellInterface(str, Enum):
     PYTHON = "python"
 
 
+class DevFeature(str, Enum):
+    """Development features for --dev option.
+
+    For development purposes only. Do not use in production.
+    """
+
+    ALL = "all"
+    XML = "xml"
+    RELOAD = "reload"
+    QWEB = "qweb"
+    IPDB = "ipdb"
+    PDB = "pdb"
+    PUDB = "pudb"
+    WERKZEUG = "werkzeug"
+
+
+class LogLevel(str, Enum):
+    """Odoo log levels."""
+
+    INFO = "info"
+    DEBUG = "debug"
+    WARN = "warn"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
 @dataclass
 class GlobalConfig:
     """Global configuration context for commands."""

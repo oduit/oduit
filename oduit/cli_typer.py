@@ -14,7 +14,9 @@ import typer
 from .cli_types import (
     AddonListType,
     AddonTemplate,
+    DevFeature,
     GlobalConfig,
+    LogLevel,
     OutputFormat,
     ShellInterface,
 )
@@ -36,6 +38,24 @@ ADDON_TEMPLATE_OPTION = typer.Option(
 
 ADDON_LIST_TYPE_OPTION = typer.Option(
     AddonListType.ALL, "--type", help="Type of addons to list"
+)
+
+LOG_LEVEL_OPTION = typer.Option(
+    None,
+    "--log-level",
+    "-l",
+    help="Set Odoo log level",
+)
+
+DEV_OPTION = typer.Option(
+    None,
+    "--dev",
+    "-d",
+    help=(
+        "Comma-separated list of dev features (e.g., 'all', 'xml', 'reload,qweb'). "
+        "Available: all, xml, reload, qweb, ipdb, pdb, pudb, werkzeug. "
+        "For development only - do not use in production."
+    ),
 )
 
 
@@ -219,7 +239,17 @@ def main(
 
 
 @app.command()
-def run(ctx: typer.Context):
+def run(
+    ctx: typer.Context,
+    dev: DevFeature | None = DEV_OPTION,
+    log_level: LogLevel | None = LOG_LEVEL_OPTION,
+    stop_after_init: bool = typer.Option(
+        False,
+        "--stop-after-init",
+        "-s",
+        help="Stop the server after initialization",
+    ),
+):
     """Run Odoo server."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -244,6 +274,9 @@ def run(ctx: typer.Context):
     )
     odoo_operations.run_odoo(
         no_http=global_config.no_http,
+        dev=dev,
+        log_level=log_level.value if log_level else None,
+        stop_after_init=stop_after_init,
     )
 
 
@@ -296,18 +329,18 @@ def install(
     with_demo: bool = typer.Option(
         False, "--with-demo", help="Install with demo data (overrides config)"
     ),
-    language: str | None = typer.Option(None, "--language"),
+    language: str | None = typer.Option(
+        None, "--language", "-l", help="Language to install"
+    ),
     max_cron_threads: int | None = typer.Option(
         None,
         "--max-cron-threads",
         help="Set maximum cron threads for Odoo server",
     ),
     compact: bool = typer.Option(
-        False,
-        "--compact",
-        help="Suppress INFO logs at startup for cleaner output"
+        False, "--compact", help="Suppress INFO logs at startup for cleaner output"
     ),
-    ):
+):
     """Install module."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -339,7 +372,6 @@ def install(
         with_demo=with_demo,
         language=language,
         compact=compact,
-        
     )
 
     # Optional JSON output
