@@ -75,12 +75,6 @@ class OdooOperations:
             self.process_manager: BaseProcessManager = DemoProcessManager(
                 available_modules
             )
-        elif env_config.get("use_embedded_odoo", False):
-            from oduit.embedded_process_manager import EmbeddedProcessManager
-
-            self.process_manager: BaseProcessManager = EmbeddedProcessManager(
-                self.config
-            )
         else:
             self.process_manager: BaseProcessManager = ProcessManager()
 
@@ -146,6 +140,7 @@ class OdooOperations:
         shell_interface: str | None = "python",
         no_http: bool = True,
         compact: bool = False,
+        log_level: str | None = None,
     ):
         """Start an interactive Odoo shell or execute piped commands.
 
@@ -160,6 +155,7 @@ class OdooOperations:
             shell_interface (str | None, optional): Shell interface to use
                 ('python', 'ipython'). Defaults to "python".
             compact (bool, optional): Use compact output format. Defaults to False.
+            log_level (str | None, optional): Set Odoo log level. Defaults to None.
 
         Returns:
             dict: Operation result with success status and command details
@@ -176,7 +172,6 @@ class OdooOperations:
             >>> # Piped command
             >>> # echo "print('Hello')" | python script.py
         """
-        # For JSON format, only block interactive sessions, allow piped input
         if _output_module._formatter.format_type == "json" and sys.stdin.isatty():
             print_error_result("Interactive shell not available in JSON mode", 1)
             return
@@ -201,6 +196,8 @@ class OdooOperations:
             builder.shell_interface(shell_interface)
         if compact:
             builder.log_level("warn")
+        elif log_level and isinstance(log_level, str):
+            builder.log_level(log_level)
 
         try:
             operation = builder.build_operation()
@@ -404,6 +401,7 @@ class OdooOperations:
         filename: str,
         language: str,
         no_http: bool = False,
+        log_level: str | None = None,
     ):
         """Export language translations for a specific module to a file.
 
@@ -417,6 +415,7 @@ class OdooOperations:
             language (str): Language code to export (e.g., 'en_US', 'fr_FR')
             no_http (bool, optional): Disable HTTP server during export.
                 Defaults to False.
+            log_level (str | None, optional): Set Odoo log level. Defaults to None.
 
         Returns:
             dict: Operation result with success status and command details
@@ -435,6 +434,8 @@ class OdooOperations:
         if no_http:
             builder._remove_http_config()
             builder.no_http(True)
+        if log_level and isinstance(log_level, str):
+            builder.log_level(log_level)
 
         try:
             operation = builder.build_operation()
@@ -461,6 +462,7 @@ class OdooOperations:
         compact: bool = False,
         suppress_output: bool = False,
         raise_on_error: bool = False,
+        log_level: str | None = None,
     ):
         """Run tests for a module
 
@@ -475,6 +477,7 @@ class OdooOperations:
             compact: Use compact output format (optional)
             suppress_output: Suppress all output (for programmatic use)
             raise_on_error: Raise exception on failure instead of returning error
+            log_level: Set Odoo log level (optional)
 
         Returns:
             Dictionary with operation result including test statistics and failures
@@ -508,7 +511,9 @@ class OdooOperations:
             builder.test_tags(f"/{module}")
         if compact:
             builder.log_level("warn")
-        builder.workers(0)  # Disable parallel tests for simplicity
+        elif log_level and isinstance(log_level, str):
+            builder.log_level(log_level)
+        builder.workers(0)
 
         try:
             operation = builder.build_operation()
@@ -518,7 +523,6 @@ class OdooOperations:
                 suppress_output=suppress_output,
             )
 
-            # Run coverage report only if coverage flag is set
             if coverage:
                 coverage_bin = self.config.get_required("coverage_bin")
 
@@ -528,7 +532,6 @@ class OdooOperations:
                 )
 
             if not suppress_output and _output_module._formatter.format_type == "json":
-                # Additional fields for test operation
                 test_success = (
                     test_result.get("success", False) if test_result else False
                 )
@@ -542,7 +545,6 @@ class OdooOperations:
                     "test_success": test_success,
                 }
 
-                # Add coverage success if coverage was run
                 if coverage_result is not None:
                     coverage_success = (
                         coverage_result.get("success", False)
@@ -551,7 +553,6 @@ class OdooOperations:
                     )
                     test_additional_fields["coverage_success"] = coverage_success
 
-                    # Overall success includes both test and coverage
                     overall_success = (
                         test_result.get("success", False) if test_result else False
                     ) and (
@@ -561,7 +562,6 @@ class OdooOperations:
                     )
                     test_additional_fields["success"] = overall_success
 
-                # Merge additional fields into test_result
                 if test_result:
                     test_result.update(test_additional_fields)
 
@@ -582,17 +582,13 @@ class OdooOperations:
             "error": "Test execution failed",
         }
 
-        # Raise exception if requested and operation failed
         if raise_on_error and not final_result.get("success", False):
             raise ModuleUpdateError(
                 final_result.get("error", "Module test failed"),
                 operation_result=final_result,
             )
 
-        # Return the test result so callers can check success/failure
-        # Ensure we never return None - this breaks pytest plugin integration
         if final_result is None:
-            # This should not happen, but if it does, return a failure result
             return {
                 "success": False,
                 "return_code": 1,
@@ -1065,6 +1061,7 @@ class OdooOperations:
         suppress_output: bool = False,
         raise_on_error: bool = False,
         shell_interface: str | None = None,
+        log_level: str | None = None,
     ) -> dict:
         """Execute Python code in the Odoo shell environment
 
@@ -1075,6 +1072,7 @@ class OdooOperations:
             suppress_output: Suppress all output (for programmatic use)
             raise_on_error: Raise exception on failure instead of returning error
             shell_interface: Shell interface to use (e.g., 'python', 'ipython')
+            log_level: Set Odoo log level (optional)
 
         Returns:
             Dictionary with operation result including stdout/stderr and success status
@@ -1082,7 +1080,6 @@ class OdooOperations:
         Raises:
             OdooOperationError: If raise_on_error=True and operation fails
         """
-        # Build the odoo shell command
         interface = shell_interface or self.config.get_optional(
             "shell_interface", False
         )
@@ -1098,6 +1095,8 @@ class OdooOperations:
         if no_http:
             builder._remove_http_config()
             builder.no_http(True)
+        if log_level and isinstance(log_level, str):
+            builder.log_level(log_level)
 
         try:
             operation = builder.build_operation()
@@ -1107,17 +1106,14 @@ class OdooOperations:
                 if self.verbose:
                     print_info(f"Code: {python_code}")
 
-            # Create a shell command that pipes Python code to odoo shell
             full_command = f'echo "{python_code}" | {" ".join(operation.command)}'
 
-            # Execute using ProcessManager's run_shell_command with string
             process_result = self.process_manager.run_shell_command(
                 full_command,
                 verbose=self.verbose and not suppress_output,
                 capture_output=capture_output,
             )
 
-            # Handle the result
             if process_result:
                 result = {
                     "success": process_result.get("success", False),
@@ -1147,7 +1143,6 @@ class OdooOperations:
                 else:
                     print_error(str(e))
 
-        # Raise exception if requested and operation failed
         if raise_on_error and not result.get("success", False):
             raise OdooOperationError(
                 result.get("error", "Python code execution failed"),

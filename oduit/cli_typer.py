@@ -47,6 +47,14 @@ LOG_LEVEL_OPTION = typer.Option(
     help="Set Odoo log level",
 )
 
+LANGUAGE_OPTION = typer.Option(
+    None,
+    "--language",
+    "--lang",
+    help="Set language (e.g., 'de_DE', 'en_US')",
+)
+
+
 DEV_OPTION = typer.Option(
     None,
     "--dev",
@@ -289,6 +297,7 @@ def shell(
         "--compact",
         help="Suppress INFO logs at startup for cleaner output",
     ),
+    log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ):
     """Start Odoo shell."""
     if ctx.obj is None:
@@ -316,6 +325,7 @@ def shell(
     odoo_operations.run_shell(
         shell_interface=shell_interface.value if shell_interface else None,
         compact=compact,
+        log_level=log_level.value if log_level else None,
     )
 
 
@@ -329,14 +339,13 @@ def install(
     with_demo: bool = typer.Option(
         False, "--with-demo", help="Install with demo data (overrides config)"
     ),
-    language: str | None = typer.Option(
-        None, "--language", "-l", help="Language to install"
-    ),
+    language: str | None = LANGUAGE_OPTION,
     max_cron_threads: int | None = typer.Option(
         None,
         "--max-cron-threads",
         help="Set maximum cron threads for Odoo server",
     ),
+    log_level: LogLevel | None = LOG_LEVEL_OPTION,
     compact: bool = typer.Option(
         False, "--compact", help="Suppress INFO logs at startup for cleaner output"
     ),
@@ -372,6 +381,7 @@ def install(
         with_demo=with_demo,
         language=language,
         compact=compact,
+        log_level=log_level.value if log_level else None,
     )
 
     # Optional JSON output
@@ -392,7 +402,7 @@ def update(
     without_demo: str | None = typer.Option(
         None, "--without-demo", help="Update without demo data"
     ),
-    language: str | None = typer.Option(None, "--language"),
+    language: str | None = LANGUAGE_OPTION,
     i18n_overwrite: bool = typer.Option(
         False, "--i18n-overwrite", help="Overwrite existing translations during update"
     ),
@@ -401,6 +411,7 @@ def update(
         "--max-cron-threads",
         help="Set maximum cron threads for Odoo server",
     ),
+    log_level: LogLevel | None = LOG_LEVEL_OPTION,
     compact: bool = typer.Option(
         False,
         "--compact",
@@ -445,6 +456,7 @@ def update(
         language=language,
         i18n_overwrite=i18n_overwrite,
         compact=compact,
+        log_level=log_level.value if log_level else None,
     )
     if compact and result:
         print_info(str(result))
@@ -488,6 +500,7 @@ def test(
         "--compact",
         help="Show only test progress dots, statistics, and result summaries",
     ),
+    log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ):
     """Run module tests with various options.
 
@@ -519,7 +532,7 @@ def test(
     )
 
     odoo_operations.run_tests(
-        None,  # No module argument needed anymore
+        None,
         stop_on_error=stop_on_error,
         update=update,
         install=install,
@@ -527,6 +540,7 @@ def test(
         test_file=test_file,
         test_tags=test_tags,
         compact=compact,
+        log_level=log_level.value if log_level else None,
     )
 
 
@@ -839,9 +853,8 @@ def list_addons(
 def export_lang(
     ctx: typer.Context,
     module: str = typer.Argument(help="Module to export"),
-    language: str | None = typer.Option(
-        None, "--language", "-l", help="Language to export"
-    ),
+    language: str | None = LANGUAGE_OPTION,
+    log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ):
     """Export language module."""
     if ctx.obj is None:
@@ -864,7 +877,6 @@ def export_lang(
         raise typer.Exit(1) from None
 
     language = language or global_config.env_config.get("language", "de_DE")
-    # Ensure language is a string
     if language is None:
         language = "de_DE"
 
@@ -895,6 +907,7 @@ def export_lang(
         filename,
         language,
         no_http=global_config.no_http,
+        log_level=log_level.value if log_level else None,
     )
 
 
