@@ -351,6 +351,9 @@ def install(
     ),
 ):
     """Install module."""
+    if not module:
+        print_error("Module name is required for install")
+        raise typer.Exit(1) from None
     if ctx.obj is None:
         print_error("No global configuration found")
         raise typer.Exit(1) from None
@@ -419,6 +422,9 @@ def update(
     ),
 ):
     """Update module."""
+    if not module:
+        print_error("Module name is required for update")
+        raise typer.Exit(1) from None
     if ctx.obj is None:
         print_error("No global configuration found")
         raise typer.Exit(1) from None
