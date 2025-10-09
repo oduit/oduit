@@ -24,13 +24,6 @@ from .odoo_operations import OdooOperations
 from .output import configure_output, print_error, print_info, print_warning
 from .utils import output_result_to_json, validate_addon_name
 
-# Module-level constants for typer.Option defaults
-FORMAT_OPTION = typer.Option(
-    OutputFormat.TEXT,
-    "--format",
-    help="Output format",
-)
-
 SHELL_INTERFACE_OPTION = typer.Option(
     "python",
     "--shell-interface",
@@ -48,15 +41,16 @@ ADDON_LIST_TYPE_OPTION = typer.Option(
 
 def create_global_config(
     env: str | None = None,
-    format: OutputFormat = OutputFormat.TEXT,
+    json: bool = False,
     verbose: bool = False,
     no_http: bool = False,
 ) -> GlobalConfig:
     """Create and validate global configuration."""
 
     # Configure output based on arguments
+    format = OutputFormat.JSON if json else OutputFormat.TEXT
     configure_output(
-        format_type=format.value if isinstance(format, OutputFormat) else format,
+        format_type=format.value,
         non_interactive=True,
     )
 
@@ -153,7 +147,12 @@ def main(
             "If not provided, looks for .oduit.toml in current directory"
         ),
     ),
-    format: OutputFormat = FORMAT_OPTION,
+    json: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        help="Output in JSON format",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -171,7 +170,7 @@ def main(
     # Store config info in context for subcommands
     ctx.obj = {
         "env": env,
-        "format": format,
+        "json": json,
         "verbose": verbose,
         "no_http": no_http,
     }
@@ -303,7 +302,12 @@ def install(
         "--max-cron-threads",
         help="Set maximum cron threads for Odoo server",
     ),
-):
+    compact: bool = typer.Option(
+        False,
+        "--compact",
+        help="Suppress INFO logs at startup for cleaner output"
+    ),
+    ):
     """Install module."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -334,6 +338,8 @@ def install(
         without_demo=without_demo or False,
         with_demo=with_demo,
         language=language,
+        compact=compact,
+        
     )
 
     # Optional JSON output

@@ -99,7 +99,7 @@ These options are available for all commands:
 Options:
 
 - ``--env, -e TEXT``: Environment to use (e.g., prod, test, dev)
-- ``--format [text|json]``: Output format (default: text)
+- ``--json``: Output in JSON format (default: text)
 - ``--verbose, -v``: Show verbose output including configuration and command details
 - ``--no-http``: Add --no-http flag to all odoo-bin commands
 
@@ -445,7 +445,7 @@ Machine-readable JSON output for scripting:
 
 .. code-block:: bash
 
-   oduit --env dev --format json install sale
+   oduit --env dev --json install sale
 
 Example output:
 
@@ -532,7 +532,7 @@ When an error occurs, the CLI will:
 
 1. Print an error message describing the issue
 2. Exit with code 1
-3. Optionally output JSON error details (when ``--format json`` is used)
+3. Optionally output JSON error details (when ``--json`` is used)
 
 Troubleshooting
 ^^^^^^^^^^^^^^^

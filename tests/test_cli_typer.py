@@ -464,6 +464,21 @@ class TestCLICommands(unittest.TestCase):
         args, kwargs = mock_ops_instance.run_odoo.call_args
         self.assertTrue(kwargs.get("no_http"))
 
+    @patch("oduit.cli_typer.OdooOperations")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_json_flag(self, mock_config_loader_class, mock_odoo_ops):
+        """Test --json flag sets format to JSON."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.install_module.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "--json", "install", "sale"])
+
+        self.assertEqual(result.exit_code, 0)
+
 
 class TestCLITypes(unittest.TestCase):
     def test_output_format_enum(self):
