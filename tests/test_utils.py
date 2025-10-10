@@ -33,6 +33,112 @@ class TestUtils(unittest.TestCase):
 
         self.assertEqual(result, ["module1", "module2"])
 
+    @patch("os.path.isdir")
+    @patch("os.listdir")
+    @patch("os.path.exists")
+    @patch("os.path.basename")
+    def test_find_module_dirs_with_filter_dir_exact_match(
+        self, mock_basename, mock_exists, mock_listdir, mock_isdir
+    ):
+        """Test finding module directories with filter_dir exact match."""
+        mock_isdir.return_value = True
+
+        def listdir_side_effect(path):
+            if "addons1" in path:
+                return ["module1", "module2"]
+            elif "addons2" in path:
+                return ["module3", "module4"]
+            return []
+
+        mock_listdir.side_effect = listdir_side_effect
+
+        def exists_side_effect(path):
+            return any(
+                mod in path for mod in ["module1", "module2", "module3", "module4"]
+            )
+
+        mock_exists.side_effect = exists_side_effect
+
+        def basename_side_effect(path):
+            if "addons1" in path:
+                return "addons1"
+            elif "addons2" in path:
+                return "addons2"
+            return ""
+
+        mock_basename.side_effect = basename_side_effect
+
+        addons_path = "/path/to/addons1,/path/to/addons2"
+        module_manager = ModuleManager(addons_path)
+        result = module_manager.find_module_dirs(filter_dir="addons1")
+
+        self.assertEqual(result, ["module1", "module2"])
+
+    @patch("os.path.isdir")
+    @patch("os.listdir")
+    @patch("os.path.exists")
+    @patch("os.path.basename")
+    def test_find_module_dirs_with_filter_dir_partial_no_match(
+        self, mock_basename, mock_exists, mock_listdir, mock_isdir
+    ):
+        """Test filter_dir doesn't match partial strings in dir name."""
+        mock_isdir.return_value = True
+        mock_listdir.return_value = ["module1", "module2"]
+
+        def exists_side_effect(path):
+            return "module1" in path or "module2" in path
+
+        mock_exists.side_effect = exists_side_effect
+        mock_basename.return_value = "myaddons"
+
+        addons_path = "/path/to/myaddons"
+        module_manager = ModuleManager(addons_path)
+        result = module_manager.find_module_dirs(filter_dir="a")
+
+        self.assertEqual(result, [])
+
+    @patch("os.path.isdir")
+    @patch("os.listdir")
+    @patch("os.path.exists")
+    @patch("os.path.basename")
+    def test_find_module_dirs_with_filter_dir_substring_no_match(
+        self, mock_basename, mock_exists, mock_listdir, mock_isdir
+    ):
+        """Test filter_dir doesn't match substring of directory name."""
+        mock_isdir.return_value = True
+        mock_listdir.return_value = ["module1", "module2"]
+
+        def exists_side_effect(path):
+            return "module1" in path or "module2" in path
+
+        mock_exists.side_effect = exists_side_effect
+        mock_basename.return_value = "custom_addons"
+
+        addons_path = "/path/to/custom_addons"
+        module_manager = ModuleManager(addons_path)
+        result = module_manager.find_module_dirs(filter_dir="custom")
+
+        self.assertEqual(result, [])
+
+    @patch("os.path.isdir")
+    @patch("os.listdir")
+    @patch("os.path.exists")
+    @patch("os.path.basename")
+    def test_find_module_dirs_with_filter_dir_no_match(
+        self, mock_basename, mock_exists, mock_listdir, mock_isdir
+    ):
+        """Test finding module directories with filter_dir (no match)."""
+        mock_isdir.return_value = True
+        mock_listdir.return_value = ["module1", "module2"]
+        mock_exists.return_value = True
+        mock_basename.return_value = "addons1"
+
+        addons_path = "/path/to/addons1"
+        module_manager = ModuleManager(addons_path)
+        result = module_manager.find_module_dirs(filter_dir="nonexistent")
+
+        self.assertEqual(result, [])
+
 
 class TestModuleManager(unittest.TestCase):
     def setUp(self):

@@ -371,6 +371,7 @@ List available addons in the configured addons path.
 **Options:**
 
 - ``--type [all|installed|available]``: Type of addons to list (default: all)
+- ``--select-dir TEXT``: Filter addons by exact directory name match
 
 **Examples:**
 
@@ -381,6 +382,79 @@ List available addons in the configured addons path.
 
    # List only installed addons (if supported)
    oduit --env dev list-addons --type installed
+
+   # List addons in a specific directory (exact name match)
+   oduit --env dev list-addons --select-dir custom_addons
+
+.. note::
+   The ``--select-dir`` option requires an exact match with the directory
+   basename. For example, if your addons path is ``/path/to/custom_addons``,
+   you must use ``--select-dir custom_addons`` (not ``custom`` or ``addons``).
+
+list-depends
+^^^^^^^^^^^^
+
+List missing dependencies for a specified module.
+
+.. code-block:: bash
+
+   oduit --env dev list-depends MODULE
+
+This command analyzes the module's dependency tree and identifies any dependencies
+that are not available in the configured addons paths. It recursively checks all
+transitive dependencies.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Check missing dependencies for sale module
+   oduit --env dev list-depends sale
+
+   # Check custom module dependencies
+   oduit --env dev list-depends my_custom_module
+
+**Output:**
+
+The command will:
+
+- List all missing dependencies if any are found
+- Return "All dependencies available" if no dependencies are missing
+- Return an error if the module itself is not found
+
+list-codepends
+^^^^^^^^^^^^^^
+
+List reverse dependencies for a specified module (modules that depend on it).
+
+.. code-block:: bash
+
+   oduit --env dev list-codepends MODULE
+
+This command finds all modules in the addons paths that directly or indirectly
+depend on the specified module. This is useful for understanding the impact of
+changes to a module.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Find modules that depend on base
+   oduit --env dev list-codepends base
+
+   # Find modules that depend on sale
+   oduit --env dev list-codepends sale
+
+   # Find reverse dependencies for custom module
+   oduit --env dev list-codepends my_custom_module
+
+**Output:**
+
+The command will:
+
+- List all modules that depend on the specified module
+- Return "No modules depend on MODULE" if no reverse dependencies are found
+- Return an error if the module is not found
 
 export-lang
 ^^^^^^^^^^^

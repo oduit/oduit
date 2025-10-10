@@ -52,8 +52,17 @@ class ModuleManager:
 
         return base_paths
 
-    def find_module_dirs(self) -> list[str]:
-        """Return all module directories with __manifest__.py in configured paths"""
+    def find_module_dirs(self, filter_dir: str | None = None) -> list[str]:
+        """Return all module directories with __manifest__.py in configured paths
+
+        Args:
+            filter_dir: Optional directory name to filter results.
+                       Only modules in directories with exact basename match
+                       will be returned.
+
+        Returns:
+            Sorted list of module directory names
+        """
         module_dirs: set[str] = set()
 
         # Combine configured addons_path and Odoo base addons paths
@@ -61,6 +70,13 @@ class ModuleManager:
 
         for path in all_paths:
             path = path.strip()
+
+            # Skip this path if filter_dir is specified and doesn't match
+            if filter_dir:
+                path_basename = os.path.basename(path.rstrip("/"))
+                if path_basename != filter_dir:
+                    continue
+
             if os.path.isdir(path):
                 for entry in os.listdir(path):
                     full = os.path.join(path, entry)

@@ -207,42 +207,41 @@ def main(
         has_local = config_loader.has_local_config()
 
         if has_local:
-            print_info("Available commands:")
-            print_info("  run                Run Odoo server")
-            print_info("  shell              Start Odoo shell")
-            print_info("  install MODULE     Install a module")
-            print_info("  update MODULE      Update a module")
-            print_info("  test               Run tests")
-            print_info("  create-db          Create database")
-            print_info("  list-db            List databases")
-            print_info("  list-env           List available environments")
-            print_info("  create-addon NAME  Create new addon")
-            print_info("  list-addons        List available addons")
-            print_info("  export-lang MODULE Export language translations")
-            print_info("  print-config       Print environment configuration")
-            print_info("")
-            print_info("Examples:")
-            print_info(
-                "  oduit run                         # Run with local .oduit.toml"
-            )
-            print_info("  oduit test --test-tags /sale      # Test sale module")
-            print_info("  oduit update sale                 # Update sale module")
+            print("Available commands:")
+            print("  run                Run Odoo server")
+            print("  shell              Start Odoo shell")
+            print("  install MODULE     Install a module")
+            print("  update MODULE      Update a module")
+            print("  test               Run tests")
+            print("  create-db          Create database")
+            print("  list-db            List databases")
+            print("  list-env           List available environments")
+            print("  create-addon NAME  Create new addon")
+            print("  list-addons        List available addons")
+            print("  list-depends MODULE    List missing dependencies")
+            print("  list-codepends MODULE  List reverse dependencies")
+            print("  export-lang MODULE Export language translations")
+            print("  print-config       Print environment configuration")
+            print("")
+            print("Examples:")
+            print("  oduit run                         # Run with local .oduit.toml")
+            print("  oduit test --test-tags /sale      # Test sale module")
+            print("  oduit update sale                 # Update sale module")
         else:
             print_error(
                 "No command specified and no .oduit.toml found in current directory"
             )
-            print_info("")
-            print_info("Usage: oduit [--env ENV] COMMAND [arguments]")
-            print_info("")
-            print_info("Available commands:")
-            print_info(
-                "  run, shell, install, update, test, create-db, list-db, list-env"
-            )
-            print_info("  create-addon, list-addons, export-lang, print-config")
-            print_info("")
-            print_info("Examples:")
-            print_info("  oduit --env dev run               # Run Odoo server")
-            print_info("  oduit --env dev update sale       # Update module 'sale'")
+            print("")
+            print("Usage: oduit [--env ENV] COMMAND [arguments]")
+            print("")
+            print("Available commands:")
+            print("  run, shell, install, update, test, create-db, list-db, list-env")
+            print("  create-addon, list-addons, list-depends, list-codepends")
+            print("  export-lang, print-config")
+            print("")
+            print("Examples:")
+            print("  oduit --env dev run               # Run Odoo server")
+            print("  oduit --env dev update sale       # Update module 'sale'")
         raise typer.Exit(1) from None
 
 
@@ -819,6 +818,16 @@ def create_addon(
 def list_addons(
     ctx: typer.Context,
     type: AddonListType = ADDON_LIST_TYPE_OPTION,
+    select_dir: str | None = typer.Option(
+        None,
+        "--select-dir",
+        help="Filter addons by directory (e.g., 'myaddons')",
+    ),
+    separator: str | None = typer.Option(
+        None,
+        "--separator",
+        help="Separator for output (e.g., ',' for 'a,b,c')",
+    ),
 ):
     """List available addons."""
     if ctx.obj is None:
@@ -840,19 +849,118 @@ def list_addons(
         print_error("No environment configuration available")
         raise typer.Exit(1) from None
 
-    # Basic implementation using ModuleManager
     module_manager = ModuleManager(global_config.env_config["addons_path"])
-    addons = module_manager.find_module_dirs()
+    addons = module_manager.find_module_dirs(filter_dir=select_dir)
 
-    if type == AddonListType.ALL:
-        print_info(f"Available addons ({len(addons)} found):")
+    if separator:
+        print(separator.join(sorted(addons)))
+    elif type == AddonListType.ALL:
+        if select_dir:
+            print(f"Available addons in '{select_dir}' ({len(addons)} found):")
+        else:
+            print(f"Available addons ({len(addons)} found):")
         for addon in sorted(addons):
-            print_info(f"  - {addon}")
+            print(f"  - {addon}")
     else:
         print_warning(f"Filtering by type '{type.value}' not yet implemented")
-        print_info(f"All available addons ({len(addons)} found):")
+        if select_dir:
+            print(f"Addons in '{select_dir}' ({len(addons)} found):")
+        else:
+            print(f"All available addons ({len(addons)} found):")
         for addon in sorted(addons):
-            print_info(f"  - {addon}")
+            print(f"  - {addon}")
+
+
+@app.command("list-depends")
+def list_depends(
+    ctx: typer.Context,
+    module: str = typer.Argument(help="Module to check dependencies for"),
+    separator: str | None = typer.Option(
+        None,
+        "--separator",
+        help="Separator for output (e.g., ',' for 'a,b,c')",
+    ),
+):
+    """List missing dependencies for a module."""
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    module_manager = ModuleManager(global_config.env_config["addons_path"])
+
+    try:
+        missing_deps = module_manager.find_missing_dependencies(module)
+        if separator:
+            if missing_deps:
+                print(separator.join(missing_deps))
+        elif missing_deps:
+            print_info(f"Missing dependencies for '{module}':")
+            for dep in missing_deps:
+                print_info(f"  - {dep}")
+        else:
+            print_info(f"All dependencies for '{module}' are available")
+    except ValueError as e:
+        print_error(f"Error checking dependencies: {e}")
+        raise typer.Exit(1) from None
+
+
+@app.command("list-codepends")
+def list_codepends(
+    ctx: typer.Context,
+    module: str = typer.Argument(help="Module to check reverse dependencies for"),
+    separator: str | None = typer.Option(
+        None,
+        "--separator",
+        help="Separator for output (e.g., ',' for 'a,b,c')",
+    ),
+):
+    """List modules that depend on the specified module."""
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    module_manager = ModuleManager(global_config.env_config["addons_path"])
+
+    reverse_deps = module_manager.get_reverse_dependencies(module)
+    if separator:
+        if reverse_deps:
+            print(separator.join(reverse_deps))
+    elif reverse_deps:
+        print_info(f"Modules that depend on '{module}':")
+        for dep in reverse_deps:
+            print_info(f"  - {dep}")
+    else:
+        print_info(f"No modules depend on '{module}'")
 
 
 @app.command("export-lang")

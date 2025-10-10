@@ -405,6 +405,209 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn("sale", result.output)
         self.assertIn("purchase", result.output)
 
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_addons_with_select_dir(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-addons command with --select-dir filter."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_dirs.return_value = ["module1", "module2"]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-addons", "--select-dir", "myaddons"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.find_module_dirs.assert_called_once_with(
+            filter_dir="myaddons"
+        )
+        self.assertIn("module1", result.output)
+        self.assertIn("module2", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_command(self, mock_config_loader_class, mock_module_manager):
+        """Test list-depends command."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_missing_dependencies.return_value = [
+            "base",
+            "web",
+            "sale",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "list-depends", "my_module"])
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.find_missing_dependencies.assert_called_once_with(
+            "my_module"
+        )
+        self.assertIn("base", result.output)
+        self.assertIn("web", result.output)
+        self.assertIn("sale", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_no_missing(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends command when all dependencies are available."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_missing_dependencies.return_value = []
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "list-depends", "my_module"])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("All dependencies", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_error(self, mock_config_loader_class, mock_module_manager):
+        """Test list-depends command with ValueError."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_missing_dependencies.side_effect = ValueError(
+            "Module not found"
+        )
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "list-depends", "my_module"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("Error checking dependencies", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_codepends_command(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-codepends command."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_reverse_dependencies.return_value = [
+            "module_a",
+            "module_b",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-codepends", "base_module"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_reverse_dependencies.assert_called_once_with(
+            "base_module"
+        )
+        self.assertIn("module_a", result.output)
+        self.assertIn("module_b", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_codepends_no_dependents(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-codepends command when no modules depend on target."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_reverse_dependencies.return_value = []
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-codepends", "standalone_module"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("No modules depend on", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_addons_with_separator(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-addons command with --separator parameter."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_dirs.return_value = [
+            "sale",
+            "purchase",
+            "crm",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-addons", "--separator", ","]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("crm,purchase,sale", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_with_separator(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends command with --separator parameter."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_missing_dependencies.return_value = [
+            "base",
+            "web",
+            "sale",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "my_module", "--separator", ","]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("base,web,sale", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_codepends_with_separator(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-codepends command with --separator parameter."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_reverse_dependencies.return_value = [
+            "module_a",
+            "module_b",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-codepends", "base_module", "--separator", ","]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("module_a,module_b", result.output)
+
     @patch("oduit.cli_typer.OdooOperations")
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
