@@ -112,11 +112,14 @@ class Manifest:
         return self._data.get("version", "1.0.0")
 
     @property
-    def dependencies(self) -> list[str]:
-        """Get direct dependencies from manifest 'depends' field.
+    def codependencies(self) -> list[str]:
+        """Get codependencies from manifest 'depends' field.
+
+        Codependencies are modules that this module depends on, meaning changes
+        to those modules may impact this module.
 
         Returns:
-            List of dependency module names, empty list if no dependencies
+            List of codependency module names, empty list if no codependencies
         """
         depends = self._data.get("depends", [])
 
@@ -185,15 +188,15 @@ class Manifest:
         return self.installable
 
     def has_dependency(self, dependency_name: str) -> bool:
-        """Check if the module has a specific dependency.
+        """Check if the module has a specific codependency.
 
         Args:
-            dependency_name: Name of the dependency to check for
+            dependency_name: Name of the codependency to check for
 
         Returns:
-            True if the dependency exists, False otherwise
+            True if the codependency exists, False otherwise
         """
-        return dependency_name in self.dependencies
+        return dependency_name in self.codependencies
 
     def validate_structure(self) -> list[str]:
         """Validate the manifest structure and return any warnings.

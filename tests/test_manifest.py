@@ -33,7 +33,7 @@ class TestManifest:
 
         assert manifest.name == "Test Module"
         assert manifest.version == "1.0.0"
-        assert manifest.dependencies == ["base"]
+        assert manifest.codependencies == ["base"]
         assert manifest.installable is True
         assert manifest.auto_install is False
 
@@ -45,7 +45,7 @@ class TestManifest:
 
         assert manifest.name == "test_module"  # Falls back to module_name
         assert manifest.version == "1.0.0"
-        assert manifest.dependencies == []
+        assert manifest.codependencies == []
         assert manifest.installable is True  # Default value
         assert manifest.auto_install is False  # Default value
         assert manifest.summary == ""
@@ -59,12 +59,12 @@ class TestManifest:
         # Test with non-list depends
         data = {"depends": "not_a_list"}
         manifest = Manifest.from_dict(data)
-        assert manifest.dependencies == []
+        assert manifest.codependencies == []
 
         # Test with mixed types in list
         data = {"depends": ["base", 123, "web", None, "sale"]}
         manifest = Manifest.from_dict(data)
-        assert manifest.dependencies == ["base", "web", "sale"]
+        assert manifest.codependencies == ["base", "web", "sale"]
 
     def test_external_dependencies(self):
         """Test external dependencies parsing"""
@@ -161,7 +161,7 @@ class TestManifest:
 
             assert manifest.name == "Test Module"
             assert manifest.version == "1.0.0"
-            assert manifest.dependencies == ["base", "web"]
+            assert manifest.codependencies == ["base", "web"]
             assert manifest.installable is True
             assert manifest.summary == "Test module summary"
 

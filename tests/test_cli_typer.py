@@ -437,7 +437,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.find_missing_dependencies.return_value = [
+        mock_manager_instance.get_direct_dependencies.return_value = [
             "base",
             "web",
             "sale",
@@ -447,7 +447,7 @@ class TestCLICommands(unittest.TestCase):
         result = self.runner.invoke(app, ["--env", "dev", "list-depends", "my_module"])
 
         self.assertEqual(result.exit_code, 0)
-        mock_manager_instance.find_missing_dependencies.assert_called_once_with(
+        mock_manager_instance.get_direct_dependencies.assert_called_once_with(
             "my_module"
         )
         self.assertIn("base", result.output)
@@ -459,18 +459,18 @@ class TestCLICommands(unittest.TestCase):
     def test_list_depends_no_missing(
         self, mock_config_loader_class, mock_module_manager
     ):
-        """Test list-depends command when all dependencies are available."""
+        """Test list-depends command when module has no dependencies."""
         mock_loader_instance = MagicMock()
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.find_missing_dependencies.return_value = []
+        mock_manager_instance.get_direct_dependencies.return_value = []
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(app, ["--env", "dev", "list-depends", "my_module"])
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("All dependencies", result.output)
+        self.assertIn("no external dependencies", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -480,7 +480,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.find_missing_dependencies.side_effect = ValueError(
+        mock_manager_instance.get_direct_dependencies.side_effect = ValueError(
             "Module not found"
         )
         mock_module_manager.return_value = mock_manager_instance
@@ -500,7 +500,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.get_reverse_dependencies.return_value = [
+        mock_manager_instance.get_module_codependencies.return_value = [
             "module_a",
             "module_b",
         ]
@@ -511,7 +511,7 @@ class TestCLICommands(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        mock_manager_instance.get_reverse_dependencies.assert_called_once_with(
+        mock_manager_instance.get_module_codependencies.assert_called_once_with(
             "base_module"
         )
         self.assertIn("module_a", result.output)
@@ -527,7 +527,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.get_reverse_dependencies.return_value = []
+        mock_manager_instance.get_module_codependencies.return_value = []
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -535,7 +535,7 @@ class TestCLICommands(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("No modules depend on", result.output)
+        self.assertIn("no codependencies", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -571,7 +571,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.find_missing_dependencies.return_value = [
+        mock_manager_instance.get_direct_dependencies.return_value = [
             "base",
             "web",
             "sale",
@@ -595,7 +595,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.get_reverse_dependencies.return_value = [
+        mock_manager_instance.get_module_codependencies.return_value = [
             "module_a",
             "module_b",
         ]

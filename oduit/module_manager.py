@@ -4,53 +4,29 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import os
 from typing import Any
 
+from .addons_path_manager import AddonsPathManager
 from .manifest import (
     InvalidManifestError,
     Manifest,
     ManifestError,
     ManifestNotFoundError,
 )
+from .manifest_collection import ManifestCollection
 
 
 class ModuleManager:
-    """Manages Odoo module discovery and interaction."""
+    """Manages Odoo module operations and dependency resolution."""
 
     def __init__(self, addons_path: str):
-        """Initialize ModuleManager."""
+        """Initialize ModuleManager.
+
+        Args:
+            addons_path: Comma-separated string of addon directory paths
+        """
         self.addons_path = addons_path
-
-    def _find_odoo_base_addons_paths(self) -> list[str]:
-        """Find Odoo base addons paths by looking for odoo-bin in parent directories."""
-        base_paths = []
-
-        for path in self.addons_path.split(","):
-            path = path.strip()
-            if not path:
-                continue
-
-            # Convert to absolute path for consistency
-            path = os.path.abspath(path)
-
-            # Look for odoo-bin in parent directories
-            for subdir in [".", "..", "../..", "../../.."]:
-                check_dir = os.path.normpath(os.path.join(path, subdir))
-                potential_odoo_bin = os.path.join(check_dir, "odoo-bin")
-
-                if os.path.exists(potential_odoo_bin):
-                    # Found odoo-bin, check for base addons in odoo/addons/
-                    base_addons_path = os.path.join(check_dir, "odoo", "addons")
-                    if (
-                        os.path.isdir(base_addons_path)
-                        and base_addons_path not in base_paths
-                    ):
-                        base_paths.append(base_addons_path)
-                    # Break out of subdirectory loop once we find odoo-bin
-                    break
-
-        return base_paths
+        self._path_manager = AddonsPathManager(addons_path)
 
     def find_module_dirs(self, filter_dir: str | None = None) -> list[str]:
         """Return all module directories with __manifest__.py in configured paths
@@ -63,45 +39,40 @@ class ModuleManager:
         Returns:
             Sorted list of module directory names
         """
-        module_dirs: set[str] = set()
+        return self._path_manager.get_module_names(filter_dir)
 
-        # Combine configured addons_path and Odoo base addons paths
-        all_paths = self.addons_path.split(",") + self._find_odoo_base_addons_paths()
+    def find_modules(
+        self, filter_dir: str | None = None, skip_invalid: bool = False
+    ) -> ManifestCollection:
+        """Return all modules with manifests in configured paths as a collection
 
-        for path in all_paths:
-            path = path.strip()
+        Args:
+            filter_dir: Optional directory name to filter results.
+                       Only modules in directories with exact basename match
+                       will be returned.
+            skip_invalid: If True, skip modules with invalid manifests instead of
+                raising an exception
 
-            # Skip this path if filter_dir is specified and doesn't match
-            if filter_dir:
-                path_basename = os.path.basename(path.rstrip("/"))
-                if path_basename != filter_dir:
-                    continue
+        Returns:
+            ManifestCollection containing all found modules
 
-            if os.path.isdir(path):
-                for entry in os.listdir(path):
-                    full = os.path.join(path, entry)
-                    if os.path.isdir(full) and os.path.exists(
-                        os.path.join(full, "__manifest__.py")
-                    ):
-                        module_dirs.add(entry)
-
-        return sorted(module_dirs)
+        Raises:
+            ManifestError: If a manifest is invalid and skip_invalid is False
+        """
+        if filter_dir:
+            return self._path_manager.get_collection_by_filter(filter_dir, skip_invalid)
+        return self._path_manager.get_all_collections(skip_invalid)
 
     def find_module_path(self, module_name: str) -> str | None:
-        """Find the absolute path to a module within addons_path and Odoo base addons"""
-        # Combine configured addons_path and Odoo base addons paths
-        all_paths = self.addons_path.split(",") + self._find_odoo_base_addons_paths()
+        """Find the absolute path to a module within addons_path and Odoo base addons
 
-        for path in all_paths:
-            path = path.strip()
-            if os.path.isdir(path):
-                module_path = os.path.join(path, module_name)
-                if os.path.isdir(module_path) and os.path.exists(
-                    os.path.join(module_path, "__manifest__.py")
-                ):
-                    return module_path
+        Args:
+            module_name: Name of the module to find
 
-        return None
+        Returns:
+            Absolute path to module directory or None if not found
+        """
+        return self._path_manager.find_module_path(module_name)
 
     def get_manifest(self, module_name: str) -> Manifest | None:
         """Get the manifest for a module.
@@ -112,15 +83,7 @@ class ModuleManager:
         Returns:
             Manifest instance or None if module not found
         """
-        module_path = self.find_module_path(module_name)
-        if not module_path:
-            return None
-
-        try:
-            return Manifest(module_path)
-        except ManifestError:
-            # If manifest has errors, treat as if module doesn't exist
-            return None
+        return self._path_manager.get_manifest(module_name)
 
     def parse_manifest(self, module_name: str) -> dict[str, Any] | None:
         """Parse and return module's __manifest__.py content.
@@ -152,31 +115,74 @@ class ModuleManager:
             # Convert to ValueError for backward compatibility
             raise ValueError(str(e)) from e
 
-    def get_module_dependencies(self, module_name: str) -> list[str]:
-        """Get direct dependencies from module's manifest 'depends' field.
+    def get_module_codependencies(self, module_name: str) -> list[str]:
+        """Get codependencies from module's manifest 'depends' field.
+
+        Codependencies are modules that this module depends on, meaning changes
+        to those modules may impact this module.
 
         Args:
-            module_name: Name of the module to get dependencies for
+            module_name: Name of the module to get codependencies for
 
         Returns:
-            List of dependency module names, empty list if no dependencies
+            List of codependency module names, empty list if no codependencies
             or module not found
         """
         manifest = self.get_manifest(module_name)
         if not manifest:
             return []
 
-        return manifest.dependencies
+        return manifest.codependencies
+
+    def get_direct_dependencies(self, *module_names: str) -> list[str]:
+        """Get direct dependencies needed to install a set of modules.
+
+        Direct dependencies are the minimal set of external modules (not in the
+        provided set) needed to install the specified modules.
+
+        Args:
+            *module_names: One or more module names to get direct dependencies for
+
+        Returns:
+            Sorted list of module names that are direct dependencies (external to
+            the provided set) needed for installation
+
+        Example:
+            For modules a, b, c where:
+            - a depends on ['b', 'c']
+            - b depends on ['crm']
+            - c depends on ['mail']
+            get_direct_dependencies('a', 'b', 'c') returns ['crm', 'mail']
+        """
+        if not module_names:
+            return []
+
+        module_set = set(module_names)
+        direct_deps = set()
+
+        for module_name in module_names:
+            # Get all dependencies through the dependency graph
+            try:
+                graph = self.build_dependency_graph(module_name)
+                # Collect all modules in the graph that are not in our module set
+                for module in graph:
+                    if module not in module_set:
+                        direct_deps.add(module)
+            except ValueError:
+                # Skip modules with errors
+                continue
+
+        return sorted(direct_deps)
 
     def build_dependency_graph(self, module_name: str) -> dict[str, list[str]]:
-        """Build complete dependency graph for a module and all its dependencies.
+        """Build complete dependency graph for a module and all its codependencies.
 
         Args:
             module_name: Name of the root module to build graph for
 
         Returns:
-            Dictionary mapping each module to its direct dependencies.
-            Format: {module_name: [list_of_dependencies]}
+            Dictionary mapping each module to its direct codependencies.
+            Format: {module_name: [list_of_codependencies]}
 
         Raises:
             ValueError: If circular dependency is detected
@@ -198,12 +204,12 @@ class ModuleManager:
 
             visiting.add(mod_name)
 
-            # Get dependencies for current module
-            dependencies = self.get_module_dependencies(mod_name)
-            graph[mod_name] = dependencies
+            # Get codependencies for current module
+            codependencies = self.get_module_codependencies(mod_name)
+            graph[mod_name] = codependencies
 
-            # Recursively process dependencies
-            for dep in dependencies:
+            # Recursively process codependencies
+            for dep in codependencies:
                 _build_graph_recursive(dep)
 
             visiting.remove(mod_name)
@@ -220,7 +226,7 @@ class ModuleManager:
 
         Returns:
             Nested dictionary representing the dependency tree.
-            Format: {module_name: {dependency1: {subdeps...}, dependency2: {}}}
+            Format: {module_name: {codependency1: {subdeps...}, codependency2: {}}}
 
         Raises:
             ValueError: If circular dependency is detected
@@ -242,12 +248,12 @@ class ModuleManager:
 
             visiting.add(mod_name)
 
-            # Get dependencies for current module
-            dependencies = self.get_module_dependencies(mod_name)
+            # Get codependencies for current module
+            codependencies = self.get_module_codependencies(mod_name)
             tree = {}
 
-            # Build subtree for each dependency
-            for dep in dependencies:
+            # Build subtree for each codependency
+            for dep in codependencies:
                 tree[dep] = _build_tree_recursive(dep)
 
             visiting.remove(mod_name)
@@ -259,17 +265,18 @@ class ModuleManager:
 
     def get_install_order(self, *module_names: str) -> list[str]:
         """Get the proper installation order for one or more modules and
-        their dependencies.
+        their codependencies.
 
-        Uses topological sorting to determine the correct order for installing modules
-        such that all dependencies are installed before the modules that depend on them.
+        Uses topological sorting to determine the correct order for installing
+        modules such that all codependencies are installed before the modules
+        that depend on them.
 
         Args:
             *module_names: One or more module names to get install order for
 
         Returns:
             List of module names in the order they should be installed.
-            Dependencies come first, then modules that depend on them.
+            Codependencies come first, then modules that depend on them.
 
         Raises:
             ValueError: If circular dependency is detected
@@ -294,25 +301,25 @@ class ModuleManager:
             return []
 
         # Implement Kahn's algorithm for topological sorting
-        # The in-degree represents how many dependencies a module has
+        # The in-degree represents how many codependencies a module has
         in_degree = {
-            module: len(dependencies) for module, dependencies in all_graphs.items()
+            module: len(codependencies) for module, codependencies in all_graphs.items()
         }
 
-        # Initialize queue with nodes that have no dependencies (in-degree = 0)
+        # Initialize queue with nodes that have no codependencies (in-degree = 0)
         queue = [module for module, degree in in_degree.items() if degree == 0]
         result = []
 
         while queue:
-            # Remove a node with no dependencies
+            # Remove a node with no codependencies
             current = queue.pop(0)
             result.append(current)
 
             # For each module that depends on the current one, reduce its in-degree
-            for module, dependencies in all_graphs.items():
-                if current in dependencies:
+            for module, codependencies in all_graphs.items():
+                if current in codependencies:
                     in_degree[module] -= 1
-                    # If this module now has no unmet dependencies, add it to queue
+                    # If this module now has no unmet codependencies, add it to queue
                     if in_degree[module] == 0:
                         queue.append(module)
 
@@ -323,14 +330,14 @@ class ModuleManager:
         return result
 
     def find_missing_dependencies(self, module_name: str) -> list[str]:
-        """Find dependencies that are not available in the addons_path.
+        """Find codependencies that are not available in the addons_path.
 
         Args:
-            module_name: Name of the module to check dependencies for
+            module_name: Name of the module to check codependencies for
 
         Returns:
-            List of dependency names that could not be found in addons_path.
-            Empty list if all dependencies are available.
+            List of codependency names that could not be found in addons_path.
+            Empty list if all codependencies are available.
 
         Raises:
             ValueError: If circular dependency is detected during graph traversal
@@ -358,7 +365,7 @@ class ModuleManager:
         """Get all modules that directly or indirectly depend on the target module.
 
         This method searches through all available modules to find which ones
-        have the target module in their dependency chain.
+        have the target module in their codependency chain.
 
         Args:
             target_module: Name of the module to find reverse dependencies for

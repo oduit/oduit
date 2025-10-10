@@ -25,6 +25,8 @@ from .manifest import (
     InvalidManifestError,
     ManifestNotFoundError,
 )
+from .manifest_collection import ManifestCollection
+from .addons_path_manager import AddonsPathManager
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
 from .odoo_embedded_manager import OdooEmbeddedManager
@@ -50,6 +52,8 @@ __all__ = [
     "ManifestError",
     "InvalidManifestError",
     "ManifestNotFoundError",
+    "ManifestCollection",
+    "AddonsPathManager",
     "ModuleManager",
     "ConfigError",
     "OdooOperationError",

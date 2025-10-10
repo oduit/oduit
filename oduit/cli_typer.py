@@ -218,8 +218,8 @@ def main(
             print("  list-env           List available environments")
             print("  create-addon NAME  Create new addon")
             print("  list-addons        List available addons")
-            print("  list-depends MODULE    List missing dependencies")
-            print("  list-codepends MODULE  List reverse dependencies")
+            print("  list-depends MODULES   List direct dependencies for installation")
+            print("  list-codepends MODULE  List codependencies of a module")
             print("  export-lang MODULE Export language translations")
             print("  print-config       Print environment configuration")
             print("")
@@ -874,14 +874,21 @@ def list_addons(
 @app.command("list-depends")
 def list_depends(
     ctx: typer.Context,
-    module: str = typer.Argument(help="Module to check dependencies for"),
+    modules: str = typer.Argument(
+        help="Comma-separated module names to check dependencies for"
+    ),
     separator: str | None = typer.Option(
         None,
         "--separator",
         help="Separator for output (e.g., ',' for 'a,b,c')",
     ),
 ):
-    """List missing dependencies for a module."""
+    """List direct dependencies needed to install a set of modules.
+
+    Direct dependencies are external modules (not in the provided set) needed
+    for installation. For example, if modules a, b, c depend on crm and mail,
+    this will show crm and mail.
+    """
     if ctx.obj is None:
         print_error("No global configuration found")
         raise typer.Exit(1) from None
@@ -904,16 +911,27 @@ def list_depends(
     module_manager = ModuleManager(global_config.env_config["addons_path"])
 
     try:
-        missing_deps = module_manager.find_missing_dependencies(module)
+        module_list = [m.strip() for m in modules.split(",")]
+        dependencies = module_manager.get_direct_dependencies(*module_list)
         if separator:
-            if missing_deps:
-                print(separator.join(missing_deps))
-        elif missing_deps:
-            print_info(f"Missing dependencies for '{module}':")
-            for dep in missing_deps:
+            if dependencies:
+                print(separator.join(dependencies))
+        elif dependencies:
+            if len(module_list) == 1:
+                print_info(f"Direct dependencies for '{modules}':")
+            else:
+                print_info(
+                    f"Direct dependencies for modules [{', '.join(module_list)}]:"
+                )
+            for dep in dependencies:
                 print_info(f"  - {dep}")
         else:
-            print_info(f"All dependencies for '{module}' are available")
+            if len(module_list) == 1:
+                print_info(f"Module '{modules}' has no external dependencies")
+            else:
+                print_info(
+                    f"Modules [{', '.join(module_list)}] have no external dependencies"
+                )
     except ValueError as e:
         print_error(f"Error checking dependencies: {e}")
         raise typer.Exit(1) from None
@@ -922,14 +940,18 @@ def list_depends(
 @app.command("list-codepends")
 def list_codepends(
     ctx: typer.Context,
-    module: str = typer.Argument(help="Module to check reverse dependencies for"),
+    module: str = typer.Argument(help="Module to check codependencies for"),
     separator: str | None = typer.Option(
         None,
         "--separator",
         help="Separator for output (e.g., ',' for 'a,b,c')",
     ),
 ):
-    """List modules that depend on the specified module."""
+    """List codependencies for a module.
+
+    Codependencies are modules that the specified module depends on, meaning
+    changes to those modules may impact the specified module.
+    """
     if ctx.obj is None:
         print_error("No global configuration found")
         raise typer.Exit(1) from None
@@ -951,16 +973,16 @@ def list_codepends(
 
     module_manager = ModuleManager(global_config.env_config["addons_path"])
 
-    reverse_deps = module_manager.get_reverse_dependencies(module)
+    codependencies = module_manager.get_module_codependencies(module)
     if separator:
-        if reverse_deps:
-            print(separator.join(reverse_deps))
-    elif reverse_deps:
-        print_info(f"Modules that depend on '{module}':")
-        for dep in reverse_deps:
+        if codependencies:
+            print(separator.join(codependencies))
+    elif codependencies:
+        print_info(f"Codependencies for '{module}':")
+        for dep in codependencies:
             print_info(f"  - {dep}")
     else:
-        print_info(f"No modules depend on '{module}'")
+        print_info(f"Module '{module}' has no codependencies")
 
 
 @app.command("export-lang")

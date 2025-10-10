@@ -227,76 +227,76 @@ class TestModuleManager(unittest.TestCase):
         self.assertIn("is not a dictionary", str(context.exception))
 
     @patch("oduit.module_manager.ModuleManager.get_manifest")
-    def test_get_module_dependencies_success(self, mock_get_manifest):
-        """Test getting module dependencies successfully."""
+    def test_get_module_codependencies_success(self, mock_get_manifest):
+        """Test getting module codependencies successfully."""
         mock_manifest = MagicMock()
-        mock_manifest.dependencies = ["base", "web", "sale"]
+        mock_manifest.codependencies = ["base", "web", "sale"]
         mock_get_manifest.return_value = mock_manifest
 
-        result = self.module_manager.get_module_dependencies("test_module")
+        result = self.module_manager.get_module_codependencies("test_module")
         self.assertEqual(result, ["base", "web", "sale"])
 
     @patch("oduit.module_manager.ModuleManager.parse_manifest")
-    def test_get_module_dependencies_no_depends_field(self, mock_parse_manifest):
-        """Test getting dependencies when manifest has no depends field."""
+    def test_get_module_codependencies_no_depends_field(self, mock_parse_manifest):
+        """Test getting codependencies when manifest has no depends field."""
         mock_parse_manifest.return_value = {
             "name": "Test Module",
             "version": "17.0.1.0.0",
         }
 
-        result = self.module_manager.get_module_dependencies("test_module")
+        result = self.module_manager.get_module_codependencies("test_module")
         self.assertEqual(result, [])
 
     @patch("oduit.module_manager.ModuleManager.parse_manifest")
-    def test_get_module_dependencies_empty_depends(self, mock_parse_manifest):
-        """Test getting dependencies when depends field is empty."""
+    def test_get_module_codependencies_empty_depends(self, mock_parse_manifest):
+        """Test getting codependencies when depends field is empty."""
         mock_parse_manifest.return_value = {
             "name": "Test Module",
             "depends": [],
         }
 
-        result = self.module_manager.get_module_dependencies("test_module")
+        result = self.module_manager.get_module_codependencies("test_module")
         self.assertEqual(result, [])
 
     @patch("oduit.module_manager.ModuleManager.parse_manifest")
-    def test_get_module_dependencies_invalid_depends_type(self, mock_parse_manifest):
-        """Test getting dependencies when depends field is not a list."""
+    def test_get_module_codependencies_invalid_depends_type(self, mock_parse_manifest):
+        """Test getting codependencies when depends field is not a list."""
         mock_parse_manifest.return_value = {
             "name": "Test Module",
             "depends": "not_a_list",
         }
 
-        result = self.module_manager.get_module_dependencies("test_module")
+        result = self.module_manager.get_module_codependencies("test_module")
         self.assertEqual(result, [])
 
     @patch("oduit.module_manager.ModuleManager.get_manifest")
-    def test_get_module_dependencies_mixed_types(self, mock_get_manifest):
-        """Test getting dependencies with mixed types in depends list."""
+    def test_get_module_codependencies_mixed_types(self, mock_get_manifest):
+        """Test getting codependencies with mixed types in depends list."""
         mock_manifest = MagicMock()
-        mock_manifest.dependencies = [
+        mock_manifest.codependencies = [
             "base",
             "web",
             "sale",
-        ]  # Manifest filters invalid types
+        ]
         mock_get_manifest.return_value = mock_manifest
 
-        result = self.module_manager.get_module_dependencies("test_module")
+        result = self.module_manager.get_module_codependencies("test_module")
         self.assertEqual(result, ["base", "web", "sale"])
 
     @patch("oduit.module_manager.ModuleManager.parse_manifest")
-    def test_get_module_dependencies_module_not_found(self, mock_parse_manifest):
-        """Test getting dependencies when module is not found."""
+    def test_get_module_codependencies_module_not_found(self, mock_parse_manifest):
+        """Test getting codependencies when module is not found."""
         mock_parse_manifest.return_value = None
 
-        result = self.module_manager.get_module_dependencies("nonexistent_module")
+        result = self.module_manager.get_module_codependencies("nonexistent_module")
         self.assertEqual(result, [])
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_build_dependency_graph_simple(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_build_dependency_graph_simple(self, mock_get_codependencies):
         """Test building dependency graph for a simple module."""
 
         # Module A depends on B and C, B depends on D, C and D have no dependencies
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b", "module_c"],
                 "module_b": ["module_d"],
@@ -305,7 +305,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.build_dependency_graph("module_a")
 
@@ -317,22 +317,22 @@ class TestModuleManager(unittest.TestCase):
         }
         self.assertEqual(result, expected)
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_build_dependency_graph_no_dependencies(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_build_dependency_graph_no_dependencies(self, mock_get_codependencies):
         """Test building dependency graph for module with no dependencies."""
-        mock_get_dependencies.return_value = []
+        mock_get_codependencies.return_value = []
 
         result = self.module_manager.build_dependency_graph("standalone_module")
 
         expected = {"standalone_module": []}
         self.assertEqual(result, expected)
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_build_dependency_graph_circular_dependency(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_build_dependency_graph_circular_dependency(self, mock_get_codependencies):
         """Test building dependency graph with circular dependency."""
 
         # A -> B -> C -> A (circular)
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b"],
                 "module_b": ["module_c"],
@@ -340,7 +340,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         with self.assertRaises(ValueError) as context:
             self.module_manager.build_dependency_graph("module_a")
@@ -348,38 +348,11 @@ class TestModuleManager(unittest.TestCase):
         self.assertIn("Circular dependency detected", str(context.exception))
         self.assertIn("module_a", str(context.exception))
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_build_dependency_graph_shared_dependency(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_build_dependency_graph_shared_dependency(self, mock_get_codependencies):
         """Test building dependency graph with shared dependencies."""
 
-        # A depends on B and C, both B and C depend on D
-        def dependencies_side_effect(module):
-            deps_map = {
-                "module_a": ["module_b", "module_c"],
-                "module_b": ["module_d"],
-                "module_c": ["module_d"],
-                "module_d": [],
-            }
-            return deps_map.get(module, [])
-
-        mock_get_dependencies.side_effect = dependencies_side_effect
-
-        result = self.module_manager.build_dependency_graph("module_a")
-
-        expected = {
-            "module_a": ["module_b", "module_c"],
-            "module_b": ["module_d"],
-            "module_c": ["module_d"],
-            "module_d": [],
-        }
-        self.assertEqual(result, expected)
-
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_dependency_tree_simple(self, mock_get_dependencies):
-        """Test getting dependency tree for a simple module."""
-
-        # A depends on B and C, B depends on D, C and D have no dependencies
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b", "module_c"],
                 "module_b": ["module_d"],
@@ -388,29 +361,55 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
+
+        result = self.module_manager.build_dependency_graph("module_a")
+
+        expected = {
+            "module_a": ["module_b", "module_c"],
+            "module_b": ["module_d"],
+            "module_c": [],
+            "module_d": [],
+        }
+        self.assertEqual(result, expected)
+
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_dependency_tree_simple(self, mock_get_codependencies):
+        """Test getting dependency tree for a simple module."""
+
+        # A depends on B and C, B depends on D, C and D have no dependencies
+        def codependencies_side_effect(module):
+            deps_map = {
+                "module_a": ["module_b", "module_c"],
+                "module_b": ["module_d"],
+                "module_c": [],
+                "module_d": [],
+            }
+            return deps_map.get(module, [])
+
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.get_dependency_tree("module_a")
 
         expected = {"module_a": {"module_b": {"module_d": {}}, "module_c": {}}}
         self.assertEqual(result, expected)
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_dependency_tree_no_dependencies(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_dependency_tree_no_dependencies(self, mock_get_codependencies):
         """Test getting dependency tree for module with no dependencies."""
-        mock_get_dependencies.return_value = []
+        mock_get_codependencies.return_value = []
 
         result = self.module_manager.get_dependency_tree("standalone_module")
 
         expected = {"standalone_module": {}}
         self.assertEqual(result, expected)
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_dependency_tree_circular_dependency(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_dependency_tree_circular_dependency(self, mock_get_codependencies):
         """Test getting dependency tree with circular dependency."""
 
         # A -> B -> C -> A (circular)
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b"],
                 "module_b": ["module_c"],
@@ -418,19 +417,19 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         with self.assertRaises(ValueError) as context:
             self.module_manager.get_dependency_tree("module_a")
 
         self.assertIn("Circular dependency detected", str(context.exception))
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_dependency_tree_shared_dependency(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_dependency_tree_shared_dependency(self, mock_get_codependencies):
         """Test getting dependency tree with shared dependencies."""
 
         # A depends on B and C, both B and C depend on D
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b", "module_c"],
                 "module_b": ["module_d"],
@@ -439,7 +438,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.get_dependency_tree("module_a")
 
@@ -453,12 +452,12 @@ class TestModuleManager(unittest.TestCase):
         }
         self.assertEqual(result, expected)
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_install_order_simple(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_install_order_simple(self, mock_get_codependencies):
         """Test getting install order for a simple module."""
 
         # A depends on B and C, B depends on D, C and D have no dependencies
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b", "module_c"],
                 "module_b": ["module_d"],
@@ -467,7 +466,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.get_install_order("module_a")
 
@@ -477,22 +476,22 @@ class TestModuleManager(unittest.TestCase):
         self.assertIn("module_b", result[1:3])  # B should be before A but after D
         self.assertIn("module_c", result[1:3])  # C should be before A but after D
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_install_order_no_dependencies(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_install_order_no_dependencies(self, mock_get_codependencies):
         """Test getting install order for module with no dependencies."""
-        mock_get_dependencies.return_value = []
+        mock_get_codependencies.return_value = []
 
         result = self.module_manager.get_install_order("standalone_module")
 
         expected = ["standalone_module"]
         self.assertEqual(result, expected)
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_install_order_linear_chain(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_install_order_linear_chain(self, mock_get_codependencies):
         """Test getting install order for a linear dependency chain."""
 
         # A -> B -> C -> D (linear chain)
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b"],
                 "module_b": ["module_c"],
@@ -501,19 +500,19 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.get_install_order("module_a")
 
         expected = ["module_d", "module_c", "module_b", "module_a"]
         self.assertEqual(result, expected)
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_install_order_circular_dependency(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_install_order_circular_dependency(self, mock_get_codependencies):
         """Test getting install order with circular dependency."""
 
         # A -> B -> C -> A (circular)
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b"],
                 "module_b": ["module_c"],
@@ -521,19 +520,19 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         with self.assertRaises(ValueError) as context:
             self.module_manager.get_install_order("module_a")
 
         self.assertIn("Circular dependency detected", str(context.exception))
 
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
-    def test_get_install_order_multiple_modules(self, mock_get_dependencies):
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
+    def test_get_install_order_multiple_modules(self, mock_get_codependencies):
         """Test getting install order for multiple modules."""
 
         # A depends on C, B depends on D, C and D have no dependencies
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_c"],
                 "module_b": ["module_d"],
@@ -542,7 +541,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.get_install_order("module_a", "module_b")
 
@@ -557,14 +556,14 @@ class TestModuleManager(unittest.TestCase):
         self.assertLess(result.index("module_d"), result.index("module_b"))
 
     @patch("oduit.module_manager.ModuleManager.find_module_path")
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_find_missing_dependencies_all_available(
-        self, mock_get_dependencies, mock_find_module_path
+        self, mock_get_codependencies, mock_find_module_path
     ):
         """Test finding missing dependencies when all dependencies are available."""
 
         # A depends on B and C, all modules exist
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b", "module_c"],
                 "module_b": [],
@@ -572,7 +571,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
         mock_find_module_path.return_value = "/some/path"  # All modules found
 
         result = self.module_manager.find_missing_dependencies("module_a")
@@ -581,14 +580,14 @@ class TestModuleManager(unittest.TestCase):
         self.assertEqual(result, expected)
 
     @patch("oduit.module_manager.ModuleManager.find_module_path")
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_find_missing_dependencies_some_missing(
-        self, mock_get_dependencies, mock_find_module_path
+        self, mock_get_codependencies, mock_find_module_path
     ):
         """Test finding missing dependencies when some dependencies are missing."""
 
         # A depends on B and C, B depends on D
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b", "module_c"],
                 "module_b": ["module_d"],
@@ -597,7 +596,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         # Only module_a and module_c exist, module_b and module_d are missing
         def find_module_path_side_effect(module):
@@ -612,21 +611,21 @@ class TestModuleManager(unittest.TestCase):
         self.assertEqual(result, expected)
 
     @patch("oduit.module_manager.ModuleManager.find_module_path")
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_find_missing_dependencies_module_not_found(
-        self, mock_get_dependencies, mock_find_module_path
+        self, mock_get_codependencies, mock_find_module_path
     ):
         """Test finding missing dependencies when the root module doesn't exist."""
 
         # Module doesn't exist, so we can't build a dependency graph
         mock_find_module_path.return_value = None
 
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             if module == "nonexistent_module":
                 return []  # Module doesn't exist, so no dependencies
             return []
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.find_missing_dependencies("nonexistent_module")
 
@@ -634,9 +633,9 @@ class TestModuleManager(unittest.TestCase):
         self.assertEqual(result, expected)
 
     @patch("oduit.module_manager.ModuleManager.find_module_dirs")
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_get_reverse_dependencies_simple(
-        self, mock_get_dependencies, mock_find_module_dirs
+        self, mock_get_codependencies, mock_find_module_dirs
     ):
         """Test getting reverse dependencies for a simple case."""
 
@@ -650,7 +649,7 @@ class TestModuleManager(unittest.TestCase):
             "module_d",
         ]
 
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b"],
                 "module_b": ["module_c"],
@@ -659,7 +658,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.get_reverse_dependencies("module_d")
 
@@ -667,15 +666,15 @@ class TestModuleManager(unittest.TestCase):
         self.assertEqual(result, expected)
 
     @patch("oduit.module_manager.ModuleManager.find_module_dirs")
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_get_reverse_dependencies_no_dependents(
-        self, mock_get_dependencies, mock_find_module_dirs
+        self, mock_get_codependencies, mock_find_module_dirs
     ):
         """Test getting reverse dependencies when no modules depend on the target."""
 
         mock_find_module_dirs.return_value = ["module_a", "module_b", "module_c"]
 
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_b"],
                 "module_b": [],
@@ -683,7 +682,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.get_reverse_dependencies("module_c")
 
@@ -691,9 +690,9 @@ class TestModuleManager(unittest.TestCase):
         self.assertEqual(result, expected)
 
     @patch("oduit.module_manager.ModuleManager.find_module_dirs")
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_get_reverse_dependencies_multiple_dependents(
-        self, mock_get_dependencies, mock_find_module_dirs
+        self, mock_get_codependencies, mock_find_module_dirs
     ):
         """Test reverse dependencies with multiple modules depending on target."""
 
@@ -701,7 +700,7 @@ class TestModuleManager(unittest.TestCase):
         # So reverse deps for C should be [A, B]
         mock_find_module_dirs.return_value = ["module_a", "module_b", "module_c"]
 
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_c"],
                 "module_b": ["module_c"],
@@ -709,7 +708,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         result = self.module_manager.get_reverse_dependencies("module_c")
 
@@ -717,9 +716,9 @@ class TestModuleManager(unittest.TestCase):
         self.assertEqual(result, expected)
 
     @patch("oduit.module_manager.ModuleManager.find_module_dirs")
-    @patch("oduit.module_manager.ModuleManager.get_module_dependencies")
+    @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_get_reverse_dependencies_with_errors(
-        self, mock_get_dependencies, mock_find_module_dirs
+        self, mock_get_codependencies, mock_find_module_dirs
     ):
         """Test reverse dependencies when some modules have circular deps."""
 
@@ -731,7 +730,7 @@ class TestModuleManager(unittest.TestCase):
             "module_e",
         ]
 
-        def dependencies_side_effect(module):
+        def codependencies_side_effect(module):
             deps_map = {
                 "module_a": ["module_c"],  # A depends on C (clean)
                 "module_b": ["module_e"],  # B depends on E (circular: B -> E -> B)
@@ -743,7 +742,7 @@ class TestModuleManager(unittest.TestCase):
             }
             return deps_map.get(module, [])
 
-        mock_get_dependencies.side_effect = dependencies_side_effect
+        mock_get_codependencies.side_effect = codependencies_side_effect
 
         # Should return module_a and module_d (clean dependencies on module_c)
         # module_b should be skipped due to circular dependency with module_e
