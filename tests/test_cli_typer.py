@@ -470,7 +470,7 @@ class TestCLICommands(unittest.TestCase):
         result = self.runner.invoke(app, ["--env", "dev", "list-depends", "my_module"])
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("no external dependencies", result.output)
+        self.assertIn("No external dependencies", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -809,6 +809,171 @@ class TestCLICommands(unittest.TestCase):
         )
         self.assertIn("module_a", result.output)
         self.assertIn("module_b", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_with_select_dir(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends command with --select-dir option."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_dirs.return_value = ["module1", "module2"]
+        mock_manager_instance.get_direct_dependencies.return_value = [
+            "base",
+            "web",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "--select-dir", "myaddons"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.find_module_dirs.assert_called_once_with(
+            filter_dir="myaddons"
+        )
+        mock_manager_instance.get_direct_dependencies.assert_called_once_with(
+            "module1", "module2"
+        )
+        self.assertIn("base", result.output)
+        self.assertIn("web", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_with_select_dir_and_separator(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends with --select-dir and --separator."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_dirs.return_value = ["module1", "module2"]
+        mock_manager_instance.get_direct_dependencies.return_value = [
+            "base",
+            "web",
+            "sale",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "list-depends",
+                "--select-dir",
+                "myaddons",
+                "--separator",
+                ",",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("base,web,sale", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_with_select_dir_and_depth(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends with --select-dir and --depth."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_dirs.return_value = ["module1", "module2"]
+        mock_manager_instance.get_dependencies_at_depth.return_value = ["base"]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "list-depends",
+                "--select-dir",
+                "myaddons",
+                "--depth",
+                "0",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_dependencies_at_depth.assert_called_once_with(
+            ["module1", "module2"], max_depth=1
+        )
+        self.assertIn("base", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_with_select_dir_and_tree(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends with --select-dir and --tree."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_dirs.return_value = ["module1", "module2"]
+        mock_manager_instance.get_dependency_tree.side_effect = [
+            {"module1": {"dependencies": {"base": {}}}},
+            {"module2": {"dependencies": {"web": {}}}},
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "--select-dir", "myaddons", "--tree"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(mock_manager_instance.get_dependency_tree.call_count, 2)
+        mock_manager_instance.get_dependency_tree.assert_any_call(
+            "module1", max_depth=None
+        )
+        mock_manager_instance.get_dependency_tree.assert_any_call(
+            "module2", max_depth=None
+        )
+        self.assertIn("module1", result.output)
+        self.assertIn("module2", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_no_modules_no_select_dir(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends without modules or --select-dir raises error."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "list-depends"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("Either provide module names or use --select-dir", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_both_modules_and_select_dir(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends with both modules and --select-dir raises error."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "list-depends", "my_module", "--select-dir", "myaddons"],
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn(
+            "Cannot use both module names and --select-dir option", result.output
+        )
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")

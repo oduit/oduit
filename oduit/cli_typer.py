@@ -871,11 +871,56 @@ def list_addons(
             print(f"  - {addon}")
 
 
+def _print_dependency_tree(
+    module_list: list[str],
+    module_manager: ModuleManager,
+    tree_depth: int | None,
+) -> None:
+    """Print dependency tree for a list of modules."""
+    for i, module_name in enumerate(module_list):
+        dep_tree = module_manager.get_dependency_tree(module_name, max_depth=tree_depth)
+        lines = format_dependency_tree(
+            module_name, dep_tree, module_manager, "", True, set()
+        )
+        for line in lines:
+            print(line)
+        if i < len(module_list) - 1:
+            print()
+
+
+def _print_dependency_list(
+    module_list: list[str],
+    module_manager: ModuleManager,
+    tree_depth: int | None,
+    depth: int | None,
+    separator: str | None,
+    source_desc: str,
+) -> None:
+    """Print flat list of dependencies."""
+    if depth is not None:
+        dependencies = module_manager.get_dependencies_at_depth(
+            module_list, max_depth=tree_depth
+        )
+    else:
+        dependencies = module_manager.get_direct_dependencies(*module_list)
+
+    if separator:
+        if dependencies:
+            print(separator.join(dependencies))
+    elif dependencies:
+        depth_str = f" (depth {depth})" if depth is not None else ""
+        print(f"Direct dependencies for {source_desc}{depth_str}:")
+        for dep in dependencies:
+            print(f"  - {dep}")
+    else:
+        print(f"No external dependencies for {source_desc}")
+
+
 @app.command("list-depends")
 def list_depends(
     ctx: typer.Context,
-    modules: str = typer.Argument(
-        help="Comma-separated module names to check dependencies for"
+    modules: str | None = typer.Argument(
+        None, help="Comma-separated module names to check dependencies for"
     ),
     separator: str | None = typer.Option(
         None,
@@ -893,6 +938,11 @@ def list_depends(
         help="Maximum depth of dependencies to show "
         "(0=direct only, 1=direct+their deps, etc.)",
     ),
+    select_dir: str | None = typer.Option(
+        None,
+        "--select-dir",
+        help="Filter modules by directory (e.g., 'myaddons')",
+    ),
 ):
     """List direct dependencies needed to install a set of modules.
 
@@ -901,6 +951,7 @@ def list_depends(
     this will show crm and mail.
 
     Use --tree to show the full dependency tree with versions.
+    Use --select-dir to get dependencies for all modules in a specific directory.
     """
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -923,61 +974,38 @@ def list_depends(
 
     module_manager = ModuleManager(global_config.env_config["addons_path"])
 
-    try:
-        module_list = [m.strip() for m in modules.split(",")]
+    if modules is None and select_dir is None:
+        print_error("Either provide module names or use --select-dir option")
+        raise typer.Exit(1) from None
 
-        # Adjust depth for tree depth vs dependency level
-        # depth=0 means direct deps, which is depth=1 in tree (root + 1 level)
+    if modules is not None and select_dir is not None:
+        print_error("Cannot use both module names and --select-dir option")
+        raise typer.Exit(1) from None
+
+    try:
+        if select_dir:
+            addons = module_manager.find_module_dirs(filter_dir=select_dir)
+            if not addons:
+                print_error(f"No modules found in directory '{select_dir}'")
+                raise typer.Exit(1) from None
+            module_list = sorted(addons)
+            source_desc = f"directory '{select_dir}'"
+        else:
+            assert modules is not None
+            module_list = [m.strip() for m in modules.split(",")]
+            if len(module_list) == 1:
+                source_desc = f"'{modules}'"
+            else:
+                source_desc = f"modules [{', '.join(module_list)}]"
+
         tree_depth = depth + 1 if depth is not None else None
 
         if tree:
-            # Tree mode: display hierarchical tree for each module
-            try:
-                for i, module_name in enumerate(module_list):
-                    dep_tree = module_manager.get_dependency_tree(
-                        module_name, max_depth=tree_depth
-                    )
-                    lines = format_dependency_tree(
-                        module_name, dep_tree, module_manager, "", True, set()
-                    )
-                    for line in lines:
-                        print(line)
-                    # Add blank line between multiple modules
-                    if i < len(module_list) - 1:
-                        print()
-            except ValueError as e:
-                print_error(str(e))
-                raise typer.Exit(1) from None
+            _print_dependency_tree(module_list, module_manager, tree_depth)
         else:
-            # List mode: get flat list of dependencies
-            if depth is not None:
-                # When depth is specified, collect dependencies level by level
-                dependencies = module_manager.get_dependencies_at_depth(
-                    module_list, max_depth=tree_depth
-                )
-            else:
-                # Default: get all direct dependencies (external modules)
-                dependencies = module_manager.get_direct_dependencies(*module_list)
-
-            if separator:
-                if dependencies:
-                    print(separator.join(dependencies))
-            elif dependencies:
-                if len(module_list) == 1:
-                    depth_str = f" (depth {depth})" if depth is not None else ""
-                    print(f"Direct dependencies for '{modules}'{depth_str}:")
-                else:
-                    depth_str = f" (depth {depth})" if depth is not None else ""
-                    modules_str = f"[{', '.join(module_list)}]"
-                    print(f"Direct dependencies for modules {modules_str}{depth_str}:")
-                for dep in dependencies:
-                    print(f"  - {dep}")
-            else:
-                if len(module_list) == 1:
-                    print(f"Module '{modules}' has no external dependencies")
-                else:
-                    modules_str = ", ".join(module_list)
-                    print(f"Modules [{modules_str}] have no external dependencies")
+            _print_dependency_list(
+                module_list, module_manager, tree_depth, depth, separator, source_desc
+            )
     except ValueError as e:
         print_error(f"Error checking dependencies: {e}")
         raise typer.Exit(1) from None

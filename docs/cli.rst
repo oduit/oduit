@@ -394,21 +394,25 @@ List available addons in the configured addons path.
 list-depends
 ^^^^^^^^^^^^
 
-List external dependencies for a specified module.
+List external dependencies for a specified module or directory of modules.
 
 .. code-block:: bash
 
-   oduit --env dev list-depends MODULE [OPTIONS]
+   oduit --env dev list-depends [MODULE] [OPTIONS]
 
 This command analyzes the module's dependency tree and identifies external
 dependencies that are not available in the configured addons paths. It
 recursively checks all transitive dependencies.
+
+You can either provide module names directly or use ``--select-dir`` to
+automatically get dependencies for all modules in a specific directory.
 
 **Options:**
 
 - ``--tree``: Display dependencies as a hierarchical tree structure
 - ``--depth INTEGER``: Maximum depth of dependencies to show (0=direct only, 1=direct+their deps, etc.)
 - ``--separator TEXT``: Separator for list output (e.g., ",")
+- ``--select-dir TEXT``: Get dependencies for all modules in a specific directory
 
 **Examples:**
 
@@ -440,6 +444,18 @@ recursively checks all transitive dependencies.
 
    # Tree view for multiple modules
    oduit --env dev list-depends sale,purchase --tree
+
+   # Get dependencies for all modules in a directory
+   oduit --env dev list-depends --select-dir myaddons
+
+   # Get dependencies for a directory with comma-separated output
+   oduit --env dev list-depends --select-dir myaddons --separator ","
+
+   # Get dependencies for a directory with depth limit
+   oduit --env dev list-depends --select-dir myaddons --depth 0
+
+   # Tree view for all modules in a directory
+   oduit --env dev list-depends --select-dir myaddons --tree
 
 **Tree View:**
 
