@@ -74,3 +74,63 @@ def validate_addon_name(addon_name: str) -> bool:
         return False
 
     return True
+
+
+def format_dependency_tree(
+    module_name: str,
+    tree: dict[str, Any],
+    module_manager: Any,
+    prefix: str = "",
+    is_last: bool = True,
+    seen: set[str] | None = None,
+) -> list[str]:
+    """Format a dependency tree for display.
+
+    Args:
+        module_name: Name of the module to format
+        tree: Dependency tree structure from get_dependency_tree()
+        module_manager: ModuleManager instance to get manifest info
+        prefix: Current line prefix for indentation
+        is_last: Whether this is the last item at this level
+        seen: Set of already seen modules to detect cycles
+
+    Returns:
+        List of formatted lines representing the tree
+    """
+    if seen is None:
+        seen = set()
+
+    lines = []
+    manifest = module_manager.get_manifest(module_name)
+    version = manifest.version if manifest else "unknown"
+
+    connector = "└── " if is_last else "├── "
+
+    is_cycle = module_name in seen
+    if is_cycle:
+        lines.append(f"{prefix}{connector}{module_name} ⬆")
+        return lines
+
+    lines.append(f"{prefix}{connector}{module_name} ({version})")
+    seen.add(module_name)
+
+    codependencies = tree.get(module_name, {})
+    if codependencies:
+        extension = "    " if is_last else "│   "
+        dep_names = list(codependencies.keys())
+
+        for i, dep_name in enumerate(dep_names):
+            is_last_dep = i == len(dep_names) - 1
+            subtree = {dep_name: codependencies[dep_name]}
+
+            dep_lines = format_dependency_tree(
+                dep_name,
+                subtree,
+                module_manager,
+                prefix + extension,
+                is_last_dep,
+                seen.copy(),
+            )
+            lines.extend(dep_lines)
+
+    return lines

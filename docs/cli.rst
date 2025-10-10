@@ -394,66 +394,98 @@ List available addons in the configured addons path.
 list-depends
 ^^^^^^^^^^^^
 
-List missing dependencies for a specified module.
+List external dependencies for a specified module.
 
 .. code-block:: bash
 
-   oduit --env dev list-depends MODULE
+   oduit --env dev list-depends MODULE [OPTIONS]
 
-This command analyzes the module's dependency tree and identifies any dependencies
-that are not available in the configured addons paths. It recursively checks all
-transitive dependencies.
+This command analyzes the module's dependency tree and identifies external
+dependencies that are not available in the configured addons paths. It
+recursively checks all transitive dependencies.
+
+**Options:**
+
+- ``--tree``: Display dependencies as a hierarchical tree structure
+- ``--separator TEXT``: Separator for list output (e.g., ",")
 
 **Examples:**
 
 .. code-block:: bash
 
-   # Check missing dependencies for sale module
+   # Check external dependencies for sale module
    oduit --env dev list-depends sale
 
-   # Check custom module dependencies
-   oduit --env dev list-depends my_custom_module
+   # Display dependency tree for a module
+   oduit --env dev list-depends sale --tree
+
+   # Check multiple modules external dependencies
+   oduit --env dev list-depends sale,purchase
+
+   # Output as comma-separated list
+   oduit --env dev list-depends sale --separator ","
+
+**Tree View:**
+
+The ``--tree`` option displays a hierarchical view of all codependencies:
+
+.. code-block:: text
+
+   └── sale (17.0.1.0.0)
+       ├── base (1.3)
+       ├── web (1.0)
+       │   └── base (1.3)
+       └── portal (1.0.0)
+           └── web (1.0)
+
+Features:
+
+- Shows module versions in parentheses
+- Uses box-drawing characters (└──, ├──, │) for tree structure
+- Detects and marks circular dependencies with ⬆ symbol
+- Only supports single module (multiple modules will error)
 
 **Output:**
 
 The command will:
 
-- List all missing dependencies if any are found
-- Return "All dependencies available" if no dependencies are missing
+- List all external dependencies if any are found
+- Return "No external dependencies" if all dependencies are available
 - Return an error if the module itself is not found
+- In tree mode, display the full dependency hierarchy for a single module
 
 list-codepends
 ^^^^^^^^^^^^^^
 
-List reverse dependencies for a specified module (modules that depend on it).
+List codependencies for a specified module (modules that this module depends on).
 
 .. code-block:: bash
 
    oduit --env dev list-codepends MODULE
 
-This command finds all modules in the addons paths that directly or indirectly
-depend on the specified module. This is useful for understanding the impact of
-changes to a module.
+This command lists all modules that the specified module directly depends on,
+as listed in its manifest's 'depends' field. This is useful for understanding
+what modules must be installed before this module.
 
 **Examples:**
 
 .. code-block:: bash
 
-   # Find modules that depend on base
+   # Find what base depends on
    oduit --env dev list-codepends base
 
-   # Find modules that depend on sale
+   # Find what sale depends on
    oduit --env dev list-codepends sale
 
-   # Find reverse dependencies for custom module
+   # Find codependencies for custom module
    oduit --env dev list-codepends my_custom_module
 
 **Output:**
 
 The command will:
 
-- List all modules that depend on the specified module
-- Return "No modules depend on MODULE" if no reverse dependencies are found
+- List all modules that the specified module depends on
+- Return "No codependencies" if the module has no dependencies
 - Return an error if the module is not found
 
 export-lang

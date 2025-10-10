@@ -46,9 +46,13 @@ Module Discovery
    # Find modules in addon paths
    addons = manager.discover_addons()
 
-   # Get module dependencies
-   deps = manager.get_dependencies('sale')
-   print(f"Sale module dependencies: {deps}")
+   # Get module codependencies (what this module depends on)
+   codeps = manager.get_module_codependencies('sale')
+   print(f"Sale module codependencies: {codeps}")
+
+   # Get direct dependencies (external modules needed)
+   deps = manager.get_direct_dependencies('sale')
+   print(f"Sale module direct dependencies: {deps}")
 
    # Validate module
    is_valid = manager.validate_module('my_custom_module')

@@ -587,6 +587,80 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_with_tree(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends command with --tree flag."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manifest_a = MagicMock()
+        mock_manifest_a.version = "1.0.0"
+        mock_manifest_b = MagicMock()
+        mock_manifest_b.version = "1.1.0"
+        mock_manager_instance.get_manifest.side_effect = [
+            mock_manifest_a,
+            mock_manifest_b,
+        ]
+        mock_manager_instance.get_dependency_tree.return_value = {
+            "my_module": {"base": {}}
+        }
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "my_module", "--tree"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_dependency_tree.assert_called_once_with("my_module")
+        self.assertIn("my_module", result.output)
+        self.assertIn("base", result.output)
+        self.assertIn("└──", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_tree_multiple_modules_error(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends --tree with multiple modules (should error)."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "module_a,module_b", "--tree"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("--tree option only supports a single module", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_tree_error_handling(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends --tree with ValueError from get_dependency_tree."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_dependency_tree.side_effect = ValueError(
+            "Module not found"
+        )
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "my_module", "--tree"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("Module not found", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
     def test_list_codepends_with_separator(
         self, mock_config_loader_class, mock_module_manager
     ):

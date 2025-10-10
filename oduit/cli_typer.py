@@ -24,7 +24,7 @@ from .config_loader import ConfigLoader
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
 from .output import configure_output, print_error, print_info, print_warning
-from .utils import output_result_to_json, validate_addon_name
+from .utils import format_dependency_tree, output_result_to_json, validate_addon_name
 
 SHELL_INTERFACE_OPTION = typer.Option(
     "python",
@@ -882,12 +882,19 @@ def list_depends(
         "--separator",
         help="Separator for output (e.g., ',' for 'a,b,c')",
     ),
+    tree: bool = typer.Option(
+        False,
+        "--tree",
+        help="Display dependencies as a tree structure",
+    ),
 ):
     """List direct dependencies needed to install a set of modules.
 
     Direct dependencies are external modules (not in the provided set) needed
     for installation. For example, if modules a, b, c depend on crm and mail,
     this will show crm and mail.
+
+    Use --tree to show the full dependency tree with versions.
     """
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -912,26 +919,43 @@ def list_depends(
 
     try:
         module_list = [m.strip() for m in modules.split(",")]
-        dependencies = module_manager.get_direct_dependencies(*module_list)
-        if separator:
-            if dependencies:
-                print(separator.join(dependencies))
-        elif dependencies:
-            if len(module_list) == 1:
-                print_info(f"Direct dependencies for '{modules}':")
-            else:
-                print_info(
-                    f"Direct dependencies for modules [{', '.join(module_list)}]:"
+
+        if tree:
+            if len(module_list) != 1:
+                print_error("--tree option only supports a single module")
+                raise typer.Exit(1) from None
+
+            module_name = module_list[0]
+            try:
+                dep_tree = module_manager.get_dependency_tree(module_name)
+                lines = format_dependency_tree(
+                    module_name, dep_tree, module_manager, "", True, set()
                 )
-            for dep in dependencies:
-                print_info(f"  - {dep}")
+                for line in lines:
+                    print(line)
+            except ValueError as e:
+                print_error(str(e))
+                raise typer.Exit(1) from None
         else:
-            if len(module_list) == 1:
-                print_info(f"Module '{modules}' has no external dependencies")
+            dependencies = module_manager.get_direct_dependencies(*module_list)
+            if separator:
+                if dependencies:
+                    print(separator.join(dependencies))
+            elif dependencies:
+                if len(module_list) == 1:
+                    print(f"Direct dependencies for '{modules}':")
+                else:
+                    print(
+                        f"Direct dependencies for modules [{', '.join(module_list)}]:"
+                    )
+                for dep in dependencies:
+                    print(f"  - {dep}")
             else:
-                print_info(
-                    f"Modules [{', '.join(module_list)}] have no external dependencies"
-                )
+                if len(module_list) == 1:
+                    print(f"Module '{modules}' has no external dependencies")
+                else:
+                    modules_str = ", ".join(module_list)
+                    print(f"Modules [{modules_str}] have no external dependencies")
     except ValueError as e:
         print_error(f"Error checking dependencies: {e}")
         raise typer.Exit(1) from None
