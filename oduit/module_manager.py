@@ -218,11 +218,14 @@ class ModuleManager:
         _build_graph_recursive(module_name)
         return graph
 
-    def get_dependency_tree(self, module_name: str) -> dict[str, Any]:
+    def get_dependency_tree(
+        self, module_name: str, max_depth: int | None = None
+    ) -> dict[str, Any]:
         """Get hierarchical dependency tree for a module.
 
         Args:
             module_name: Name of the module to get dependency tree for
+            max_depth: Maximum depth to traverse (None for unlimited)
 
         Returns:
             Nested dictionary representing the dependency tree.
@@ -234,7 +237,9 @@ class ModuleManager:
         visited: set[str] = set()
         visiting: set[str] = set()  # For circular dependency detection
 
-        def _build_tree_recursive(mod_name: str) -> dict[str, Any]:
+        def _build_tree_recursive(
+            mod_name: str, current_depth: int = 0
+        ) -> dict[str, Any]:
             if mod_name in visiting:
                 # Circular dependency detected
                 cycle_path = list(visiting) + [mod_name]
@@ -246,6 +251,10 @@ class ModuleManager:
                 # Already processed module, return empty to avoid infinite recursion
                 return {}
 
+            # Check if we've reached max depth
+            if max_depth is not None and current_depth >= max_depth:
+                return {}
+
             visiting.add(mod_name)
 
             # Get codependencies for current module
@@ -254,7 +263,7 @@ class ModuleManager:
 
             # Build subtree for each codependency
             for dep in codependencies:
-                tree[dep] = _build_tree_recursive(dep)
+                tree[dep] = _build_tree_recursive(dep, current_depth + 1)
 
             visiting.remove(mod_name)
             visited.add(mod_name)
@@ -262,6 +271,38 @@ class ModuleManager:
             return tree
 
         return {module_name: _build_tree_recursive(module_name)}
+
+    def get_dependencies_at_depth(
+        self, module_names: list[str], max_depth: int | None = None
+    ) -> list[str]:
+        """Get all dependencies up to a specified depth for a list of modules.
+
+        Args:
+            module_names: List of module names to get dependencies for
+            max_depth: Maximum depth to traverse (None for unlimited)
+
+        Returns:
+            Sorted list of unique dependency names (excluding input modules)
+        """
+        module_set = set(module_names)
+        all_deps = set()
+
+        for module_name in module_names:
+            dep_tree = self.get_dependency_tree(module_name, max_depth=max_depth)
+
+            # Flatten the tree to get all dependencies
+            def _flatten_tree(tree: dict[str, Any]) -> set[str]:
+                deps = set()
+                for key, subtree in tree.items():
+                    if key not in module_set:
+                        deps.add(key)
+                    if isinstance(subtree, dict) and subtree:
+                        deps.update(_flatten_tree(subtree))
+                return deps
+
+            all_deps.update(_flatten_tree(dep_tree))
+
+        return sorted(all_deps - module_set)
 
     def get_install_order(self, *module_names: str) -> list[str]:
         """Get the proper installation order for one or more modules and

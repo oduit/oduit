@@ -613,29 +613,37 @@ class TestCLICommands(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        mock_manager_instance.get_dependency_tree.assert_called_once_with("my_module")
+        mock_manager_instance.get_dependency_tree.assert_called_once_with(
+            "my_module", max_depth=None
+        )
         self.assertIn("my_module", result.output)
         self.assertIn("base", result.output)
         self.assertIn("└──", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
-    def test_list_depends_tree_multiple_modules_error(
+    def test_list_depends_tree_multiple_modules(
         self, mock_config_loader_class, mock_module_manager
     ):
-        """Test list-depends --tree with multiple modules (should error)."""
+        """Test list-depends --tree with multiple modules."""
         mock_loader_instance = MagicMock()
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
+        mock_manager_instance.get_dependency_tree.side_effect = [
+            {"module_a": {"dependencies": {"base": {}}}},
+            {"module_b": {"dependencies": {"base": {}, "web": {}}}},
+        ]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
             app, ["--env", "dev", "list-depends", "module_a,module_b", "--tree"]
         )
 
-        self.assertEqual(result.exit_code, 1)
-        self.assertIn("--tree option only supports a single module", result.output)
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(mock_manager_instance.get_dependency_tree.call_count, 2)
+        self.assertIn("module_a", result.output)
+        self.assertIn("module_b", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -658,6 +666,149 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Module not found", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_with_depth(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends command with --depth parameter."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_dependencies_at_depth.return_value = ["base", "web"]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "my_module", "--depth", "1"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_dependencies_at_depth.assert_called_once_with(
+            ["my_module"], max_depth=2
+        )
+        self.assertIn("base", result.output)
+        self.assertIn("web", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_with_depth_zero(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends command with --depth 0 (direct dependencies only)."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_dependencies_at_depth.return_value = ["base"]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "my_module", "--depth", "0"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_dependencies_at_depth.assert_called_once_with(
+            ["my_module"], max_depth=1
+        )
+        self.assertIn("base", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_tree_with_depth(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends --tree with --depth parameter."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_dependency_tree.return_value = {
+            "my_module": {"dependencies": {"base": {}}}
+        }
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "list-depends", "my_module", "--tree", "--depth", "0"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_dependency_tree.assert_called_once_with(
+            "my_module", max_depth=1
+        )
+        self.assertIn("my_module", result.output)
+        self.assertIn("└──", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_multiple_modules_with_depth(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends with multiple modules and --depth."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_dependencies_at_depth.return_value = [
+            "base",
+            "web",
+            "mail",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "list-depends", "module_a,module_b", "--depth", "1"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_dependencies_at_depth.assert_called_once_with(
+            ["module_a", "module_b"], max_depth=2
+        )
+        self.assertIn("base", result.output)
+        self.assertIn("web", result.output)
+        self.assertIn("mail", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_depends_tree_multiple_modules_with_depth(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends --tree with multiple modules and --depth."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_dependency_tree.side_effect = [
+            {"module_a": {"dependencies": {"base": {}}}},
+            {"module_b": {"dependencies": {"web": {}}}},
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "list-depends",
+                "module_a,module_b",
+                "--tree",
+                "--depth",
+                "0",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(mock_manager_instance.get_dependency_tree.call_count, 2)
+        mock_manager_instance.get_dependency_tree.assert_any_call(
+            "module_a", max_depth=1
+        )
+        mock_manager_instance.get_dependency_tree.assert_any_call(
+            "module_b", max_depth=1
+        )
+        self.assertIn("module_a", result.output)
+        self.assertIn("module_b", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")

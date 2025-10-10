@@ -75,16 +75,16 @@ def main():  # noqa: C901
         else:
             print(f"✗ Module {module_name} not found or has no manifest")
 
-        # Example 2: Get module dependencies
-        print(f"\nGetting dependencies for module: {module_name}")
-        dependencies = module_manager.get_module_dependencies(module_name)
+        # Example 2: Get module codependencies
+        print(f"\nGetting codependencies for module: {module_name}")
+        codependencies = module_manager.get_module_codependencies(module_name)
 
-        if dependencies:
-            print(f"✓ Module {module_name} has {len(dependencies)} dependencies:")
-            for dep in dependencies:
+        if codependencies:
+            print(f"✓ Module {module_name} has {len(codependencies)} codependencies:")
+            for dep in codependencies:
                 print(f"  - {dep}")
         else:
-            print(f"✓ Module {module_name} has no dependencies")
+            print(f"✓ Module {module_name} has no codependencies")
 
         # Example 3: Build complete dependency graph
         print(f"\nBuilding dependency graph for module: {module_name}")
@@ -113,9 +113,9 @@ def main():  # noqa: C901
         # Example 5: Test with a common module that has dependencies
         common_modules = ["web", "sale", "account", "stock"]
 
-        print("\nChecking dependencies for common modules...")
+        print("\nChecking codependencies for common modules...")
         for mod in common_modules:
-            deps = module_manager.get_module_dependencies(mod)
+            deps = module_manager.get_module_codependencies(mod)
             if deps:  # Only print if module exists and has dependencies
                 print(f"  {mod}: {', '.join(deps)}")
 

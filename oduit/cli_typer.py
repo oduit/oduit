@@ -887,6 +887,12 @@ def list_depends(
         "--tree",
         help="Display dependencies as a tree structure",
     ),
+    depth: int | None = typer.Option(
+        None,
+        "--depth",
+        help="Maximum depth of dependencies to show "
+        "(0=direct only, 1=direct+their deps, etc.)",
+    ),
 ):
     """List direct dependencies needed to install a set of modules.
 
@@ -920,34 +926,50 @@ def list_depends(
     try:
         module_list = [m.strip() for m in modules.split(",")]
 
-        if tree:
-            if len(module_list) != 1:
-                print_error("--tree option only supports a single module")
-                raise typer.Exit(1) from None
+        # Adjust depth for tree depth vs dependency level
+        # depth=0 means direct deps, which is depth=1 in tree (root + 1 level)
+        tree_depth = depth + 1 if depth is not None else None
 
-            module_name = module_list[0]
+        if tree:
+            # Tree mode: display hierarchical tree for each module
             try:
-                dep_tree = module_manager.get_dependency_tree(module_name)
-                lines = format_dependency_tree(
-                    module_name, dep_tree, module_manager, "", True, set()
-                )
-                for line in lines:
-                    print(line)
+                for i, module_name in enumerate(module_list):
+                    dep_tree = module_manager.get_dependency_tree(
+                        module_name, max_depth=tree_depth
+                    )
+                    lines = format_dependency_tree(
+                        module_name, dep_tree, module_manager, "", True, set()
+                    )
+                    for line in lines:
+                        print(line)
+                    # Add blank line between multiple modules
+                    if i < len(module_list) - 1:
+                        print()
             except ValueError as e:
                 print_error(str(e))
                 raise typer.Exit(1) from None
         else:
-            dependencies = module_manager.get_direct_dependencies(*module_list)
+            # List mode: get flat list of dependencies
+            if depth is not None:
+                # When depth is specified, collect dependencies level by level
+                dependencies = module_manager.get_dependencies_at_depth(
+                    module_list, max_depth=tree_depth
+                )
+            else:
+                # Default: get all direct dependencies (external modules)
+                dependencies = module_manager.get_direct_dependencies(*module_list)
+
             if separator:
                 if dependencies:
                     print(separator.join(dependencies))
             elif dependencies:
                 if len(module_list) == 1:
-                    print(f"Direct dependencies for '{modules}':")
+                    depth_str = f" (depth {depth})" if depth is not None else ""
+                    print(f"Direct dependencies for '{modules}'{depth_str}:")
                 else:
-                    print(
-                        f"Direct dependencies for modules [{', '.join(module_list)}]:"
-                    )
+                    depth_str = f" (depth {depth})" if depth is not None else ""
+                    modules_str = f"[{', '.join(module_list)}]"
+                    print(f"Direct dependencies for modules {modules_str}{depth_str}:")
                 for dep in dependencies:
                     print(f"  - {dep}")
             else:

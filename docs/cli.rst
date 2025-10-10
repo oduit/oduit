@@ -407,6 +407,7 @@ recursively checks all transitive dependencies.
 **Options:**
 
 - ``--tree``: Display dependencies as a hierarchical tree structure
+- ``--depth INTEGER``: Maximum depth of dependencies to show (0=direct only, 1=direct+their deps, etc.)
 - ``--separator TEXT``: Separator for list output (e.g., ",")
 
 **Examples:**
@@ -424,6 +425,21 @@ recursively checks all transitive dependencies.
 
    # Output as comma-separated list
    oduit --env dev list-depends sale --separator ","
+
+   # Show only direct dependencies
+   oduit --env dev list-depends sale --depth 0
+
+   # Show direct dependencies and their dependencies
+   oduit --env dev list-depends sale --depth 1
+
+   # Show tree with limited depth
+   oduit --env dev list-depends sale --tree --depth 1
+
+   # Multiple modules with depth limit
+   oduit --env dev list-depends sale,purchase --depth 0
+
+   # Tree view for multiple modules
+   oduit --env dev list-depends sale,purchase --tree
 
 **Tree View:**
 
@@ -443,7 +459,7 @@ Features:
 - Shows module versions in parentheses
 - Uses box-drawing characters (└──, ├──, │) for tree structure
 - Detects and marks circular dependencies with ⬆ symbol
-- Only supports single module (multiple modules will error)
+- Supports multiple modules (displays trees separately with blank line separator)
 
 **Output:**
 
