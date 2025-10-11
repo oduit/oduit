@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from manifestoo_core.odoo_series import OdooSeries
+
 
 class OutputFormat(str, Enum):
     """Output format options."""
@@ -79,6 +81,7 @@ class GlobalConfig:
     no_http: bool = False
     env_config: dict[str, Any] | None = None
     env_name: str | None = None
+    odoo_series: OdooSeries | None = None
 
 
 @dataclass

@@ -6,6 +6,9 @@
 
 from typing import Any
 
+from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
+from manifestoo_core.odoo_series import OdooSeries, detect_from_addon_version
+
 from .addons_path_manager import AddonsPathManager
 from .manifest import (
     InvalidManifestError,
@@ -434,3 +437,76 @@ class ModuleManager:
                 continue
 
         return sorted(reverse_deps)
+
+    def detect_odoo_series(self) -> OdooSeries | None:
+        """Detect the Odoo series from available modules.
+
+        Scans all available modules and attempts to detect the Odoo series
+        from their version strings.
+
+        Returns:
+            OdooSeries if detected, None if unable to detect
+        """
+        module_dirs = self.find_module_dirs()
+
+        for module_name in module_dirs:
+            manifest = self.get_manifest(module_name)
+            if manifest and manifest.version:
+                series = detect_from_addon_version(manifest.version)
+                if series:
+                    return series
+
+        return None
+
+    def get_module_version_display(
+        self, module_name: str, odoo_series: OdooSeries | None = None
+    ) -> str:
+        """Get formatted version string for display in dependency trees.
+
+        Args:
+            module_name: Name of the module
+            odoo_series: Detected Odoo series (if None, will try to detect)
+
+        Returns:
+            Formatted version string:
+            - "16.0+ce" for core CE addons
+            - "16.0+ee" for core EE addons
+            - "1.0.2" for custom addons (actual version)
+            - "✘ not installed" for missing addons
+        """
+        manifest = self.get_manifest(module_name)
+
+        if not manifest:
+            return "✘ not installed"
+
+        if odoo_series is None:
+            odoo_series = self.detect_odoo_series()
+
+        if odoo_series:
+            if is_core_ce_addon(module_name, odoo_series):
+                return f"{odoo_series.value}+ce"
+            elif is_core_ee_addon(module_name, odoo_series):
+                return f"{odoo_series.value}+ee"
+
+        return manifest.version
+
+    def get_formatted_dependency_tree(
+        self, module_name: str, max_depth: int | None = None
+    ) -> list[str]:
+        """Get formatted dependency tree for display.
+
+        Args:
+            module_name: Name of the module to get dependency tree for
+            max_depth: Maximum depth to traverse (None for unlimited)
+
+        Returns:
+            List of formatted lines representing the dependency tree
+        """
+        from .utils import format_dependency_tree
+
+        odoo_series = self.detect_odoo_series()
+        dep_tree = self.get_dependency_tree(module_name, max_depth=max_depth)
+
+        return format_dependency_tree(
+            module_name, dep_tree, self, odoo_series=odoo_series
+        )

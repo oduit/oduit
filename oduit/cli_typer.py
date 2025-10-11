@@ -10,6 +10,7 @@ import functools
 import os
 
 import typer
+from manifestoo_core.odoo_series import OdooSeries
 
 from .cli_types import (
     AddonListType,
@@ -66,12 +67,20 @@ DEV_OPTION = typer.Option(
     ),
 )
 
+ODOO_SERIES_OPTION = typer.Option(
+    None,
+    "--odoo-series",
+    envvar=["ODOO_VERSION", "ODOO_SERIES"],
+    help="Odoo series to use, in case it is not autodetected from addons version.",
+)
+
 
 def create_global_config(
     env: str | None = None,
     json: bool = False,
     verbose: bool = False,
     no_http: bool = False,
+    odoo_series: OdooSeries | None = None,
 ) -> GlobalConfig:
     """Create and validate global configuration."""
 
@@ -120,6 +129,7 @@ def create_global_config(
         no_http=no_http,
         env_config=env_config,
         env_name=env_name,
+        odoo_series=odoo_series,
     )
 
 
@@ -192,6 +202,7 @@ def main(
         "--no-http",
         help="Add --no-http flag to all odoo-bin commands",
     ),
+    odoo_series: OdooSeries | None = ODOO_SERIES_OPTION,
 ):
     """Odoo CLI tool for starting odoo-bin and running tasks."""
 
@@ -201,6 +212,7 @@ def main(
         "json": json,
         "verbose": verbose,
         "no_http": no_http,
+        "odoo_series": odoo_series,
     }
     if not ctx.invoked_subcommand:
         config_loader = ConfigLoader()
@@ -875,12 +887,16 @@ def _print_dependency_tree(
     module_list: list[str],
     module_manager: ModuleManager,
     tree_depth: int | None,
+    odoo_series: OdooSeries | None = None,
 ) -> None:
     """Print dependency tree for a list of modules."""
+    if odoo_series is None:
+        odoo_series = module_manager.detect_odoo_series()
+
     for i, module_name in enumerate(module_list):
         dep_tree = module_manager.get_dependency_tree(module_name, max_depth=tree_depth)
         lines = format_dependency_tree(
-            module_name, dep_tree, module_manager, "", True, set()
+            module_name, dep_tree, module_manager, "", True, set(), odoo_series
         )
         for line in lines:
             print(line)
@@ -1001,7 +1017,9 @@ def list_depends(
         tree_depth = depth + 1 if depth is not None else None
 
         if tree:
-            _print_dependency_tree(module_list, module_manager, tree_depth)
+            _print_dependency_tree(
+                module_list, module_manager, tree_depth, global_config.odoo_series
+            )
         else:
             _print_dependency_list(
                 module_list, module_manager, tree_depth, depth, separator, source_desc

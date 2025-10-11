@@ -83,6 +83,7 @@ def format_dependency_tree(
     prefix: str = "",
     is_last: bool = True,
     seen: set[str] | None = None,
+    odoo_series: Any | None = None,
 ) -> list[str]:
     """Format a dependency tree for display.
 
@@ -93,6 +94,7 @@ def format_dependency_tree(
         prefix: Current line prefix for indentation
         is_last: Whether this is the last item at this level
         seen: Set of already seen modules to detect cycles
+        odoo_series: Optional OdooSeries for enhanced version display
 
     Returns:
         List of formatted lines representing the tree
@@ -101,8 +103,12 @@ def format_dependency_tree(
         seen = set()
 
     lines = []
-    manifest = module_manager.get_manifest(module_name)
-    version = manifest.version if manifest else "unknown"
+
+    if odoo_series and hasattr(module_manager, "get_module_version_display"):
+        version = module_manager.get_module_version_display(module_name, odoo_series)
+    else:
+        manifest = module_manager.get_manifest(module_name)
+        version = manifest.version if manifest else "unknown"
 
     connector = "└── " if is_last else "├── "
 
@@ -117,7 +123,6 @@ def format_dependency_tree(
     codependencies = tree.get(module_name, {})
     if codependencies:
         extension = "    " if is_last else "│   "
-        # Filter out 'base' addon as it's always required
         dep_names = [dep for dep in codependencies.keys() if dep != "base"]
 
         for i, dep_name in enumerate(dep_names):
@@ -131,6 +136,7 @@ def format_dependency_tree(
                 prefix + extension,
                 is_last_dep,
                 seen.copy(),
+                odoo_series,
             )
             lines.extend(dep_lines)
 
