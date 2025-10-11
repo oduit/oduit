@@ -44,6 +44,13 @@ class ShellInterface(str, Enum):
     PYTHON = "python"
 
 
+class SortingChoice(str, Enum):
+    """Sorting options for addon lists."""
+
+    ALPHABETICAL = "alphabetical"
+    TOPOLOGICAL = "topological"
+
+
 class DevFeature(str, Enum):
     """Development features for --dev option.
 

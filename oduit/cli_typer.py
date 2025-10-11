@@ -74,6 +74,14 @@ ODOO_SERIES_OPTION = typer.Option(
     help="Odoo series to use, in case it is not autodetected from addons version.",
 )
 
+SORT_OPTION = typer.Option(
+    "alphabetical",
+    "--sort",
+    help="Choice between 'alphabetical' and 'topological'. "
+    "Topological sorting is useful when seeking a migration order.",
+    show_default=True,
+)
+
 
 def create_global_config(
     env: str | None = None,
@@ -840,6 +848,7 @@ def list_addons(
         "--separator",
         help="Separator for output (e.g., ',' for 'a,b,c')",
     ),
+    sorting: str = SORT_OPTION,
 ):
     """List available addons."""
     if ctx.obj is None:
@@ -864,14 +873,20 @@ def list_addons(
     module_manager = ModuleManager(global_config.env_config["addons_path"])
     addons = module_manager.find_module_dirs(filter_dir=select_dir)
 
+    try:
+        sorted_addons = module_manager.sort_modules(addons, sorting)
+    except ValueError as e:
+        print_error(f"Sorting failed: {e}")
+        raise typer.Exit(1) from None
+
     if separator:
-        print(separator.join(sorted(addons)))
+        print(separator.join(sorted_addons))
     elif type == AddonListType.ALL:
         if select_dir:
             print(f"Available addons in '{select_dir}' ({len(addons)} found):")
         else:
             print(f"Available addons ({len(addons)} found):")
-        for addon in sorted(addons):
+        for addon in sorted_addons:
             print(f"  - {addon}")
     else:
         print_warning(f"Filtering by type '{type.value}' not yet implemented")
@@ -879,7 +894,7 @@ def list_addons(
             print(f"Addons in '{select_dir}' ({len(addons)} found):")
         else:
             print(f"All available addons ({len(addons)} found):")
-        for addon in sorted(addons):
+        for addon in sorted_addons:
             print(f"  - {addon}")
 
 
@@ -911,6 +926,7 @@ def _print_dependency_list(
     depth: int | None,
     separator: str | None,
     source_desc: str,
+    sorting: str = "alphabetical",
 ) -> None:
     """Print flat list of dependencies."""
     if depth is not None:
@@ -920,13 +936,19 @@ def _print_dependency_list(
     else:
         dependencies = module_manager.get_direct_dependencies(*module_list)
 
+    try:
+        sorted_dependencies = module_manager.sort_modules(dependencies, sorting)
+    except ValueError as e:
+        print_error(f"Sorting failed: {e}")
+        sorted_dependencies = dependencies
+
     if separator:
-        if dependencies:
-            print(separator.join(dependencies))
-    elif dependencies:
+        if sorted_dependencies:
+            print(separator.join(sorted_dependencies))
+    elif sorted_dependencies:
         depth_str = f" (depth {depth})" if depth is not None else ""
         print(f"Direct dependencies for {source_desc}{depth_str}:")
-        for dep in dependencies:
+        for dep in sorted_dependencies:
             print(f"  - {dep}")
     else:
         print(f"No external dependencies for {source_desc}")
@@ -959,6 +981,7 @@ def list_depends(
         "--select-dir",
         help="Filter modules by directory (e.g., 'myaddons')",
     ),
+    sorting: str = SORT_OPTION,
 ):
     """List direct dependencies needed to install a set of modules.
 
@@ -1022,7 +1045,13 @@ def list_depends(
             )
         else:
             _print_dependency_list(
-                module_list, module_manager, tree_depth, depth, separator, source_desc
+                module_list,
+                module_manager,
+                tree_depth,
+                depth,
+                separator,
+                source_desc,
+                sorting,
             )
     except ValueError as e:
         print_error(f"Error checking dependencies: {e}")

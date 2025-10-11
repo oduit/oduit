@@ -4,12 +4,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
+from graphlib import TopologicalSorter
 from typing import Any
 
 from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
 from manifestoo_core.odoo_series import OdooSeries, detect_from_addon_version
 
 from .addons_path_manager import AddonsPathManager
+from .cli_types import SortingChoice
 from .manifest import (
     InvalidManifestError,
     Manifest,
@@ -510,3 +512,64 @@ class ModuleManager:
         return format_dependency_tree(
             module_name, dep_tree, self, odoo_series=odoo_series
         )
+
+    def sort_modules(
+        self,
+        module_names: list[str],
+        sorting: SortingChoice | str = SortingChoice.ALPHABETICAL,
+    ) -> list[str]:
+        """Sort module names according to the specified sorting method.
+
+        Args:
+            module_names: List of module names to sort
+            sorting: Sorting method - either 'alphabetical' or 'topological'
+
+        Returns:
+            Sorted list of module names
+
+        Raises:
+            ValueError: If circular dependency is detected in topological sort
+        """
+        if isinstance(sorting, str):
+            sorting = SortingChoice(sorting)
+
+        if sorting == SortingChoice.ALPHABETICAL:
+            return sorted(module_names)
+        elif sorting == SortingChoice.TOPOLOGICAL:
+            return self._sort_topological(module_names)
+        else:
+            return sorted(module_names)
+
+    def _sort_topological(self, module_names: list[str]) -> list[str]:
+        """Sort modules topologically based on their dependencies.
+
+        Args:
+            module_names: List of module names to sort
+
+        Returns:
+            Topologically sorted list of module names
+
+        Raises:
+            ValueError: If circular dependency is detected
+        """
+        if not module_names:
+            return []
+
+        module_set = set(module_names)
+        graph: dict[str, set[str]] = {}
+
+        for module_name in module_names:
+            manifest = self.get_manifest(module_name)
+            if manifest:
+                deps_in_set = {
+                    dep for dep in manifest.codependencies if dep in module_set
+                }
+                graph[module_name] = deps_in_set
+            else:
+                graph[module_name] = set()
+
+        try:
+            ts = TopologicalSorter(graph)
+            return list(ts.static_order())
+        except ValueError as e:
+            raise ValueError(f"Circular dependency detected: {e}") from e

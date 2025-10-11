@@ -397,6 +397,7 @@ class TestCLICommands(unittest.TestCase):
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
         mock_manager_instance.find_module_dirs.return_value = ["sale", "purchase"]
+        mock_manager_instance.sort_modules.return_value = ["purchase", "sale"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(app, ["--env", "dev", "list-addons"])
@@ -416,6 +417,7 @@ class TestCLICommands(unittest.TestCase):
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
         mock_manager_instance.find_module_dirs.return_value = ["module1", "module2"]
+        mock_manager_instance.sort_modules.return_value = ["module1", "module2"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -442,6 +444,7 @@ class TestCLICommands(unittest.TestCase):
             "web",
             "sale",
         ]
+        mock_manager_instance.sort_modules.return_value = ["base", "web", "sale"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(app, ["--env", "dev", "list-depends", "my_module"])
@@ -465,6 +468,7 @@ class TestCLICommands(unittest.TestCase):
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
         mock_manager_instance.get_direct_dependencies.return_value = []
+        mock_manager_instance.sort_modules.return_value = []
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(app, ["--env", "dev", "list-depends", "my_module"])
@@ -552,6 +556,7 @@ class TestCLICommands(unittest.TestCase):
             "purchase",
             "crm",
         ]
+        mock_manager_instance.sort_modules.return_value = ["crm", "purchase", "sale"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -576,6 +581,7 @@ class TestCLICommands(unittest.TestCase):
             "web",
             "sale",
         ]
+        mock_manager_instance.sort_modules.return_value = ["base", "web", "sale"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -679,6 +685,7 @@ class TestCLICommands(unittest.TestCase):
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
         mock_manager_instance.get_dependencies_at_depth.return_value = ["base", "web"]
+        mock_manager_instance.sort_modules.return_value = ["base", "web"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -703,6 +710,7 @@ class TestCLICommands(unittest.TestCase):
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
         mock_manager_instance.get_dependencies_at_depth.return_value = ["base"]
+        mock_manager_instance.sort_modules.return_value = ["base"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -756,6 +764,7 @@ class TestCLICommands(unittest.TestCase):
             "web",
             "mail",
         ]
+        mock_manager_instance.sort_modules.return_value = ["base", "web", "mail"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -826,6 +835,7 @@ class TestCLICommands(unittest.TestCase):
             "base",
             "web",
         ]
+        mock_manager_instance.sort_modules.return_value = ["base", "web"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -858,6 +868,7 @@ class TestCLICommands(unittest.TestCase):
             "web",
             "sale",
         ]
+        mock_manager_instance.sort_modules.return_value = ["base", "web", "sale"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -888,6 +899,7 @@ class TestCLICommands(unittest.TestCase):
         mock_manager_instance = MagicMock()
         mock_manager_instance.find_module_dirs.return_value = ["module1", "module2"]
         mock_manager_instance.get_dependencies_at_depth.return_value = ["base"]
+        mock_manager_instance.sort_modules.return_value = ["base"]
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
