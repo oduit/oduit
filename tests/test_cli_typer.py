@@ -617,7 +617,8 @@ class TestCLICommands(unittest.TestCase):
             "my_module", max_depth=None
         )
         self.assertIn("my_module", result.output)
-        self.assertIn("base", result.output)
+        # 'base' addon should be filtered out as it's always required
+        self.assertNotIn("base", result.output)
         self.assertIn("└──", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")

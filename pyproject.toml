@@ -20,7 +20,8 @@ dependencies = [
     "PyYAML>=5.4",
     "tomli>=1.2.0;python_version<'3.11'",
     "tomli-w>=1.0.0",
-    "typer"
+    "typer",
+    "manifestoo-core>=1.5"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -117,7 +117,8 @@ def format_dependency_tree(
     codependencies = tree.get(module_name, {})
     if codependencies:
         extension = "    " if is_last else "│   "
-        dep_names = list(codependencies.keys())
+        # Filter out 'base' addon as it's always required
+        dep_names = [dep for dep in codependencies.keys() if dep != "base"]
 
         for i, dep_name in enumerate(dep_names):
             is_last_dep = i == len(dep_names) - 1

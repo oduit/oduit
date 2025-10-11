@@ -4,9 +4,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import ast
 import os
+from pathlib import Path
 from typing import Any
+
+from manifestoo_core.exceptions import InvalidManifest as ManifestooInvalidManifest
+from manifestoo_core.manifest import Manifest as ManifestooManifest
+from manifestoo_core.manifest import get_manifest_path
 
 
 class ManifestError(Exception):
@@ -22,7 +26,11 @@ class ManifestNotFoundError(ManifestError):
 
 
 class Manifest:
-    """Represents an Odoo module manifest (__manifest__.py)."""
+    """Represents an Odoo module manifest (__manifest__.py).
+
+    This is a wrapper around manifestoo-core's Manifest class that provides
+    backward compatibility with the original oduit API.
+    """
 
     def __init__(self, module_path: str):
         """Initialize Manifest from a module directory path.
@@ -36,7 +44,7 @@ class Manifest:
         """
         self.module_path = module_path
         self.module_name = os.path.basename(module_path)
-        self._data = self._load_manifest()
+        self._manifestoo = self._load_manifest()
 
     @classmethod
     def from_dict(
@@ -51,50 +59,38 @@ class Manifest:
         Returns:
             Manifest instance
         """
-        # Create a mock instance without loading from file
         instance = cls.__new__(cls)
         instance.module_path = f"/mock/path/{module_name}"
         instance.module_name = module_name
-        instance._data = data
+        try:
+            instance._manifestoo = ManifestooManifest.from_dict(data)
+        except ManifestooInvalidManifest as e:
+            raise InvalidManifestError(str(e)) from e
         return instance
 
-    def _load_manifest(self) -> dict[str, Any]:
+    def _load_manifest(self) -> ManifestooManifest:
         """Load and parse the __manifest__.py file.
 
         Returns:
-            Dictionary containing manifest data
+            ManifestooManifest instance
 
         Raises:
             ManifestNotFoundError: If __manifest__.py is not found
             InvalidManifestError: If manifest contains invalid syntax or structure
         """
-        manifest_path = os.path.join(self.module_path, "__manifest__.py")
+        module_path_obj = Path(self.module_path)
+        manifest_path = get_manifest_path(module_path_obj)
 
-        if not os.path.exists(manifest_path):
-            raise ManifestNotFoundError(f"Manifest file not found: {manifest_path}")
+        if manifest_path is None:
+            raise ManifestNotFoundError(
+                f"Manifest file not found in: {self.module_path}"
+            )
 
         try:
-            with open(manifest_path, encoding="utf-8") as f:
-                manifest_content = f.read()
-
-            # Use ast.literal_eval for safe evaluation of Python literals
-            manifest_dict = ast.literal_eval(manifest_content)
-
-            # Validate that we got a dictionary
-            if not isinstance(manifest_dict, dict):
-                raise InvalidManifestError(
-                    f"Manifest for {self.module_name} is not a dictionary"
-                )
-
-            return manifest_dict
-
-        except FileNotFoundError as e:
-            raise ManifestNotFoundError(
-                f"Manifest file not found: {manifest_path}"
-            ) from e
-        except (SyntaxError, ValueError) as e:
+            return ManifestooManifest.from_file(manifest_path)
+        except ManifestooInvalidManifest as e:
             raise InvalidManifestError(
-                f"Invalid manifest syntax in {self.module_name}: {e}"
+                f"Invalid manifest in {self.module_name}: {e}"
             ) from e
         except Exception as e:
             raise InvalidManifestError(
@@ -104,12 +100,14 @@ class Manifest:
     @property
     def name(self) -> str:
         """Get the module name from manifest or use directory name as fallback."""
-        return self._data.get("name", self.module_name)
+        manifest_name = self._manifestoo.name
+        return manifest_name if manifest_name else self.module_name
 
     @property
     def version(self) -> str:
         """Get the module version."""
-        return self._data.get("version", "1.0.0")
+        version = self._manifestoo.version
+        return version if version else "1.0.0"
 
     @property
     def codependencies(self) -> list[str]:
@@ -121,9 +119,8 @@ class Manifest:
         Returns:
             List of codependency module names, empty list if no codependencies
         """
-        depends = self._data.get("depends", [])
+        depends = self._manifestoo.manifest_dict.get("depends", [])
 
-        # Ensure depends is a list and contains only strings
         if not isinstance(depends, list):
             return []
 
@@ -132,42 +129,55 @@ class Manifest:
     @property
     def installable(self) -> bool:
         """Check if the module is installable."""
-        return self._data.get("installable", True)
+        return self._manifestoo.installable
 
     @property
     def auto_install(self) -> bool:
         """Check if the module is auto-installable."""
-        return self._data.get("auto_install", False)
+        auto_install = self._manifestoo.manifest_dict.get("auto_install", False)
+        if isinstance(auto_install, bool):
+            return auto_install
+        return False
 
     @property
     def summary(self) -> str:
         """Get the module summary/description."""
-        return self._data.get("summary", "")
+        summary = self._manifestoo.summary
+        return summary if summary else ""
 
     @property
     def description(self) -> str:
         """Get the module description."""
-        return self._data.get("description", "")
+        description = self._manifestoo.description
+        return description if description else ""
 
     @property
     def author(self) -> str:
         """Get the module author."""
-        return self._data.get("author", "")
+        author = self._manifestoo.author
+        return author if author else ""
 
     @property
     def website(self) -> str:
         """Get the module website."""
-        return self._data.get("website", "")
+        website = self._manifestoo.website
+        return website if website else ""
 
     @property
     def license(self) -> str:
         """Get the module license."""
-        return self._data.get("license", "")
+        license_str = self._manifestoo.license
+        return license_str if license_str else ""
 
     @property
     def external_dependencies(self) -> dict[str, list[str]]:
         """Get external dependencies (python packages, system binaries)."""
-        return self._data.get("external_dependencies", {})
+        ext_deps = self._manifestoo.external_dependencies
+        result: dict[str, list[str]] = {}
+        for key, value in ext_deps.items():
+            if isinstance(value, list):
+                result[key] = [str(v) for v in value if isinstance(v, str)]
+        return result
 
     @property
     def python_dependencies(self) -> list[str]:
@@ -181,7 +191,7 @@ class Manifest:
 
     def get_raw_data(self) -> dict[str, Any]:
         """Get the raw manifest data dictionary."""
-        return self._data.copy()
+        return self._manifestoo.manifest_dict.copy()
 
     def is_installable(self) -> bool:
         """Check if the module is installable (alias for installable property)."""
@@ -205,20 +215,18 @@ class Manifest:
             List of validation warnings (empty if no issues)
         """
         warnings = []
+        raw_data = self._manifestoo.manifest_dict
 
-        # Check for required fields in raw data
-        if "name" not in self._data:
+        if "name" not in raw_data:
             warnings.append("Missing 'name' field")
 
-        if "version" not in self._data:
+        if "version" not in raw_data:
             warnings.append("Missing 'version' field")
 
-        # Check for recommended fields
         if not self.summary and not self.description:
             warnings.append("Missing 'summary' or 'description' field")
 
-        # Check dependencies format
-        depends = self._data.get("depends")
+        depends = raw_data.get("depends")
         if depends is not None and not isinstance(depends, list):
             warnings.append("'depends' field should be a list")
 

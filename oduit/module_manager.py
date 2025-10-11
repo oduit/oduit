@@ -166,7 +166,7 @@ class ModuleManager:
                 graph = self.build_dependency_graph(module_name)
                 # Collect all modules in the graph that are not in our module set
                 for module in graph:
-                    if module not in module_set:
+                    if module not in module_set and module != "base":
                         direct_deps.add(module)
             except ValueError:
                 # Skip modules with errors
@@ -294,7 +294,7 @@ class ModuleManager:
             def _flatten_tree(tree: dict[str, Any]) -> set[str]:
                 deps = set()
                 for key, subtree in tree.items():
-                    if key not in module_set:
+                    if key not in module_set and key != "base":
                         deps.add(key)
                     if isinstance(subtree, dict) and subtree:
                         deps.update(_flatten_tree(subtree))
