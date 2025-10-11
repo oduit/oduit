@@ -913,10 +913,16 @@ def _print_dependency_tree(
         lines = format_dependency_tree(
             module_name, dep_tree, module_manager, "", True, set(), odoo_series
         )
-        for line in lines:
-            print(line)
+        for module_part, version_part in lines:
+            typer.echo(module_part, nl=False)
+            if version_part == " ⬆":
+                typer.secho(version_part, fg="bright_black")
+            elif version_part:
+                typer.secho(version_part, fg="bright_black")
+            else:
+                typer.echo("")
         if i < len(module_list) - 1:
-            print()
+            typer.echo()
 
 
 def _print_dependency_list(

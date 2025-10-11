@@ -84,7 +84,7 @@ def format_dependency_tree(
     is_last: bool = True,
     seen: set[str] | None = None,
     odoo_series: Any | None = None,
-) -> list[str]:
+) -> list[tuple[str, str]]:
     """Format a dependency tree for display.
 
     Args:
@@ -97,7 +97,7 @@ def format_dependency_tree(
         odoo_series: Optional OdooSeries for enhanced version display
 
     Returns:
-        List of formatted lines representing the tree
+        List of tuples (module_part, version_part) for each line
     """
     if seen is None:
         seen = set()
@@ -112,12 +112,12 @@ def format_dependency_tree(
 
     connector = "└── " if is_last else "├── "
 
-    is_cycle = module_name in seen
-    if is_cycle:
-        lines.append(f"{prefix}{connector}{module_name} ⬆")
+    is_repeated = module_name in seen
+    if is_repeated:
+        lines.append((f"{prefix}{connector}{module_name}", " ⬆"))
         return lines
 
-    lines.append(f"{prefix}{connector}{module_name} ({version})")
+    lines.append((f"{prefix}{connector}{module_name} ", f"({version})"))
     seen.add(module_name)
 
     codependencies = tree.get(module_name, {})
@@ -135,7 +135,7 @@ def format_dependency_tree(
                 module_manager,
                 prefix + extension,
                 is_last_dep,
-                seen.copy(),
+                seen,
                 odoo_series,
             )
             lines.extend(dep_lines)

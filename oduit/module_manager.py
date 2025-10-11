@@ -509,9 +509,12 @@ class ModuleManager:
         odoo_series = self.detect_odoo_series()
         dep_tree = self.get_dependency_tree(module_name, max_depth=max_depth)
 
-        return format_dependency_tree(
+        lines_tuples = format_dependency_tree(
             module_name, dep_tree, self, odoo_series=odoo_series
         )
+        return [
+            f"{module_part}{version_part}" for module_part, version_part in lines_tuples
+        ]
 
     def sort_modules(
         self,
