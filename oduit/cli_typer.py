@@ -240,6 +240,7 @@ def main(
             print("  list-addons        List available addons")
             print("  list-depends MODULES   List direct dependencies for installation")
             print("  list-codepends MODULE  List codependencies of a module")
+            print("  list-missing MODULES   Find missing dependencies")
             print("  export-lang MODULE Export language translations")
             print("  print-config       Print environment configuration")
             print("")
@@ -256,7 +257,10 @@ def main(
             print("")
             print("Available commands:")
             print("  run, shell, install, update, test, create-db, list-db, list-env")
-            print("  create-addon, list-addons, list-depends, list-codepends")
+            print(
+                "  create-addon, list-addons, list-depends, list-codepends, "
+                "list-missing"
+            )
             print("  export-lang, print-config")
             print("")
             print("Examples:")
@@ -881,21 +885,9 @@ def list_addons(
 
     if separator:
         print(separator.join(sorted_addons))
-    elif type == AddonListType.ALL:
-        if select_dir:
-            print(f"Available addons in '{select_dir}' ({len(addons)} found):")
-        else:
-            print(f"Available addons ({len(addons)} found):")
-        for addon in sorted_addons:
-            print(f"  - {addon}")
     else:
-        print_warning(f"Filtering by type '{type.value}' not yet implemented")
-        if select_dir:
-            print(f"Addons in '{select_dir}' ({len(addons)} found):")
-        else:
-            print(f"All available addons ({len(addons)} found):")
         for addon in sorted_addons:
-            print(f"  - {addon}")
+            print(addon)
 
 
 def _print_dependency_tree(
@@ -1118,6 +1110,89 @@ def list_codepends(
             print(f"{dep}")
     else:
         print_info(f"Module '{module}' has no codependencies")
+
+
+@app.command("list-missing")
+def list_missing(
+    ctx: typer.Context,
+    modules: str | None = typer.Argument(
+        None, help="Comma-separated module names to check for missing dependencies"
+    ),
+    separator: str | None = typer.Option(
+        None,
+        "--separator",
+        help="Separator for output (e.g., ',' for 'a,b,c')",
+    ),
+    select_dir: str | None = typer.Option(
+        None,
+        "--select-dir",
+        help="Filter modules by directory (e.g., 'myaddons')",
+    ),
+):
+    """Find missing dependencies for modules.
+
+    This command identifies dependencies that are not available in the addons_path.
+    Useful for ensuring all required modules are present before installation.
+
+    Use --select-dir to check all modules in a specific directory.
+    """
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    module_manager = ModuleManager(global_config.env_config["addons_path"])
+
+    if modules is None and select_dir is None:
+        print_error("Either provide module names or use --select-dir option")
+        raise typer.Exit(1) from None
+
+    if modules is not None and select_dir is not None:
+        print_error("Cannot use both module names and --select-dir option")
+        raise typer.Exit(1) from None
+
+    try:
+        if select_dir:
+            module_list = module_manager.find_module_dirs(filter_dir=select_dir)
+            if not module_list:
+                print_error(f"No modules found in directory '{select_dir}'")
+                raise typer.Exit(1) from None
+        else:
+            assert modules is not None
+            module_list = [m.strip() for m in modules.split(",")]
+
+        all_missing = set()
+        for module in module_list:
+            missing = module_manager.find_missing_dependencies(module)
+            all_missing.update(missing)
+
+        if all_missing:
+            sorted_missing = sorted(all_missing)
+            if separator:
+                print(separator.join(sorted_missing))
+            else:
+                for dep in sorted_missing:
+                    print(dep)
+        else:
+            if not separator:
+                print_info("All dependencies are available")
+    except ValueError as e:
+        print_error(f"Error checking missing dependencies: {e}")
+        raise typer.Exit(1) from None
 
 
 @app.command("export-lang")
