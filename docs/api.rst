@@ -14,6 +14,9 @@ Core Modules
    api/odoo_operations
    api/odoo_code_executor
    api/module_manager
+   api/manifest
+   api/manifest_collection
+   api/addons_path_manager
    api/demo_process_manager
 
 Command Line Interface
