@@ -400,6 +400,13 @@ class DemoProcessManager(BaseProcessManager):
 
         return "\n".join(output_lines)
 
+    def _extract_module_name(self, cmd: list[str]) -> str:
+        """Extract module name from command line arguments"""
+        for i, arg in enumerate(cmd):
+            if arg in ["-i", "-u", "--init", "--update"] and i + 1 < len(cmd):
+                return cmd[i + 1]
+        return "unknown_module"
+
     def run_command(
         self,
         cmd: list[str],
@@ -458,7 +465,7 @@ class DemoProcessManager(BaseProcessManager):
         # Determine operation type and simulate different stages
         if "-i" in cmd or "-u" in cmd:
             # Module install/update operation
-            module_name = self._extract_module_name(cmd)
+            module_name = self._extract_module_name(cmd)  # type: ignore[attr-defined]
             stages = [
                 f"Loading configuration for module: {module_name}",
                 "Checking module dependencies...",
@@ -561,7 +568,7 @@ class DemoProcessManager(BaseProcessManager):
             print(f"[DEMO] Processing {operation} for module: {module}")
 
         # Get log stream for this module
-        log_stream = module_info.get(
+        log_stream = module_info.get(  # type: ignore[attr-defined]
             "log_stream",
             [
                 "INFO odoo: Odoo version 17.0",
@@ -573,14 +580,14 @@ class DemoProcessManager(BaseProcessManager):
         output = self._stream_logs(log_stream, verbose and not suppress_output)
 
         # Generate result based on module status
-        status = module_info["status"]
+        status = module_info["status"]  # type: ignore[index]
 
         if status == "error":
             return {
                 "success": False,
                 "return_code": 1,
                 "output": output,
-                "stderr": module_info.get("stderr", f"Module {module} has errors"),
+                "stderr": module_info.get("stderr", f"Module {module} has errors"),  # type: ignore[attr-defined]
                 "command": " ".join(cmd),
             }
         elif status == "warning":
@@ -620,7 +627,7 @@ class DemoProcessManager(BaseProcessManager):
         # Get predefined test scenarios based on module name
         if module in TEST_SCENARIOS:
             scenario = TEST_SCENARIOS[module]
-            test_logs = scenario["logs"].copy()
+            test_logs = scenario["logs"].copy()  # type: ignore[attr-defined]
 
             # Stream the logs progressively (with timestamps for INFO lines)
             output_lines = []
@@ -974,8 +981,12 @@ class DemoProcessManager(BaseProcessManager):
         suppress_output: bool = False,
     ) -> dict[str, Any]:
         """Simulate shell command execution"""
+        if isinstance(cmd, str):
+            cmd_list: list[str] = [cmd]
+        else:
+            cmd_list = cmd
         return self._simulate_shell_operation(
-            cmd, verbose=verbose, suppress_output=False
+            cmd_list, verbose=verbose, suppress_output=False
         )
 
     @staticmethod

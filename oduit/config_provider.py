@@ -33,9 +33,9 @@ class ConfigProvider:
                     - Mixed format: some keys at root level, some in sections
         """
         self._raw_config = config
-        self._binaries = {}
-        self._odoo_params = {}
-        self._other_config = {}
+        self._binaries: dict[str, Any] = {}
+        self._odoo_params: dict[str, Any] = {}
+        self._other_config: dict[str, Any] = {}
 
         self._parse_config()
 

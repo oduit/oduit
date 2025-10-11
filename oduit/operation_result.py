@@ -257,7 +257,7 @@ class OperationResult:
 
     def _parse_install_results(self, output: str) -> dict[str, Any]:
         """Parse Odoo install output to extract installation errors and dependencies"""
-        install_info = {
+        install_info: dict[str, Any] = {
             "success": True,
             "modules_loaded": 0,
             "total_modules": 0,
@@ -334,7 +334,7 @@ class OperationResult:
 
     def _parse_test_results(self, output: str) -> dict[str, Any]:
         """Parse Odoo test output to extract test statistics and error details"""
-        test_info = {
+        test_info: dict[str, Any] = {
             "total_tests": 0,
             "passed_tests": 0,
             "failed_tests": 0,
@@ -381,7 +381,7 @@ class OperationResult:
             fail_match = re.search(r"FAIL:\s+(.+)", line)
             if fail_match:
                 test_name = fail_match.group(1)
-                failure_info = {
+                failure_info: dict[str, Any] = {
                     "test_name": test_name,
                     "traceback": [],
                     "file": None,

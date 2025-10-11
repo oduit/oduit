@@ -158,7 +158,7 @@ class OdooEmbeddedManager:
                 preload = config["db_name"].split(",")  # type: ignore
                 for db_name in preload:
                     try:
-                        odoo.service.db._create_empty_database(db_name)
+                        odoo.service.db._create_empty_database(db_name)  # type: ignore[attr-defined]
                         config["init"]["base"] = True  # type: ignore
                     except ProgrammingError as err:
                         if err.pgcode == errorcodes.INSUFFICIENT_PRIVILEGE:
@@ -190,7 +190,7 @@ class OdooEmbeddedManager:
             print_info("Starting embedded Odoo server...")
             self._is_running = True
 
-            return odoo.service.server.start(preload=preload, stop=stop_after_init)
+            return odoo.service.server.start(preload=preload, stop=stop_after_init)  # type: ignore[no-any-return]
 
         except Exception as e:
             print_error(f"Failed to start Odoo server: {e}")
@@ -448,7 +448,7 @@ class OdooEmbeddedManager:
                         uid = odoo.SUPERUSER_ID
                         ctx = odoo.api.Environment(cr, uid, {})[
                             "res.users"
-                        ].context_get()
+                        ].context_get()  # type: ignore
                         env = odoo.api.Environment(cr, uid, ctx)
                         local_vars["env"] = env  # type: ignore
                         local_vars["self"] = env.user  # type: ignore

@@ -76,7 +76,7 @@ class OdooOperations:
                 available_modules
             )
         else:
-            self.process_manager: BaseProcessManager = ProcessManager()
+            self.process_manager = ProcessManager()
 
     def run_odoo(
         self,
@@ -491,6 +491,7 @@ class OdooOperations:
         test_result = None
         coverage_result = None
 
+        builder: OdooTestCoverageCommandBuilder | OdooTestCommandBuilder
         if coverage:
             builder = OdooTestCoverageCommandBuilder(self.config, coverage)
         else:

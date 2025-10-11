@@ -15,8 +15,7 @@ class OutputFormatter:
     def __init__(self, format_type: str = "text", non_interactive: bool = False):
         self.format_type = format_type.lower()
         self.non_interactive = non_interactive
-        # Track previous field values to reduce JSON verbosity
-        self._previous_fields = {}
+        self._previous_fields: dict[str, Any] = {}
 
     def output(
         self, message: str, level: str = "info", data: dict[str, Any] | None = None
@@ -174,8 +173,7 @@ class OutputFormatter:
         if not match:
             return None
 
-        # Parse missing lines if present
-        missing_lines = []
+        missing_lines: list[int] = []
         if match.group("missing_lines"):
             missing_lines_str = match.group("missing_lines").strip()
             if missing_lines_str:
@@ -213,23 +211,22 @@ class OutputFormatter:
             if self._is_odoo_log_line(message):
                 parsed_log = self._parse_odoo_log_line(message)
                 if parsed_log:
-                    # Merge result data with parsed log
-                    result: dict[str, Any] = {
+                    result1: dict[str, Any] = {
                         "status": "success",
                         "result": data,
                         "timestamp": self._get_timestamp(),
                         **parsed_log,
                     }
-                    print(json.dumps(result))
+                    print(json.dumps(result1))
                     return
 
-            result: dict[str, Any] = {
+            result2: dict[str, Any] = {
                 "status": "success",
                 "message": message,
                 "result": data,
                 "timestamp": self._get_timestamp(),
             }
-            print(json.dumps(result))
+            print(json.dumps(result2))
         else:
             self.output(message, "success")
             if data and not self.non_interactive:
@@ -243,23 +240,22 @@ class OutputFormatter:
             if self._is_odoo_log_line(error_msg):
                 parsed_log = self._parse_odoo_log_line(error_msg)
                 if parsed_log:
-                    # Merge error info with parsed log
-                    result: dict[str, Any] = {
+                    result3: dict[str, Any] = {
                         "status": "error",
                         "error_code": error_code,
                         "timestamp": self._get_timestamp(),
                         **parsed_log,
                     }
-                    print(json.dumps(result))
+                    print(json.dumps(result3))
                     sys.exit(error_code)
 
-            result: dict[str, Any] = {
+            result4: dict[str, Any] = {
                 "status": "error",
                 "message": error_msg,
                 "error_code": error_code,
                 "timestamp": self._get_timestamp(),
             }
-            print(json.dumps(result))
+            print(json.dumps(result4))
         else:
             self.output(error_msg, "error")
 

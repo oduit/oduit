@@ -33,14 +33,14 @@ tty = None
 
 if IS_UNIX:
     try:
-        import pty
-        import termios
-        import tty
+        import pty  # type: ignore[assignment,attr-defined]
+        import termios  # type: ignore[assignment]
+        import tty  # type: ignore[assignment]
 
         # Verify PTY functionality is actually available
         # Some Unix systems may have the modules but lack PTY support
         try:
-            master_fd, slave_fd = pty.openpty()
+            master_fd, slave_fd = pty.openpty()  # type: ignore[attr-defined]
             os.close(master_fd)
             os.close(slave_fd)
             HAS_PTY = True
@@ -841,7 +841,7 @@ class ProcessManager(BaseProcessManager):
                 # Interactive loop to handle I/O
                 while p.poll() is None:
                     try:
-                        r, w, e = select.select([sys.stdin, master_fd], [], [], 0.1)
+                        r, w, exc = select.select([sys.stdin, master_fd], [], [], 0.1)
                         if sys.stdin in r:
                             try:
                                 data = os.read(sys.stdin.fileno(), 10240)
@@ -868,7 +868,7 @@ class ProcessManager(BaseProcessManager):
                 # Drain any remaining output
                 try:
                     while True:
-                        r, w, e = select.select([master_fd], [], [], 0.1)
+                        r, w, exc = select.select([master_fd], [], [], 0.1)
                         if master_fd in r:
                             data = os.read(master_fd, 10240)
                             if data:

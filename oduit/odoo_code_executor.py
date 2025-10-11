@@ -134,7 +134,7 @@ class OdooCodeExecutor:
             import odoo
 
             # Set up threading context
-            threading.current_thread().dbname = db_name
+            threading.current_thread().dbname = db_name  # type: ignore[attr-defined]
 
             # Get registry and create environment
             registry = odoo.registry(db_name)
@@ -142,7 +142,7 @@ class OdooCodeExecutor:
             with registry.cursor() as cr:
                 # Create Odoo environment
                 uid = odoo.SUPERUSER_ID
-                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()
+                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()  # type: ignore[attr-defined]
                 env = odoo.api.Environment(cr, uid, ctx)
 
                 # Set up execution context
@@ -225,7 +225,7 @@ class OdooCodeExecutor:
                         # Evaluate the last expression
                         expr = tree.body[-1]
                         expr_code = ast.unparse(
-                            expr.value
+                            expr.value  # type: ignore[attr-defined]
                         )  # Get the expression without ast.Expr wrapper
                         value = eval(
                             compile(expr_code, "<odoo-executor>", "eval"), context
@@ -235,7 +235,7 @@ class OdooCodeExecutor:
                         return result
                     else:
                         # Only one statement and it's an expression
-                        expr_code = ast.unparse(tree.body[0].value)
+                        expr_code = ast.unparse(tree.body[0].value)  # type: ignore[attr-defined]
                         value = eval(
                             compile(expr_code, "<odoo-executor>", "eval"), context
                         )
@@ -282,7 +282,9 @@ class OdooCodeExecutor:
             result["output"] = stdout_capture.getvalue()
             if stderr_capture.getvalue():
                 if result["error"]:
-                    result["error"] += f"\nSTDERR: {stderr_capture.getvalue()}"
+                    result["error"] = (
+                        str(result["error"]) + f"\nSTDERR: {stderr_capture.getvalue()}"
+                    )
                 else:
                     result["error"] = stderr_capture.getvalue()
 
@@ -362,7 +364,7 @@ class OdooCodeExecutor:
             import odoo
 
             # Set up threading context
-            threading.current_thread().dbname = db_name
+            threading.current_thread().dbname = db_name  # type: ignore[attr-defined]
 
             # Get registry and create environment
             registry = odoo.registry(db_name)
@@ -370,7 +372,7 @@ class OdooCodeExecutor:
             with registry.cursor() as cr:
                 # Create Odoo environment
                 uid = odoo.SUPERUSER_ID
-                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()
+                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()  # type: ignore[attr-defined]
                 env = odoo.api.Environment(cr, uid, ctx)
 
                 # Set up execution context (shared across all blocks)
