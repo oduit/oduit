@@ -1081,8 +1081,8 @@ def list_codepends(
 ):
     """List codependencies for a module.
 
-    Codependencies are modules that the specified module depends on, meaning
-    changes to those modules may impact the specified module.
+    Codependencies are modules that depend on the specified module, meaning
+    changes to the specified module may impact those modules.
     """
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -1105,14 +1105,17 @@ def list_codepends(
 
     module_manager = ModuleManager(global_config.env_config["addons_path"])
 
-    codependencies = module_manager.get_module_codependencies(module)
+    codependencies = module_manager.get_reverse_dependencies(module)
+
+    # Include the selected module itself in the output
+    all_codeps = sorted(codependencies + [module])
+
     if separator:
-        if codependencies:
-            print(separator.join(codependencies))
-    elif codependencies:
-        print_info(f"Codependencies for '{module}':")
-        for dep in codependencies:
-            print_info(f"  - {dep}")
+        if all_codeps:
+            print(separator.join(all_codeps))
+    elif all_codeps:
+        for dep in all_codeps:
+            print(f"{dep}")
     else:
         print_info(f"Module '{module}' has no codependencies")
 

@@ -504,7 +504,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.get_module_codependencies.return_value = [
+        mock_manager_instance.get_reverse_dependencies.return_value = [
             "module_a",
             "module_b",
         ]
@@ -515,9 +515,10 @@ class TestCLICommands(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        mock_manager_instance.get_module_codependencies.assert_called_once_with(
+        mock_manager_instance.get_reverse_dependencies.assert_called_once_with(
             "base_module"
         )
+        self.assertIn("base_module", result.output)
         self.assertIn("module_a", result.output)
         self.assertIn("module_b", result.output)
 
@@ -531,7 +532,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.get_module_codependencies.return_value = []
+        mock_manager_instance.get_reverse_dependencies.return_value = []
         mock_module_manager.return_value = mock_manager_instance
 
         result = self.runner.invoke(
@@ -539,7 +540,7 @@ class TestCLICommands(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("no codependencies", result.output)
+        self.assertIn("standalone_module", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -1000,7 +1001,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.get_module_codependencies.return_value = [
+        mock_manager_instance.get_reverse_dependencies.return_value = [
             "module_a",
             "module_b",
         ]
@@ -1011,7 +1012,32 @@ class TestCLICommands(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("module_a,module_b", result.output)
+        self.assertIn("base_module,module_a,module_b", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_codepends_reverse_dependencies(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-codepends returns reverse dependencies.
+
+        Modules that depend on target are returned. If module 'a' depends on 'b',
+        then 'list-codepends b' should return 'a' and 'b'.
+        This matches the behavior of manifestoo's list-codepends command.
+        """
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_reverse_dependencies.return_value = ["a"]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "list-codepends", "b"])
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_reverse_dependencies.assert_called_once_with("b")
+        self.assertIn("a", result.output)
+        self.assertIn("b", result.output)
 
     @patch("oduit.cli_typer.OdooOperations")
     @patch("oduit.cli_typer.ModuleManager")
