@@ -610,7 +610,7 @@ class TestCLICommands(unittest.TestCase):
             mock_manifest_b,
         ]
         mock_manager_instance.get_dependency_tree.return_value = {
-            "my_module": {"base": {}}
+            "my_module": {"web": {}}
         }
         mock_module_manager.return_value = mock_manager_instance
 
@@ -625,7 +625,9 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn("my_module", result.output)
         # 'base' addon should be filtered out as it's always required
         self.assertNotIn("base", result.output)
+        # Child dependency should have tree connector
         self.assertIn("└──", result.output)
+        self.assertIn("web", result.output)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")

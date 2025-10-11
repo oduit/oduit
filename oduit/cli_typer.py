@@ -911,7 +911,14 @@ def _print_dependency_tree(
     for i, module_name in enumerate(module_list):
         dep_tree = module_manager.get_dependency_tree(module_name, max_depth=tree_depth)
         lines = format_dependency_tree(
-            module_name, dep_tree, module_manager, "", True, set(), odoo_series
+            module_name,
+            dep_tree,
+            module_manager,
+            "",
+            True,
+            set(),
+            odoo_series,
+            is_root=True,
         )
         for module_part, version_part in lines:
             typer.echo(module_part, nl=False)
@@ -935,7 +942,7 @@ def _print_dependency_list(
     sorting: str = "alphabetical",
 ) -> None:
     """Print flat list of dependencies."""
-    if depth is not None:
+    if depth is not None and depth >= 0:
         dependencies = module_manager.get_dependencies_at_depth(
             module_list, max_depth=tree_depth
         )
@@ -952,10 +959,8 @@ def _print_dependency_list(
         if sorted_dependencies:
             print(separator.join(sorted_dependencies))
     elif sorted_dependencies:
-        depth_str = f" (depth {depth})" if depth is not None else ""
-        print(f"Direct dependencies for {source_desc}{depth_str}:")
         for dep in sorted_dependencies:
-            print(f"  - {dep}")
+            print(f"{dep}")
     else:
         print(f"No external dependencies for {source_desc}")
 
@@ -977,10 +982,10 @@ def list_depends(
         help="Display dependencies as a tree structure",
     ),
     depth: int | None = typer.Option(
-        None,
+        -1,
         "--depth",
         help="Maximum depth of dependencies to show "
-        "(0=direct only, 1=direct+their deps, etc.)",
+        "(-1= no maximum, 0=direct only, 1=direct+their deps, etc.)",
     ),
     select_dir: str | None = typer.Option(
         None,
@@ -1043,7 +1048,7 @@ def list_depends(
             else:
                 source_desc = f"modules [{', '.join(module_list)}]"
 
-        tree_depth = depth + 1 if depth is not None else None
+        tree_depth = depth + 1 if depth is not None and depth >= 0 else None
 
         if tree:
             _print_dependency_tree(
