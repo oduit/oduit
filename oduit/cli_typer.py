@@ -852,6 +852,16 @@ def list_addons(
         "--separator",
         help="Separator for output (e.g., ',' for 'a,b,c')",
     ),
+    exclude_core_addons: bool = typer.Option(
+        False,
+        "--exclude-core-addons",
+        help="Exclude Odoo Community Edition (CE) core addons from the list",
+    ),
+    exclude_enterprise_addons: bool = typer.Option(
+        False,
+        "--exclude-enterprise-addons",
+        help="Exclude Odoo Enterprise Edition (EE) addons from the list",
+    ),
     sorting: str = SORT_OPTION,
 ):
     """List available addons."""
@@ -876,6 +886,32 @@ def list_addons(
 
     module_manager = ModuleManager(global_config.env_config["addons_path"])
     addons = module_manager.find_module_dirs(filter_dir=select_dir)
+
+    addons = [addon for addon in addons if not addon.startswith("test_")]
+
+    if exclude_core_addons or exclude_enterprise_addons:
+        from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
+
+        odoo_series = (
+            global_config.odoo_series
+            if global_config.odoo_series
+            else module_manager.detect_odoo_series()
+        )
+        if odoo_series:
+            filtered_addons = []
+            for addon in addons:
+                if exclude_core_addons and is_core_ce_addon(addon, odoo_series):
+                    continue
+                if exclude_enterprise_addons and is_core_ee_addon(addon, odoo_series):
+                    continue
+                filtered_addons.append(addon)
+            addons = filtered_addons
+        else:
+            print_error(
+                "Could not detect Odoo series. "
+                "Please specify --odoo-series to use exclusion filters"
+            )
+            raise typer.Exit(1) from None
 
     try:
         sorted_addons = module_manager.sort_modules(addons, sorting)
