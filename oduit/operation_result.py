@@ -16,6 +16,43 @@ if TYPE_CHECKING:
 class OperationResult:
     """Builder class for creating standardized operation results"""
 
+    # Specific failure patterns for different operations
+    FAILURE_PATTERNS = {
+        "install": [
+            # Critical installation failures
+            re.compile(r"odoo\.modules\.loading: invalid module names, ignored:"),
+            re.compile(
+                r"odoo\.modules\.loading: Some modules are not loaded, "
+                r"some dependencies or manifest may be missing:"
+            ),
+            # Module not found errors
+            re.compile(r"ModuleNotFoundError"),
+            re.compile(r"No module named"),
+            # Import/dependency errors for requested modules
+            re.compile(r"ImportError"),
+        ],
+        "update": [
+            # Critical update failures
+            re.compile(r"odoo\.modules\.loading: invalid module names, ignored:"),
+            re.compile(
+                r"odoo\.modules\.loading: Some modules are not loaded, "
+                r"some dependencies or manifest may be missing:"
+            ),
+            # Module not found errors
+            re.compile(r"ModuleNotFoundError"),
+            re.compile(r"No module named"),
+            # Import/dependency errors for requested modules
+            re.compile(r"ImportError"),
+        ],
+        # Generic patterns that apply to all operations
+        "generic": [
+            re.compile(r"ERROR.*FATAL"),
+            re.compile(r"CRITICAL"),
+            re.compile(r"Exception.*Traceback"),
+        ],
+    }
+    """Builder class for creating standardized operation results"""
+
     def __init__(
         self,
         operation: str | None = None,
@@ -194,6 +231,23 @@ class OperationResult:
 
             result_parsers = parser_mapping.get(operation_type, [])
 
+        # Check for failure patterns before applying parsers
+        operation_type = self.result.get(
+            "operation_type", self.result.get("operation", "")
+        )
+        has_failure, failure_msg = self._check_for_failure_patterns(
+            output, operation_type
+        )
+        if has_failure and failure_msg:
+            # Override success status if failure patterns detected
+            self.result["success"] = False
+            if not self.result.get("error"):
+                self.set_error(failure_msg, "OperationFailure")
+        else:
+            # No failure patterns detected, set success to True
+            # (will be overridden by process result if needed)
+            self.result["success"] = True
+
         # Apply parsers in order
         for parser in result_parsers:
             if parser == "install":
@@ -314,7 +368,14 @@ class OperationResult:
                     module.strip().strip("'\"") for module in modules_str.split(",")
                 ]
                 install_info["failed_modules"].extend(modules)
-                install_info["success"] = False
+
+                # Only set success to False if the target modules are in the failed list
+                # or if no target modules are specified
+                target_modules = self.result.get("modules", [])
+                if not target_modules or any(
+                    target_module in modules for target_module in target_modules
+                ):
+                    install_info["success"] = False
 
             # Look for general ERROR lines
             if "ERROR" in line and any(
@@ -328,7 +389,31 @@ class OperationResult:
                 )
                 if clean_line and clean_line not in install_info["error_messages"]:
                     install_info["error_messages"].append(clean_line)
-                    install_info["success"] = False
+
+                    # Only set success to False if the error mentions target modules
+                    # or if no target modules are specified
+                    target_modules = self.result.get("modules", [])
+                    if not target_modules:
+                        install_info["success"] = False
+                    elif any(
+                        target_module in clean_line for target_module in target_modules
+                    ):
+                        install_info["success"] = False
+                    # For "Some modules are not loaded" errors, check if target
+                    # modules are in the failed list
+                    elif "Some modules are not loaded" in clean_line:
+                        # Extract the failed modules from the error message
+                        failed_pattern = re.search(r":\s*\[([^\]]+)\]", clean_line)
+                        if failed_pattern:
+                            failed_modules = [
+                                m.strip().strip("'\"")
+                                for m in failed_pattern.group(1).split(",")
+                            ]
+                            if not target_modules or any(
+                                target_module in failed_modules
+                                for target_module in target_modules
+                            ):
+                                install_info["success"] = False
 
         return install_info
 
@@ -436,10 +521,102 @@ class OperationResult:
 
         return test_info
 
+    def _check_for_failure_patterns(
+        self, output: str, operation_type: str
+    ) -> tuple[bool, str | None]:
+        """Check if output contains specific failure patterns for the operation
+
+        Returns:
+            Tuple of (has_failure, failure_message)
+        """
+        # Get the modules being installed/updated for context
+        modules = self.result.get("modules", [])
+
+        # Get patterns for this specific operation
+        operation_patterns = self.FAILURE_PATTERNS.get(operation_type, [])
+
+        # Also check generic patterns
+        all_patterns = operation_patterns + self.FAILURE_PATTERNS.get("generic", [])
+
+        for pattern in all_patterns:
+            match = pattern.search(output)
+            if match:
+                # Extract the full line or matched content
+                failure_msg = match.group(0).strip()
+
+                # For module-specific errors, check if they mention our target modules
+                if any(
+                    keyword in failure_msg
+                    for keyword in [
+                        "invalid module names",
+                        "Some modules are not loaded",
+                    ]
+                ):
+                    # Check if any of our target modules are mentioned in this error
+                    for module in modules:
+                        # Look for the module name in the error context
+                        if module in failure_msg:
+                            return True, failure_msg
+
+                        # For "invalid module names" errors, check the list
+                        if "invalid module names, ignored:" in failure_msg:
+                            # Extract the module list from the error message
+                            ignored_pattern = re.compile(
+                                r"invalid module names, ignored:\s*(.+)"
+                            )
+                            ignored_match = ignored_pattern.search(output)
+                            if ignored_match:
+                                ignored_modules = [
+                                    m.strip() for m in ignored_match.group(1).split(",")
+                                ]
+                                if module in ignored_modules:
+                                    return True, failure_msg
+
+                        # For "Some modules are not loaded" errors, check failed modules
+                        if "Some modules are not loaded" in failure_msg:
+                            # Extract the failed modules list from the error message
+                            failed_pattern = re.compile(
+                                r"Some modules are not loaded.*:\s*\[(.+?)\]"
+                            )
+                            failed_match = failed_pattern.search(output)
+                            if failed_match:
+                                failed_modules = [
+                                    m.strip().strip("'\"")
+                                    for m in failed_match.group(1).split(",")
+                                ]
+                                if module in failed_modules:
+                                    return True, failure_msg
+
+                    # If none of our target modules are mentioned, skip
+                    continue
+
+                # For other patterns (non-module-specific), treat as failure immediately
+                return True, failure_msg
+
+        return False, None
+
     def _check_for_module_warnings(self, output: str, module: str) -> str | None:
         """Check if output contains warnings about invalid/ignored modules"""
-        if not output or not module:
-            return None
+        # Look for the specific warning pattern
+        warning_pattern = re.compile(
+            r"invalid module names, ignored:.*" + re.escape(module)
+        )
+        match = warning_pattern.search(output)
+        if match:
+            return match.group(0).strip()
+
+        # Check for other module-related warnings
+        other_warnings = [
+            r"module.*not found",
+            r"module.*not installable",
+            r"No module named",
+        ]
+
+        for pattern in other_warnings:
+            if re.search(pattern, output, re.IGNORECASE):
+                return f"Module issue detected: {pattern}"
+
+        return None
 
         # Check for Odoo's "invalid module names, ignored" warning
         if f"invalid module names, ignored: {module}" in output:
@@ -459,20 +636,28 @@ class OperationResult:
     ) -> "OperationResult":
         """Convert ProcessManager result to our standard format"""
         if process_result:
-            success = process_result.get("success", False)
             output = process_result.get("output", "")
+            operation_type = self.result.get("operation", "")
 
-            # Check for module warnings if requested
-            if check_module_warnings and module and success:
+            # Check for specific failure patterns first
+            has_failure, failure_msg = self._check_for_failure_patterns(
+                output, operation_type
+            )
+            if has_failure and failure_msg:
+                # Override success status if failure patterns detected
+                self.result["success"] = False
+                self.set_error(failure_msg, "OperationFailure")
+
+            # Check for module warnings if requested (legacy support)
+            elif check_module_warnings and module and self.result.get("success", True):
                 warning = self._check_for_module_warnings(output, module)
                 if warning:
-                    success = False
+                    self.result["success"] = False
                     self.set_error(warning, "ModuleWarning")
 
-            self.set_success(
-                success,
-                process_result.get("return_code", 1),
-            ).set_output(
+            # Set the return code and output (preserve existing success status)
+            self.result["return_code"] = process_result.get("return_code", 1)
+            self.set_output(
                 process_result.get("stdout", output), process_result.get("stderr", "")
             )
 

@@ -7,7 +7,9 @@
 """New Typer-based CLI implementation for oduit."""
 
 import functools
+import json
 import os
+from typing import Any
 
 import typer
 from manifestoo_core.odoo_series import OdooSeries
@@ -372,6 +374,12 @@ def install(
     compact: bool = typer.Option(
         False, "--compact", help="Suppress INFO logs at startup for cleaner output"
     ),
+    include_command: bool = typer.Option(
+        False, "--include-command", help="Include executed command in result JSON"
+    ),
+    include_stdout: bool = typer.Option(
+        False, "--include-stdout", help="Include stdout in result JSON"
+    ),
 ):
     """Install module."""
     if not module:
@@ -412,13 +420,27 @@ def install(
 
     # Optional JSON output
     if global_config.format == OutputFormat.JSON:
-        output_result_to_json(
-            output,
-            additional_fields={
-                "without_demo": without_demo,
-                "verbose": global_config.verbose,
-            },
+        # By default, exclude command and stdout from result
+        exclude_fields = ["command", "stdout"]
+
+        additional_fields = {
+            "without_demo": without_demo,
+            "verbose": global_config.verbose,
+        }
+
+        # Only include command if requested
+        if include_command:
+            exclude_fields.remove("command")
+
+        # Only include stdout if requested
+        if include_stdout:
+            exclude_fields.remove("stdout")
+
+        result_json = output_result_to_json(
+            output, additional_fields=additional_fields, exclude_fields=exclude_fields
         )
+        result_json["type"] = "result"
+        print(json.dumps(result_json))
 
 
 @app.command()
@@ -700,6 +722,12 @@ def list_db(
         "--db-user",
         help="Specify the database user (overrides config setting)",
     ),
+    include_command: bool = typer.Option(
+        False, "--include-command", help="Include executed command in result JSON"
+    ),
+    include_stdout: bool = typer.Option(
+        False, "--include-stdout", help="Include stdout in result JSON"
+    ),
 ):
     """List all databases."""
     if ctx.obj is None:
@@ -729,7 +757,24 @@ def list_db(
     )
 
     if global_config.format == OutputFormat.JSON:
-        output_result_to_json(result)
+        # By default, exclude command and stdout from result
+        exclude_fields = ["command", "stdout"]
+
+        additional_fields: dict[str, Any] = {}
+
+        # Only include command if requested
+        if include_command:
+            exclude_fields.remove("command")
+
+        # Only include stdout if requested
+        if include_stdout:
+            exclude_fields.remove("stdout")
+
+        result_json = output_result_to_json(
+            result, additional_fields=additional_fields, exclude_fields=exclude_fields
+        )
+        result_json["type"] = "result"
+        print(json.dumps(result_json))
     elif not result.get("success"):
         raise typer.Exit(1)
 

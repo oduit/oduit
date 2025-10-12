@@ -34,11 +34,13 @@ class OutputFormatter:
         if self._is_odoo_log_line(message):
             parsed_log = self._parse_odoo_log_line(message)
             if parsed_log:
+                parsed_log["type"] = "log"
                 print(json.dumps(parsed_log))
                 return
 
         # Regular message output
         output_data: dict[str, Any] = {
+            "type": "log",
             "level": level,
             "message": message,
             "timestamp": self._get_timestamp(),
@@ -212,6 +214,7 @@ class OutputFormatter:
                 parsed_log = self._parse_odoo_log_line(message)
                 if parsed_log:
                     result1: dict[str, Any] = {
+                        "type": "result",
                         "status": "success",
                         "result": data,
                         "timestamp": self._get_timestamp(),
@@ -221,6 +224,7 @@ class OutputFormatter:
                     return
 
             result2: dict[str, Any] = {
+                "type": "result",
                 "status": "success",
                 "message": message,
                 "result": data,
@@ -241,6 +245,7 @@ class OutputFormatter:
                 parsed_log = self._parse_odoo_log_line(error_msg)
                 if parsed_log:
                     result3: dict[str, Any] = {
+                        "type": "error",
                         "status": "error",
                         "error_code": error_code,
                         "timestamp": self._get_timestamp(),
@@ -250,6 +255,7 @@ class OutputFormatter:
                     sys.exit(error_code)
 
             result4: dict[str, Any] = {
+                "type": "error",
                 "status": "error",
                 "message": error_msg,
                 "error_code": error_code,

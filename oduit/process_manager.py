@@ -136,6 +136,10 @@ class ProcessManager(BaseProcessManager):
                     process_result.get("stderr", ""),
                 )
 
+                # Add warnings if captured
+                if "warnings" in process_result and process_result["warnings"]:
+                    result_builder.set_custom_data(warnings=process_result["warnings"])
+
                 # Apply automatic parsing based on operation metadata
                 result_builder.process_with_parsers(output)
 
@@ -329,6 +333,7 @@ class ProcessManager(BaseProcessManager):
 
         # For non-matching lines (like other process output), output as structured data
         output_data = {
+            "type": "log",
             "source": "process",
             "level": "info",
             "message": line.strip(),
@@ -342,6 +347,7 @@ class ProcessManager(BaseProcessManager):
         stop_on_error: bool,
         compact: bool = False,
         suppress_output: bool = False,
+        warnings: list[str] | None = None,
     ) -> list[str]:
         """Stream stdout lines and abort on first failure pattern if requested.
 
@@ -356,12 +362,28 @@ class ProcessManager(BaseProcessManager):
         # Pattern indicating an INFO line (end of error message)
         info_pattern = re.compile(r"\\bINFO:\\s", re.IGNORECASE)
 
+        # Important warning patterns to capture
+        warning_patterns = [
+            re.compile(r"invalid module names, ignored:"),
+            re.compile(r"module.*: not installable, skipped"),
+            re.compile(r"Some modules are not loaded"),
+        ]
+
         if not process.stdout:
             return []
 
         collected_output = []
         for line in process.stdout:
             collected_output.append(line)
+
+            # Capture important warnings
+            if warnings is not None:
+                for pattern in warning_patterns:
+                    if pattern.search(line):
+                        # Extract the warning message
+                        warning_msg = line.strip()
+                        if warning_msg not in warnings:
+                            warnings.append(warning_msg)
 
             # Check if we should show this line in compact mode
             should_show_line = True
@@ -432,11 +454,12 @@ class ProcessManager(BaseProcessManager):
         process = None
         askpass_path = None
         output_lines = []
+        warnings: list[str] = []
 
         try:
             process, askpass_path = self._spawn_process_with_optional_sudo(cmd)
             output_lines = self._stream_output_and_maybe_abort(
-                process, stop_on_error, compact, suppress_output
+                process, stop_on_error, compact, suppress_output, warnings
             )
             process.wait()
 
@@ -448,6 +471,7 @@ class ProcessManager(BaseProcessManager):
                     "return_code": process.returncode,
                     "output": "".join(output_lines),
                     "command": " ".join(cmd),
+                    "warnings": warnings,
                 }
 
             return {
@@ -455,6 +479,7 @@ class ProcessManager(BaseProcessManager):
                 "return_code": 0,
                 "output": "".join(output_lines),
                 "command": " ".join(cmd),
+                "warnings": warnings,
             }
 
         except KeyboardInterrupt:
@@ -467,13 +492,19 @@ class ProcessManager(BaseProcessManager):
                 "error": "Interrupted by user",
                 "output": "".join(output_lines),
                 "command": " ".join(cmd),
+                "warnings": warnings,
             }
 
         except FileNotFoundError as e:
             error_msg = f"Command not successful: {cmd[0]} due to {e}"
             if not suppress_output:
                 print_error(error_msg)
-            return {"success": False, "error": error_msg, "command": " ".join(cmd)}
+            return {
+                "success": False,
+                "error": error_msg,
+                "command": " ".join(cmd),
+                "warnings": warnings,
+            }
         except Exception as e:
             error_msg = f"Error running command: {e}"
             if not suppress_output:
@@ -483,6 +514,7 @@ class ProcessManager(BaseProcessManager):
                 "error": error_msg,
                 "output": "".join(output_lines),
                 "command": " ".join(cmd),
+                "warnings": warnings,
             }
 
         finally:

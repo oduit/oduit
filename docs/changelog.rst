@@ -1,6 +1,79 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Short json parameter
+
+- (cli) More parameters
+
+- Improve lang option
+
+- Improved list-addons command
+
+- Addon path manager and manifest_collection has been added
+
+- Add tree option
+
+- Add depth parameter
+
+- New parameter
+
+- Add manifestoo-core
+
+- Detect odoo series
+
+- Add sorting modules
+
+- Do not repeat version in tree
+
+- Improved tree layout
+
+- List-missing added to cli
+
+- Exclude addons beginning with test_ and allow to exclude core and enterprise addons
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- (cli) Add error message
+
+- Codepends
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Improve readme and doc, adding more urls to project
+
+- Fix api doc links
+
+- Improve doc with no-index
+
+- Add new classes
+
+
+
+Miscellaneous
+~~~~~~~~~~~~~~~~~~~~~
+
+- Fix doc build
+
+- Fix link
+
+- Fix pre-commit
+
+- Fix static type checker mypy
+
+
 0.1.6
 ----------
 
@@ -150,3 +223,5 @@ Miscellaneous
 - Initial release
 
 - Pre-commit and readme cleanup
+
+
