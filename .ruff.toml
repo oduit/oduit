@@ -18,6 +18,7 @@ exclude = ["setup/*", "notebooks/*"]
 [lint.per-file-ignores]
 "__init__.py" = ["F401", "I001"]  # ignore unused and unsorted imports in __init__.py
 "__manifest__.py" = ["B018"]  # useless expression
+"tests/test_operation_result.py" = ["E501"]  # long test data lines
 
 [lint.isort]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
