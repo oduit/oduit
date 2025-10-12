@@ -629,8 +629,6 @@ class OperationResult:
             if re.search(pattern, output, re.IGNORECASE):
                 return f"Module issue detected: {pattern}"
 
-        return None
-
         # Check for Odoo's "invalid module names, ignored" warning
         if f"invalid module names, ignored: {module}" in output:
             return f"Module '{module}' not found or invalid"

@@ -465,7 +465,7 @@ class DemoProcessManager(BaseProcessManager):
         # Determine operation type and simulate different stages
         if "-i" in cmd or "-u" in cmd:
             # Module install/update operation
-            module_name = self._extract_module_name(cmd)  # type: ignore[attr-defined]
+            module_name = self._extract_module_name(cmd)
             stages = [
                 f"Loading configuration for module: {module_name}",
                 "Checking module dependencies...",

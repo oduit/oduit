@@ -148,18 +148,18 @@ class OdooEmbeddedManager:
             from psycopg2 import ProgrammingError, errorcodes
 
             # Parse configuration
-            odoo.tools.config.parse_config(args)  # type: ignore
+            odoo.tools.config.parse_config(args)
 
-            config = odoo.tools.config  # type: ignore
+            config = odoo.tools.config
 
             # Set up database preloading
             preload = []
-            if config["db_name"]:  # type: ignore
-                preload = config["db_name"].split(",")  # type: ignore
+            if config["db_name"]:
+                preload = config["db_name"].split(",")
                 for db_name in preload:
                     try:
                         odoo.service.db._create_empty_database(db_name)  # type: ignore[attr-defined]
-                        config["init"]["base"] = True  # type: ignore
+                        config["init"]["base"] = True
                     except ProgrammingError as err:
                         if err.pgcode == errorcodes.INSUFFICIENT_PRIVILEGE:
                             self._logger.info(
@@ -174,16 +174,16 @@ class OdooEmbeddedManager:
                         pass
 
             # Handle translation export/import
-            if config.get("translate_out"):  # type: ignore
+            if config.get("translate_out"):
                 self._export_translation(config)
                 return 0
 
-            if config.get("translate_in"):  # type: ignore
+            if config.get("translate_in"):
                 self._import_translation(config)
                 return 0
 
             # Configure multiprocessing if workers are specified
-            if config.get("workers"):  # type: ignore
+            if config.get("workers"):
                 odoo.multi_process = True
 
             # Start the server
@@ -420,8 +420,8 @@ class OdooEmbeddedManager:
                 args.extend(extra_args)
 
             # Configure odoo
-            config.parser.prog = "odoo shell"  # type: ignore
-            config.parse_config(args)  # type: ignore
+            config.parser.prog = "odoo shell"
+            config.parse_config(args)
 
             # Report configuration and start services
             odoo.cli.server.report_configuration()
@@ -431,16 +431,16 @@ class OdooEmbeddedManager:
             signal.signal(signal.SIGINT, raise_keyboard_interrupt)
 
             # Set up shell environment
-            local_vars = {  # type: ignore
+            local_vars = {
                 "openerp": odoo,
                 "odoo": odoo,
             }
 
             shell_output = []
 
-            if database or config.get("db_name"):  # type: ignore
-                db_name = database or config["db_name"]  # type: ignore
-                threading.current_thread().dbname = db_name  # type: ignore
+            if database or config.get("db_name"):
+                db_name = database or config["db_name"]
+                threading.current_thread().dbname = db_name  # type: ignore[attr-defined]
 
                 try:
                     registry = odoo.registry(db_name)
@@ -448,10 +448,10 @@ class OdooEmbeddedManager:
                         uid = odoo.SUPERUSER_ID
                         ctx = odoo.api.Environment(cr, uid, {})[
                             "res.users"
-                        ].context_get()  # type: ignore
+                        ].context_get()  # type: ignore[attr-defined]
                         env = odoo.api.Environment(cr, uid, ctx)
-                        local_vars["env"] = env  # type: ignore
-                        local_vars["self"] = env.user  # type: ignore
+                        local_vars["env"] = env  # type: ignore[assignment]
+                        local_vars["self"] = env.user
 
                         # Rollback to avoid transaction warnings
                         cr.rollback()

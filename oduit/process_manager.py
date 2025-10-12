@@ -33,7 +33,7 @@ tty = None
 
 if IS_UNIX:
     try:
-        import pty  # type: ignore[assignment,attr-defined]
+        import pty  # type: ignore[assignment]
         import termios  # type: ignore[assignment]
         import tty  # type: ignore[assignment]
 

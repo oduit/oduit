@@ -540,8 +540,6 @@ class ModuleManager:
             return sorted(module_names)
         elif sorting == SortingChoice.TOPOLOGICAL:
             return self._sort_topological(module_names)
-        else:
-            return sorted(module_names)
 
     def _sort_topological(self, module_names: list[str]) -> list[str]:
         """Sort modules topologically based on their dependencies.

@@ -592,13 +592,6 @@ class OdooOperations:
                 operation_result=final_result,
             )
 
-        if final_result is None:
-            return {
-                "success": False,
-                "return_code": 1,
-                "error": "oduit internal error: final_result was None",
-                "command": "unknown",
-            }
         return final_result
 
     def db_exists(

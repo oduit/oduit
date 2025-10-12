@@ -225,7 +225,7 @@ class OdooCodeExecutor:
                         # Evaluate the last expression
                         expr = tree.body[-1]
                         expr_code = ast.unparse(
-                            expr.value  # type: ignore[attr-defined]
+                            expr.value
                         )  # Get the expression without ast.Expr wrapper
                         value = eval(
                             compile(expr_code, "<odoo-executor>", "eval"), context
