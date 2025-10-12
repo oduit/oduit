@@ -619,7 +619,7 @@ class OdooTestCommandBuilder(BaseOdooCommandBuilder):
         return self._set_parameter("test-tags", tags, prefix="--", sep=" ")
 
     def build_operation(self) -> CommandOperation:
-        # Extract test tags from command parts to populate metadata
+        # Extract test tags and modules from command parts to populate metadata
         test_tags = None
         modules = []
         for part in self._command_parts:
@@ -628,7 +628,11 @@ class OdooTestCommandBuilder(BaseOdooCommandBuilder):
                 # Extract module from test-tags like "/module_name"
                 if test_tags and test_tags.startswith("/"):
                     modules = [test_tags[1:]]
-                break
+            # Also extract modules from install (-i) and update (-u) parameters
+            elif part.get("key") in ("i", "u"):
+                module_value = part.get("value")
+                if module_value and module_value not in modules:
+                    modules.append(module_value)
 
         return CommandOperation(
             command=self.build(),

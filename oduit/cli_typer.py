@@ -441,7 +441,9 @@ def install(
         )
         result_json["type"] = "result"
         print(json.dumps(result_json))
-    elif not output.get("success"):
+
+    # Exit with code 1 on failure regardless of output format
+    if not output.get("success"):
         raise typer.Exit(1)
 
 
@@ -513,7 +515,9 @@ def update(
     )
     if compact and result:
         print_info(str(result))
-    elif not result.get("success"):
+
+    # Exit with code 1 on failure regardless of output format
+    if not result.get("success"):
         raise typer.Exit(1)
 
 
@@ -556,6 +560,12 @@ def test(
         help="Show only test progress dots, statistics, and result summaries",
     ),
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
+    include_command: bool = typer.Option(
+        False, "--include-command", help="Include executed command in result JSON"
+    ),
+    include_stdout: bool = typer.Option(
+        False, "--include-stdout", help="Include stdout in result JSON"
+    ),
 ):
     """Run module tests with various options.
 
@@ -586,7 +596,7 @@ def test(
         global_config.env_config, verbose=global_config.verbose
     )
 
-    odoo_operations.run_tests(
+    result = odoo_operations.run_tests(
         None,
         stop_on_error=stop_on_error,
         update=update,
@@ -597,6 +607,40 @@ def test(
         compact=compact,
         log_level=log_level.value if log_level else None,
     )
+
+    # Optional JSON output
+    if global_config.format == OutputFormat.JSON:
+        # By default, exclude command and stdout from result
+        exclude_fields = ["command", "stdout"]
+
+        additional_fields: dict[str, Any] = {
+            "stop_on_error": stop_on_error,
+            "install": install,
+            "update": update,
+            "coverage": coverage,
+            "test_file": test_file,
+            "test_tags": test_tags,
+            "compact": compact,
+            "verbose": global_config.verbose,
+        }
+
+        # Only include command if requested
+        if include_command:
+            exclude_fields.remove("command")
+
+        # Only include stdout if requested
+        if include_stdout:
+            exclude_fields.remove("stdout")
+
+        result_json = output_result_to_json(
+            result, additional_fields=additional_fields, exclude_fields=exclude_fields
+        )
+        result_json["type"] = "result"
+        print(json.dumps(result_json))
+
+    # Exit with code 1 on failure regardless of output format
+    if not result.get("success"):
+        raise typer.Exit(1)
 
 
 @app.command("create-db")

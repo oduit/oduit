@@ -44,6 +44,19 @@ class OperationResult:
             # Import/dependency errors for requested modules
             re.compile(r"ImportError"),
         ],
+        "test": [
+            # Critical test failures
+            re.compile(r"odoo\.modules\.loading: invalid module names, ignored:"),
+            re.compile(
+                r"odoo\.modules\.loading: Some modules are not loaded, "
+                r"some dependencies or manifest may be missing:"
+            ),
+            # Module not found errors
+            re.compile(r"ModuleNotFoundError"),
+            re.compile(r"No module named"),
+            # Import/dependency errors for requested modules
+            re.compile(r"ImportError"),
+        ],
         # Generic patterns that apply to all operations
         "generic": [
             re.compile(r"ERROR.*FATAL"),
