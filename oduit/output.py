@@ -19,7 +19,7 @@ class OutputFormatter:
 
     def output(
         self, message: str, level: str = "info", data: dict[str, Any] | None = None
-    ):
+    ) -> None:
         """Output a message in the configured format."""
         if self.format_type == "json":
             self._output_json(message, level, data)
@@ -28,7 +28,7 @@ class OutputFormatter:
 
     def _output_json(
         self, message: str, level: str, data: dict[str, Any] | None = None
-    ):
+    ) -> None:
         """Output in JSON format."""
         # Check if this looks like an Odoo log line that needs parsing
         if self._is_odoo_log_line(message):
@@ -121,7 +121,7 @@ class OutputFormatter:
 
         return result
 
-    def _output_text(self, message: str, level: str):
+    def _output_text(self, message: str, level: str) -> None:
         """Output in text format."""
         if self.non_interactive:
             # Simple text output without colors for non-interactive mode
@@ -206,7 +206,9 @@ class OutputFormatter:
             "timestamp": self._get_timestamp(),
         }
 
-    def print_result(self, data: dict[str, Any], message: str = "Operation completed"):
+    def print_result(
+        self, data: dict[str, Any], message: str = "Operation completed"
+    ) -> None:
         """Print operation result with data."""
         if self.format_type == "json":
             # Apply log parsing to the message if needed
@@ -237,7 +239,7 @@ class OutputFormatter:
                 for key, value in data.items():
                     self.output(f"{key}: {value}", "info")
 
-    def print_error_result(self, error_msg: str, error_code: int = 1):
+    def print_error_result(self, error_msg: str, error_code: int = 1) -> None:
         """Print error result and exit with code."""
         if self.format_type == "json":
             # Apply log parsing to the error message if needed
@@ -272,33 +274,33 @@ class OutputFormatter:
 _formatter = OutputFormatter()
 
 
-def configure_output(format_type: str = "text", non_interactive: bool = False):
+def configure_output(format_type: str = "text", non_interactive: bool = False) -> None:
     """Configure the global output formatter."""
     global _formatter
     _formatter = OutputFormatter(format_type, non_interactive)
 
 
-def print_info(msg: str, data: dict[str, Any] | None = None):
+def print_info(msg: str, data: dict[str, Any] | None = None) -> None:
     _formatter.output(msg, "info", data)
 
 
-def print_success(msg: str, data: dict[str, Any] | None = None):
+def print_success(msg: str, data: dict[str, Any] | None = None) -> None:
     _formatter.output(msg, "success", data)
 
 
-def print_warning(msg: str, data: dict[str, Any] | None = None):
+def print_warning(msg: str, data: dict[str, Any] | None = None) -> None:
     _formatter.output(msg, "warning", data)
 
 
-def print_error(msg: str, data: dict[str, Any] | None = None):
+def print_error(msg: str, data: dict[str, Any] | None = None) -> None:
     _formatter.output(msg, "error", data)
 
 
-def print_result(data: dict[str, Any], message: str = "Operation completed"):
+def print_result(data: dict[str, Any], message: str = "Operation completed") -> None:
     """Print operation result with data."""
     _formatter.print_result(data, message)
 
 
-def print_error_result(error_msg: str, error_code: int = 1):
+def print_error_result(error_msg: str, error_code: int = 1) -> None:
     """Print error result and exit with code."""
     _formatter.print_error_result(error_msg, error_code)

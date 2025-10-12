@@ -110,7 +110,7 @@ class BaseProcessManager(ABC):
 
     @abstractmethod
     def run_shell_command(
-        self, cmd, verbose: bool = False, capture_output: bool = False
+        self, cmd: list[str] | str, verbose: bool = False, capture_output: bool = False
     ) -> dict[str, Any]:
         """Execute a shell command that may receive piped input.
 
@@ -279,7 +279,9 @@ class ProcessManagerFactory:
     """Factory for creating appropriate process manager instances."""
 
     @staticmethod
-    def create_manager(manager_type: str = "system", **kwargs) -> "BaseProcessManager":
+    def create_manager(
+        manager_type: str = "system", **kwargs: Any
+    ) -> "BaseProcessManager":
         """Create a process manager instance.
 
         Args:

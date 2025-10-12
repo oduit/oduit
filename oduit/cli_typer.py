@@ -143,11 +143,11 @@ def create_global_config(
     )
 
 
-def with_config(func):
+def with_config(func: Any) -> Any:
     """Decorator to inject global configuration into command functions."""
 
     @functools.wraps(func)
-    def wrapper(ctx: typer.Context):
+    def wrapper(ctx: typer.Context) -> Any:
         if ctx.obj is None:
             print_error("No global configuration found")
             raise typer.Exit(1) from None
@@ -213,7 +213,7 @@ def main(
         help="Add --no-http flag to all odoo-bin commands",
     ),
     odoo_series: OdooSeries | None = ODOO_SERIES_OPTION,
-):
+) -> None:
     """Odoo CLI tool for starting odoo-bin and running tasks."""
 
     # Store config info in context for subcommands
@@ -282,7 +282,7 @@ def run(
         "-s",
         help="Stop the server after initialization",
     ),
-):
+) -> None:
     """Run Odoo server."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -323,7 +323,7 @@ def shell(
         help="Suppress INFO logs at startup for cleaner output",
     ),
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
-):
+) -> None:
     """Start Odoo shell."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -380,7 +380,7 @@ def install(
     include_stdout: bool = typer.Option(
         False, "--include-stdout", help="Include stdout in result JSON"
     ),
-):
+) -> None:
     """Install module."""
     if not module:
         print_error("Module name is required for install")
@@ -469,7 +469,7 @@ def update(
         "--compact",
         help="Suppress INFO logs at startup for cleaner output",
     ),
-):
+) -> None:
     """Update module."""
     if not module:
         print_error("Module name is required for update")
@@ -566,7 +566,7 @@ def test(
     include_stdout: bool = typer.Option(
         False, "--include-stdout", help="Include stdout in result JSON"
     ),
-):
+) -> None:
     """Run module tests with various options.
 
     Examples:
@@ -676,7 +676,7 @@ def create_db(
         "--db-user",
         help="Specify the database user (overrides config setting)",
     ),
-):
+) -> None:
     """Create database."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -776,7 +776,7 @@ def list_db(
     include_stdout: bool = typer.Option(
         False, "--include-stdout", help="Include stdout in result JSON"
     ),
-):
+) -> None:
     """List all databases."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -828,7 +828,7 @@ def list_db(
 
 
 @app.command("list-env")
-def list_env():
+def list_env() -> None:
     """List available environments."""
     from rich.console import Console
     from rich.table import Table
@@ -858,7 +858,7 @@ def list_env():
 
 
 @app.command("print-config")
-def print_config_cmd(ctx: typer.Context):
+def print_config_cmd(ctx: typer.Context) -> None:
     """Print environment config."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -897,7 +897,7 @@ def create_addon(
         None, "--path", help="Path where to create the addon"
     ),
     template: AddonTemplate = ADDON_TEMPLATE_OPTION,
-):
+) -> None:
     """Create new addon."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -956,7 +956,7 @@ def list_addons(
         help="Exclude Odoo Enterprise Edition (EE) addons from the list",
     ),
     sorting: str = SORT_OPTION,
-):
+) -> None:
     """List available addons."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -1114,7 +1114,7 @@ def list_depends(
         help="Filter modules by directory (e.g., 'myaddons')",
     ),
     sorting: str = SORT_OPTION,
-):
+) -> None:
     """List direct dependencies needed to install a set of modules.
 
     Direct dependencies are external modules (not in the provided set) needed
@@ -1199,7 +1199,7 @@ def list_codepends(
         "--separator",
         help="Separator for output (e.g., ',' for 'a,b,c')",
     ),
-):
+) -> None:
     """List codependencies for a module.
 
     Codependencies are modules that depend on the specified module, meaning
@@ -1257,7 +1257,7 @@ def list_missing(
         "--select-dir",
         help="Filter modules by directory (e.g., 'myaddons')",
     ),
-):
+) -> None:
     """Find missing dependencies for modules.
 
     This command identifies dependencies that are not available in the addons_path.
@@ -1330,7 +1330,7 @@ def export_lang(
     module: str = typer.Argument(help="Module to export"),
     language: str | None = LANGUAGE_OPTION,
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
-):
+) -> None:
     """Export language module."""
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -1386,7 +1386,7 @@ def export_lang(
     )
 
 
-def cli_main():
+def cli_main() -> None:
     """Entry point for the CLI application."""
     app()
 

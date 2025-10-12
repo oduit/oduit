@@ -84,7 +84,7 @@ class OdooOperations:
         dev: str | None = None,
         log_level: str | None = None,
         stop_after_init: bool = False,
-    ):
+    ) -> None:
         """Start the Odoo server with the specified configuration.
 
         Launches the Odoo server process using the provided environment configuration.
@@ -141,7 +141,7 @@ class OdooOperations:
         no_http: bool = True,
         compact: bool = False,
         log_level: str | None = None,
-    ):
+    ) -> dict:
         """Start an interactive Odoo shell or execute piped commands.
 
         Launches an Odoo shell environment for interactive Python code execution
@@ -174,7 +174,10 @@ class OdooOperations:
         """
         if _output_module._formatter.format_type == "json" and sys.stdin.isatty():
             print_error_result("Interactive shell not available in JSON mode", 1)
-            return
+            return {
+                "success": False,
+                "error": "Interactive shell not available in JSON mode",
+            }
 
         if self.verbose and not compact:
             print_info("Starting Odoo shell...")
@@ -402,7 +405,7 @@ class OdooOperations:
         language: str,
         no_http: bool = False,
         log_level: str | None = None,
-    ):
+    ) -> dict:
         """Export language translations for a specific module to a file.
 
         Exports the language translations for the specified module to a file.
@@ -463,7 +466,7 @@ class OdooOperations:
         suppress_output: bool = False,
         raise_on_error: bool = False,
         log_level: str | None = None,
-    ):
+    ) -> dict:
         """Run tests for a module
 
         Args:
@@ -948,8 +951,11 @@ class OdooOperations:
                     print_error(str(e))
 
         if raise_on_error and not final_result.get("success", False):
+            error_msg = final_result.get("error", "Database list operation failed")
+            if not isinstance(error_msg, str):
+                error_msg = str(error_msg)
             raise DatabaseOperationError(
-                final_result.get("error", "Database list operation failed"),
+                error_msg,
                 operation_result=final_result,
             )
 
@@ -960,7 +966,7 @@ class OdooOperations:
         addon_name: str,
         destination: str | None = None,
         template: str | None = None,
-    ):
+    ) -> dict:
         """Create a new Odoo addon using the scaffold command.
 
         Creates a new Odoo addon with basic structure using odoo-bin scaffold.

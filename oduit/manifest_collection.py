@@ -12,7 +12,7 @@ from .manifest import Manifest
 class ManifestCollection:
     """Represents a collection of Odoo module manifests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize an empty ManifestCollection."""
         self._manifests: dict[str, Manifest] = {}
 

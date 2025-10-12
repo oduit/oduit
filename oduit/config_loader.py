@@ -21,7 +21,7 @@ class ConfigLoader:
         """Initialize ConfigLoader with optional custom config directory."""
         self.config_dir = config_dir or os.path.expanduser("~/.config/oduit")
 
-    def _import_toml_libs(self):
+    def _import_toml_libs(self) -> tuple[Any, Any]:
         """Import TOML libraries with fallback handling."""
         tomllib = None
         tomli_w = None

@@ -223,5 +223,3 @@ Miscellaneous
 - Initial release
 
 - Pre-commit and readme cleanup
-
-

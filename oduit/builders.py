@@ -58,21 +58,21 @@ class AbstractCommandBuilder(ABC):
         pass
 
     @abstractmethod
-    def reset(self):
+    def reset(self) -> None:
         """Reset the builder to initial state for reuse"""
         pass
 
-    def _set_command(self, command: str):
+    def _set_command(self, command: str) -> "AbstractCommandBuilder":
         """Set a command (like 'shell', 'run', or binary like 'python')"""
         self._command_parts.append({"type": "command", "value": command})
         return self
 
-    def _set_value(self, value: str):
+    def _set_value(self, value: str) -> "AbstractCommandBuilder":
         """Set a value (like 'db_name')"""
         self._command_parts.append({"type": "value", "value": value})
         return self
 
-    def _set_flag(self, flag: str, prefix: str = "--"):
+    def _set_flag(self, flag: str, prefix: str = "--") -> "AbstractCommandBuilder":
         """Set a boolean flag without value (like --no-http, --stop-after-init)"""
         self._remove_by_key(flag)
         self._command_parts.append({"type": "flag", "key": flag, "prefix": prefix})
@@ -85,7 +85,7 @@ class AbstractCommandBuilder(ABC):
         prefix: str = "--",
         sep: str = "=",
         unique: bool = True,
-    ):
+    ) -> "AbstractCommandBuilder":
         """Set a parameter with value (like --database=mydb, -i module)"""
         if unique:
             self._remove_by_key(key)
@@ -100,7 +100,7 @@ class AbstractCommandBuilder(ABC):
         )
         return self
 
-    def _remove_by_key(self, key: str):
+    def _remove_by_key(self, key: str) -> "AbstractCommandBuilder":
         """Remove any command part by key"""
         self._command_parts = [
             part for part in self._command_parts if part.get("key") != key
@@ -223,7 +223,7 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
         if db_maxconn_gevent := self.config.get_optional("db_maxconn_gevent"):
             self.db_maxconn_gevent(db_maxconn_gevent)
 
-    def _remove_http_config(self):
+    def _remove_http_config(self) -> "BaseOdooCommandBuilder":
         """Disable HTTP server if configured"""
         self._remove_by_key("http-interface")
         self._remove_by_key("http-port")
@@ -252,213 +252,248 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
             self.limit_time_worker_cron(limit_time_worker_cron)
 
     # Core Odoo configuration methods
-    def database(self, db_name: str):
+    def database(self, db_name: str) -> "BaseOdooCommandBuilder":
         """Set database name"""
-        return self._set_parameter("database", db_name)
+        self._set_parameter("database", db_name)
+        return self
 
-    def addons_path(self, path: str):
+    def addons_path(self, path: str) -> "BaseOdooCommandBuilder":
         """Set addons path"""
-        return self._set_parameter("addons-path", path)
+        self._set_parameter("addons-path", path)
+        return self
 
-    def load(self, modules: str):
+    def load(self, modules: str) -> "BaseOdooCommandBuilder":
         """Set list of server-wide modules to load."""
-        return self._set_parameter("load", modules)
+        self._set_parameter("load", modules)
+        return self
 
-    def log_level(self, level: str):
+    def log_level(self, level: str) -> "BaseOdooCommandBuilder":
         """Set log level (info, warn, error, debug)"""
-        return self._set_parameter("log-level", level)
+        self._set_parameter("log-level", level)
+        return self
 
-    def log_handler(self, handler: str):
+    def log_handler(self, handler: str) -> "BaseOdooCommandBuilder":
         """Set LOGGER:LEVEL, enables LOGGER at the provided LEVEL"""
-        return self._set_parameter("log-handler", handler, unique=False)
+        self._set_parameter("log-handler", handler, unique=False)
+        return self
 
-    def log_web(self, enabled: bool = True):
+    def log_web(self, enabled: bool = True) -> "BaseOdooCommandBuilder":
         """enables DEBUG logging of HTTP requests and responses"""
         if enabled:
-            return self._set_flag("log-web")
+            self._set_flag("log-web")
         else:
             self._remove_by_key("log-web")
-            return self
+        return self
 
-    def log_sql(self, enabled: bool = True):
+    def log_sql(self, enabled: bool = True) -> "BaseOdooCommandBuilder":
         """enables DEBUG logging of SQL querying"""
         if enabled:
-            return self._set_flag("log-sql")
+            self._set_flag("log-sql")
         else:
             self._remove_by_key("log-sql")
-            return self
+        return self
 
-    def syslog(self, enabled: bool = True):
-        """Enable: logs to the system’s event logger"""
+    def syslog(self, enabled: bool = True) -> "BaseOdooCommandBuilder":
+        """Enable: logs to the system's event logger"""
         if enabled:
-            return self._set_flag("syslog")
+            self._set_flag("syslog")
         else:
             self._remove_by_key("syslog")
-            return self
+        return self
 
-    def db_maxconn(self, maxconn: int):
+    def db_maxconn(self, maxconn: int) -> "BaseOdooCommandBuilder":
         """Set maximum number of database connections"""
-        return self._set_parameter("db_maxconn", str(maxconn))
+        self._set_parameter("db_maxconn", str(maxconn))
+        return self
 
-    def db_maxconn_gevent(self, maxconn: int):
+    def db_maxconn_gevent(self, maxconn: int) -> "BaseOdooCommandBuilder":
         """Set maximum number of database connections"""
-        return self._set_parameter("db_maxconn_gevent", str(maxconn))
+        self._set_parameter("db_maxconn_gevent", str(maxconn))
+        return self
 
-    def db_user(self, user: str):
+    def db_user(self, user: str) -> "BaseOdooCommandBuilder":
         """Set database user"""
-        return self._set_parameter("db_user", user)
+        self._set_parameter("db_user", user)
+        return self
 
-    def db_password(self, password: str):
+    def db_password(self, password: str) -> "BaseOdooCommandBuilder":
         """Set database password"""
-        return self._set_parameter("db_password", password)
+        self._set_parameter("db_password", password)
+        return self
 
-    def db_host(self, hostname: str):
+    def db_host(self, hostname: str) -> "BaseOdooCommandBuilder":
         """Set database host"""
-        return self._set_parameter("db_host", hostname)
+        self._set_parameter("db_host", hostname)
+        return self
 
-    def db_filter(self, filter: str):
+    def db_filter(self, filter: str) -> "BaseOdooCommandBuilder":
         """Set database filter"""
-        return self._set_parameter("db-filter", filter)
+        self._set_parameter("db-filter", filter)
+        return self
 
-    def db_template(self, template: str):
+    def db_template(self, template: str) -> "BaseOdooCommandBuilder":
         """Set database template"""
-        return self._set_parameter("db_template", template)
+        self._set_parameter("db_template", template)
+        return self
 
-    def http_port(self, port: int):
+    def http_port(self, port: int) -> "BaseOdooCommandBuilder":
         """Set HTTP port"""
-        return self._set_parameter("http-port", str(port))
+        self._set_parameter("http-port", str(port))
+        return self
 
-    def gevent_port(self, port: int):
+    def gevent_port(self, port: int) -> "BaseOdooCommandBuilder":
         """Set GEVENT port"""
-        return self._set_parameter("gevent-port", str(port))
+        self._set_parameter("gevent-port", str(port))
+        return self
 
-    def workers(self, workers: int):
+    def workers(self, workers: int) -> "BaseOdooCommandBuilder":
         """Set workers"""
-        return self._set_parameter("workers", str(workers))
+        self._set_parameter("workers", str(workers))
+        return self
 
-    def limit_request(self, limit: int):
+    def limit_request(self, limit: int) -> "BaseOdooCommandBuilder":
         """Set limit-request"""
-        return self._set_parameter("limit-request", str(limit))
+        self._set_parameter("limit-request", str(limit))
+        return self
 
-    def limit_memory_soft(self, limit: int):
+    def limit_memory_soft(self, limit: int) -> "BaseOdooCommandBuilder":
         """Set limit-memory-soft"""
-        return self._set_parameter("limit-memory-soft", str(limit))
+        self._set_parameter("limit-memory-soft", str(limit))
+        return self
 
-    def limit_memory_hard(self, limit: int):
+    def limit_memory_hard(self, limit: int) -> "BaseOdooCommandBuilder":
         """Set limit-memory-hard"""
-        return self._set_parameter("limit-memory-hard", str(limit))
+        self._set_parameter("limit-memory-hard", str(limit))
+        return self
 
-    def limit_time_cpu(self, limit: int):
+    def limit_time_cpu(self, limit: int) -> "BaseOdooCommandBuilder":
         """Set limit-time-cpu"""
-        return self._set_parameter("limit-time-cpu", str(limit))
+        self._set_parameter("limit-time-cpu", str(limit))
+        return self
 
-    def limit_time_real(self, limit: int):
+    def limit_time_real(self, limit: int) -> "BaseOdooCommandBuilder":
         """Set limit-time-real"""
-        return self._set_parameter("limit-time-real", str(limit))
+        self._set_parameter("limit-time-real", str(limit))
+        return self
 
-    def max_cron_threads(self, threads: int):
+    def max_cron_threads(self, threads: int) -> "BaseOdooCommandBuilder":
         """Set max-cron-threads"""
-        return self._set_parameter("max-cron-threads", str(threads))
+        self._set_parameter("max-cron-threads", str(threads))
+        return self
 
-    def limit_time_worker_cron(self, limit: int):
+    def limit_time_worker_cron(self, limit: int) -> "BaseOdooCommandBuilder":
         """Set limit-time-worker-cron"""
-        return self._set_parameter("limit-time-worker-cron", str(limit))
+        self._set_parameter("limit-time-worker-cron", str(limit))
+        return self
 
-    def http_interface(self, interface: str):
+    def http_interface(self, interface: str) -> "BaseOdooCommandBuilder":
         """Set http interface"""
-        return self._set_parameter("http-interface", interface)
+        self._set_parameter("http-interface", interface)
+        return self
 
-    def data_dir(self, path: str):
+    def data_dir(self, path: str) -> "BaseOdooCommandBuilder":
         """Set data directory"""
-        return self._set_parameter("data-dir", path)
+        self._set_parameter("data-dir", path)
+        return self
 
-    def config_file(self, path: str):
+    def config_file(self, path: str) -> "BaseOdooCommandBuilder":
         """Set config file path"""
-        return self._set_parameter("config", path)
+        self._set_parameter("config", path)
+        return self
 
-    def dev(self, features: str = "all"):
+    def dev(self, features: str = "all") -> "BaseOdooCommandBuilder":
         """Enable dev mode with specified features"""
-        return self._set_parameter("dev", features)
+        self._set_parameter("dev", features)
+        return self
 
-    def load_language(self, languages: str):
+    def load_language(self, languages: str) -> "BaseOdooCommandBuilder":
         """specifies the languages (separated by commas) for the translations"""
-        return self._set_parameter("load-language", languages)
+        self._set_parameter("load-language", languages)
+        return self
 
-    def language(self, language: str):
+    def language(self, language: str) -> "BaseOdooCommandBuilder":
         """Set the language of the translation file
         use it with i18n-export or i18n-import
         """
-        return self._set_parameter("language", language)
+        self._set_parameter("language", language)
+        return self
 
-    def i18n_export(self, filename: str):
+    def i18n_export(self, filename: str) -> "BaseOdooCommandBuilder":
         """Set i18n export filename"""
-        return self._set_parameter("i18n-export", filename)
+        self._set_parameter("i18n-export", filename)
+        return self
 
-    def i18n_import(self, filename: str):
+    def i18n_import(self, filename: str) -> "BaseOdooCommandBuilder":
         """Set i18n import filename"""
-        return self._set_parameter("i18n-import", filename)
+        self._set_parameter("i18n-import", filename)
+        return self
 
-    def i18n_overwrite(self, enabled: bool = True):
+    def i18n_overwrite(self, enabled: bool = True) -> "BaseOdooCommandBuilder":
         """Enable i18n overwrite"""
         if enabled:
-            return self._set_flag("i18n-overwrite")
+            self._set_flag("i18n-overwrite")
         else:
             self._remove_by_key("i18n-overwrite")
-            return self
+        return self
 
-    def modules(self, modules: str):
+    def modules(self, modules: str) -> "BaseOdooCommandBuilder":
         """Set list of modules to export"""
-        return self._set_parameter("modules", modules)
+        self._set_parameter("modules", modules)
+        return self
 
-    def no_http(self, enabled: bool = True):
+    def no_http(self, enabled: bool = True) -> "BaseOdooCommandBuilder":
         """Disable HTTP server"""
         if enabled:
-            return self._set_flag("no-http")
+            self._set_flag("no-http")
         else:
             self._remove_by_key("no-http")
-            return self
+        return self
 
-    def proxy_mode(self, enabled: bool = True):
+    def proxy_mode(self, enabled: bool = True) -> "BaseOdooCommandBuilder":
         """Enables HTTP proxy"""
         if enabled:
-            return self._set_flag("proxy-mode")
+            self._set_flag("proxy-mode")
         else:
             self._remove_by_key("proxy-mode")
-            return self
+        return self
 
-    def stop_after_init(self, enabled: bool = True):
+    def stop_after_init(self, enabled: bool = True) -> "BaseOdooCommandBuilder":
         """Stop after module initialization"""
         if enabled:
-            return self._set_flag("stop-after-init")
+            self._set_flag("stop-after-init")
         else:
             self._remove_by_key("stop-after-init")
-            return self
+        return self
 
-    def install_module(self, module: str):
+    def install_module(self, module: str) -> "BaseOdooCommandBuilder":
         """Install a module"""
-        return self._set_parameter("i", module, prefix="-", sep=" ")
+        self._set_parameter("i", module, prefix="-", sep=" ")
+        return self
 
-    def update_module(self, module: str):
+    def update_module(self, module: str) -> "BaseOdooCommandBuilder":
         """Update a module"""
-        return self._set_parameter("u", module, prefix="-", sep=" ")
+        self._set_parameter("u", module, prefix="-", sep=" ")
+        return self
 
-    def shell_interface(self, interface: str):
+    def shell_interface(self, interface: str) -> "BaseOdooCommandBuilder":
         """Set shell interface (ipython, ptpython, bpython, python)"""
-        return self._set_parameter("shell-interface", interface)
+        self._set_parameter("shell-interface", interface)
+        return self
 
-    def without_demo(self, modules: str):
+    def without_demo(self, modules: str) -> "BaseOdooCommandBuilder":
         """Disable demo data for specified modules"""
-        return self._set_parameter("without-demo", modules)
+        self._set_parameter("without-demo", modules)
+        return self
 
-    def with_demo(self, enabled: bool = True):
+    def with_demo(self, enabled: bool = True) -> "BaseOdooCommandBuilder":
         """Install module with demo data"""
         if enabled:
-            return self._set_flag("with-demo")
+            self._set_flag("with-demo")
         else:
             self._remove_by_key("with-demo")
-            return self
+        return self
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset builder to initial state"""
         self._command_parts.clear()
         self._setup_base_command()
@@ -547,21 +582,26 @@ class OdooTestCoverageCommandBuilder(BaseOdooCommandBuilder):
         self.stop_after_init(True)
         self._set_flag("test-enable")
 
-    def test_module(self, module: str, install: bool = False):
+    def test_module(
+        self, module: str, install: bool = False
+    ) -> "OdooTestCoverageCommandBuilder":
         """Configure module testing"""
         if install:
             self.install_module(module)
         else:
             self.update_module(module)
-        return self._set_parameter("test-tags", f"/{module}", prefix="--", sep=" ")
+        self._set_parameter("test-tags", f"/{module}", prefix="--", sep=" ")
+        return self
 
-    def test_file(self, file_path: str):
+    def test_file(self, file_path: str) -> "OdooTestCoverageCommandBuilder":
         """Set specific test file"""
-        return self._set_parameter("test-file", file_path, prefix="--", sep=" ")
+        self._set_parameter("test-file", file_path, prefix="--", sep=" ")
+        return self
 
-    def test_tags(self, tags: str):
+    def test_tags(self, tags: str) -> "OdooTestCoverageCommandBuilder":
         """Set test tags filter"""
-        return self._set_parameter("test-tags", tags, prefix="--", sep=" ")
+        self._set_parameter("test-tags", tags, prefix="--", sep=" ")
+        return self
 
     def build_operation(self) -> CommandOperation:
         # Extract test tags from command parts to populate metadata
@@ -602,21 +642,26 @@ class OdooTestCommandBuilder(BaseOdooCommandBuilder):
         self.stop_after_init(True)
         self._set_flag("test-enable")
 
-    def test_module(self, module: str, install: bool = False):
+    def test_module(
+        self, module: str, install: bool = False
+    ) -> "OdooTestCommandBuilder":
         """Configure module testing"""
         if install:
             self.install_module(module)
         else:
             self.update_module(module)
-        return self._set_parameter("test-tags", f"/{module}", prefix="--", sep=" ")
+        self._set_parameter("test-tags", f"/{module}", prefix="--", sep=" ")
+        return self
 
-    def test_file(self, file_path: str):
+    def test_file(self, file_path: str) -> "OdooTestCommandBuilder":
         """Set specific test file"""
-        return self._set_parameter("test-file", file_path, prefix="--", sep=" ")
+        self._set_parameter("test-file", file_path, prefix="--", sep=" ")
+        return self
 
-    def test_tags(self, tags: str):
+    def test_tags(self, tags: str) -> "OdooTestCommandBuilder":
         """Set test tags filter"""
-        return self._set_parameter("test-tags", tags, prefix="--", sep=" ")
+        self._set_parameter("test-tags", tags, prefix="--", sep=" ")
+        return self
 
     def build_operation(self) -> CommandOperation:
         # Extract test tags and modules from command parts to populate metadata
@@ -804,7 +849,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         self._set_command("postgres")
         self._set_flag("c", prefix="-")
 
-    def drop_command(self):
+    def drop_command(self) -> "DatabaseCommandBuilder":
         """Build database drop command"""
         self.config.validate_keys(["db_name"], "database drop command")
         db_name = self.config.get_required("db_name")
@@ -816,7 +861,9 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
             self._set_value(f"{db_name}")
         return self
 
-    def create_role_command(self, db_user: str | None = None):
+    def create_role_command(
+        self, db_user: str | None = None
+    ) -> "DatabaseCommandBuilder":
         """Build database create role command"""
         if db_user is None:
             self.config.validate_keys(["db_user"], "database create role command")
@@ -825,14 +872,16 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         self._set_command(f'psql -c "CREATE ROLE \\"{db_user}\\"";')
         return self
 
-    def create_extension_command(self, extension: str):
+    def create_extension_command(self, extension: str) -> "DatabaseCommandBuilder":
         """Build database create role command"""
         self.config.validate_keys(["db_user"], "database create role command")
 
         self._set_command(f'psql -c "CREATE EXTENSION \\"{extension}\\"";')
         return self
 
-    def alter_role_command(self, db_user: str | None = None):
+    def alter_role_command(
+        self, db_user: str | None = None
+    ) -> "DatabaseCommandBuilder":
         """Build database alter role command to add login and createdb privileges"""
         if db_user is None:
             self.config.validate_keys(["db_user"], "database alter role command")
@@ -840,7 +889,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         self._set_command(f'psql -c "ALTER ROLE \\"{db_user}\\" WITH LOGIN CREATEDB";')
         return self
 
-    def create_command(self, db_user: str | None = None):
+    def create_command(self, db_user: str | None = None) -> "DatabaseCommandBuilder":
         """Build database create command"""
         self.config.validate_keys(["db_name"], "database create command")
         db_name = self.config.get_required("db_name")
@@ -857,7 +906,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
             self._set_value(f"{db_name}")
         return self
 
-    def list_db_command(self, db_user: str | None = None):
+    def list_db_command(self, db_user: str | None = None) -> "DatabaseCommandBuilder":
         """Build database list command"""
         if db_user is None:
             db_user = self.config.get_optional("db_user")
@@ -874,7 +923,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                 self._set_parameter("U", db_user, prefix="-", sep=" ")
         return self
 
-    def exists_db_command(self, db_user: str | None = None):
+    def exists_db_command(self, db_user: str | None = None) -> "DatabaseCommandBuilder":
         """Build database exists check command"""
         self.config.validate_keys(["db_name"], "database exists command")
         db_name = self.config.get_required("db_name")
@@ -900,7 +949,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                 self._set_command(f'psql -lqt | cut -d \\| -f 1 | grep -qw "{db_name}"')
         return self
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset builder to initial state"""
         self._command_parts.clear()
         self._setup_base_command()

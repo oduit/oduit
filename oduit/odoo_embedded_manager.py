@@ -198,7 +198,7 @@ class OdooEmbeddedManager:
         finally:
             self._is_running = False
 
-    def _export_translation(self, config) -> None:
+    def _export_translation(self, config: Any) -> None:
         """Export translations to file."""
         try:
             import odoo
@@ -235,7 +235,7 @@ class OdooEmbeddedManager:
             print_error(f"Failed to export translations: {e}")
             raise
 
-    def _import_translation(self, config) -> None:
+    def _import_translation(self, config: Any) -> None:
         """Import translations from file."""
         try:
             import odoo
@@ -411,7 +411,7 @@ class OdooEmbeddedManager:
             import odoo.cli.server
             from odoo.tools import config
 
-            def raise_keyboard_interrupt(*a):
+            def raise_keyboard_interrupt(*a: Any) -> None:
                 raise KeyboardInterrupt()
 
             # Prepare configuration arguments

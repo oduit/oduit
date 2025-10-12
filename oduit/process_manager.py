@@ -84,7 +84,9 @@ class ProcessManager(BaseProcessManager):
         >>> pm.run_interactive_shell(['bash'])
     """
 
-    def __init__(self):
+    _sudo_password: str | None
+
+    def __init__(self) -> None:
         self._sudo_password = None
 
     def run_operation(
@@ -155,7 +157,9 @@ class ProcessManager(BaseProcessManager):
 
         return result_builder.finalize()
 
-    def _spawn_process_with_optional_sudo(self, cmd):
+    def _spawn_process_with_optional_sudo(
+        self, cmd: list[str]
+    ) -> tuple[Any, str | None]:
         """Spawn subprocess handling sudo -S via askpass.
 
         Returns (process, askpass_path).
@@ -212,14 +216,16 @@ class ProcessManager(BaseProcessManager):
         process = self._create_subprocess(cmd)
         return process, askpass_path
 
-    def _get_process_kwargs(self):
+    def _get_process_kwargs(self) -> dict[str, Any]:
         """Get platform-appropriate process creation kwargs"""
         if IS_WINDOWS:
             return {"creationflags": 0x00000200}  # CREATE_NEW_PROCESS_GROUP
         else:
             return {"preexec_fn": os.setsid}
 
-    def _create_subprocess(self, cmd, env=None):
+    def _create_subprocess(
+        self, cmd: list[str], env: dict[str, str] | None = None
+    ) -> Any:
         """Create subprocess with platform-appropriate settings"""
         kwargs = self._get_process_kwargs()
         if env:
@@ -235,7 +241,7 @@ class ProcessManager(BaseProcessManager):
 
     def _handle_line_output(
         self, line: str, should_show_line: bool, compact: bool, suppress_output: bool
-    ):
+    ) -> None:
         """Handle output for a single line"""
         if suppress_output:
             return
@@ -248,7 +254,7 @@ class ProcessManager(BaseProcessManager):
                 print(self._colorize_log_line(line), end="")
 
     def _collect_error_context(
-        self, process, suppress_output: bool, info_pattern
+        self, process: Any, suppress_output: bool, info_pattern: Any
     ) -> list[str]:
         """Collect additional lines for error context"""
         context_lines = []
@@ -286,13 +292,13 @@ class ProcessManager(BaseProcessManager):
 
         return context_lines
 
-    def _terminate_process_on_error(self, process, suppress_output: bool):
+    def _terminate_process_on_error(self, process: Any, suppress_output: bool) -> None:
         """Terminate process when error is detected"""
         if not suppress_output:
             print_error("Failure detected in output. Aborting...")
         self._terminate_process_cross_platform(process)
 
-    def _terminate_process_cross_platform(self, process):
+    def _terminate_process_cross_platform(self, process: Any) -> None:
         """Terminate process with platform-appropriate method"""
         try:
             if IS_WINDOWS:
@@ -343,7 +349,7 @@ class ProcessManager(BaseProcessManager):
 
     def _stream_output_and_maybe_abort(
         self,
-        process,
+        process: Any,
         stop_on_error: bool,
         compact: bool = False,
         suppress_output: bool = False,
@@ -528,11 +534,11 @@ class ProcessManager(BaseProcessManager):
 
     def _stream_output_yielding(
         self,
-        process,
+        process: Any,
         stop_on_error: bool,
         compact: bool = False,
         suppress_output: bool = False,
-    ):
+    ) -> Generator[dict[str, Any], None, None]:
         """Generator version of _stream_output_and_maybe_abort that yields lines
 
         Yields:
@@ -638,8 +644,9 @@ class ProcessManager(BaseProcessManager):
             for item in self._stream_output_yielding(
                 process, stop_on_error, compact, suppress_output
             ):
-                if "line" in item:
-                    output_lines.append(item["line"])
+                line = item.get("line")
+                if line is not None:
+                    output_lines.append(line)
                 yield item
 
             process.wait()
@@ -718,7 +725,7 @@ class ProcessManager(BaseProcessManager):
                         print_error(f"Error removing temporary file: {e}")
 
     def run_shell_command(
-        self, cmd, verbose: bool = False, capture_output: bool = False
+        self, cmd: list[str] | str, verbose: bool = False, capture_output: bool = False
     ) -> dict[str, Any]:
         """Run a shell command that may receive piped input
 
