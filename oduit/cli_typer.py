@@ -441,6 +441,8 @@ def install(
         )
         result_json["type"] = "result"
         print(json.dumps(result_json))
+    elif not output.get("success"):
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -511,6 +513,8 @@ def update(
     )
     if compact and result:
         print_info(str(result))
+    elif not result.get("success"):
+        raise typer.Exit(1)
 
 
 @app.command()
