@@ -142,5 +142,6 @@ jobs:
           EOF
 
       - name: Run pytest tests locally
+        working-directory: oduit
         run: |
-          venv/bin/pytest -m integration oduit/integration_tests -v
+          ../venv/bin/pytest -m integration integration_tests -v
