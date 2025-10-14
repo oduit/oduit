@@ -1,0 +1,13 @@
+python_bin = "/odoo-v17/venv/bin/python3"
+coverage_bin = "/odoo-v17/venv/bin/coverage"
+odoo_bin = "/opt/odoo-v17/odoo-bin"
+db_name = "test_db_17_tmp4"
+db_user = "odoo_test"
+db_password = "odoo_test"
+data_dir = "~/test_data/odoo_17_tmp4"
+http_port = 8075
+gevent_port = 8076
+addons_path = [
+  "/opt/odoo-v17/addons",
+  "/home/nahrstaedt/oduit/integration_tests/myaddons/",
+]

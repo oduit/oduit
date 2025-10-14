@@ -328,6 +328,7 @@ class OperationResult:
             "success": True,
             "modules_loaded": 0,
             "total_modules": 0,
+            "modules_installed": [],
             "unmet_dependencies": [],
             "failed_modules": [],
             "dependency_errors": [],
@@ -340,6 +341,15 @@ class OperationResult:
         lines = output.split("\n")
 
         for line in lines:
+            # Pattern for loading modules: "Loading module X (Y/Z)"
+            loading_module_match = re.search(
+                r"Loading\s+module\s+(\w+)\s+\(\d+/\d+\)", line
+            )
+            if loading_module_match:
+                module_name = loading_module_match.group(1)
+                if module_name not in install_info["modules_installed"]:
+                    install_info["modules_installed"].append(module_name)
+
             # Pattern for unmet dependencies: "module module_name: Unmet dependencies"
             unmet_deps_match = re.search(
                 r"module\s+(\w+):\s+Unmet\s+dependencies:\s+(.+)", line
@@ -355,6 +365,21 @@ class OperationResult:
                 install_info["dependency_errors"].append(
                     f"Module '{module_name}' has unmet dependencies: "
                     f"{', '.join(dependencies)}"
+                )
+                install_info["success"] = False
+
+            # Pattern for UserError about missing dependencies
+            # "UserError: You try to install module 'X' that depends on module 'Y'"
+            user_error_match = re.search(
+                r"UserError.*try to install module ['\"](\w+)['\"].*"
+                r"depends on module ['\"](\w+)['\"]",
+                line,
+            )
+            if user_error_match:
+                module_name = user_error_match.group(1)
+                missing_dep = user_error_match.group(2)
+                install_info["dependency_errors"].append(
+                    f"Module '{module_name}' depends on missing module '{missing_dep}'"
                 )
                 install_info["success"] = False
 
