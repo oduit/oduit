@@ -121,6 +121,10 @@ jobs:
         run: |
           venv/bin/pip install ./oduit
 
+      - name: Install pytest
+        run: |
+          venv/bin/pip install pytest 
+          
       - name: Create .oduit.toml configuration
         run: |
           cat > .oduit.toml << 'EOF'

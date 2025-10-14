@@ -5,6 +5,7 @@ This directory contains integration tests that run against a real Odoo instance.
 ## Setup
 
 1. **Configure Odoo Environment**: Edit `.oduit.toml` with your Odoo installation paths:
+
    ```toml
    python_bin = "/path/to/odoo/venv/bin/python3"
    odoo_bin = "/path/to/odoo-bin"
@@ -33,16 +34,19 @@ The `myaddons/` directory contains test modules:
 ## Running Tests
 
 ### Run all integration tests:
+
 ```bash
 pytest integration_tests/ -m integration -v
 ```
 
 ### Run specific test:
+
 ```bash
 pytest integration_tests/test_basic_operations.py::test_install_module_success -v
 ```
 
 ### Skip integration tests in regular test runs:
+
 ```bash
 pytest -m "not integration"
 ```
@@ -59,6 +63,7 @@ pytest -m "not integration"
 ## CI/CD
 
 These tests require a real Odoo instance and are typically:
+
 - Run in a Docker container with Odoo pre-installed
 - Skipped in lightweight CI environments
 - Run nightly or before releases
@@ -66,11 +71,13 @@ These tests require a real Odoo instance and are typically:
 ## Troubleshooting
 
 **Tests are skipped**: Check that:
+
 - `.oduit.toml` paths point to valid Odoo installation
 - Database credentials are correct
 - Odoo has required dependencies installed
 
 **Database errors**: Ensure the test database:
+
 - Exists or can be created
 - Is accessible with provided credentials
 - Is not being used by another process
