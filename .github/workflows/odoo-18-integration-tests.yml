@@ -1,0 +1,149 @@
+name: Odoo 18 Integration Tests
+on: [push, pull_request]
+
+jobs:
+  odoo-tests:
+    runs-on: ubuntu-22.04
+    env:
+      DB: "oduit"
+      PGUSER: odoo
+      PGPASSWORD: odoo
+      PGHOST: localhost
+      PGPORT: 5432
+      ODOO: "./odoo/odoo-bin"
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: odoo
+          POSTGRES_PASSWORD: odoo
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: oduit
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Sleep for 10 seconds
+        run: sleep 10s
+      - name: DB Creation
+        run: createdb $DB
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            python3-virtualenv \
+            libpq-dev \
+            libldap2-dev \
+            libsasl2-dev \
+            adduser \
+            fonts-dejavu-core \
+            fonts-inconsolata \
+            fonts-font-awesome \
+            fonts-roboto-unhinted \
+            gsfonts \
+            libjs-underscore \
+            lsb-base \
+            postgresql-client \
+            python3-babel \
+            python3-chardet \
+            python3-cryptography \
+            python3-dateutil \
+            python3-decorator \
+            python3-docutils \
+            python3-freezegun \
+            python3-geoip2 \
+            python3-gevent \
+            python3-greenlet \
+            python3-idna \
+            python3-pil \
+            python3-jinja2 \
+            python3-libsass \
+            python3-markupsafe \
+            python3-num2words \
+            python3-ofxparse \
+            python3-passlib \
+            python3-polib \
+            python3-psutil \
+            python3-psycopg2 \
+            python3-pydot \
+            python3-openssl \
+            python3-pypdf2 \
+            python3-rjsmin \
+            python3-qrcode \
+            python3-renderpm \
+            python3-reportlab \
+            python3-requests \
+            python3-stdnum \
+            python3-tz \
+            python3-urllib3 \
+            python3-vobject \
+            python3-werkzeug \
+            python3-xlsxwriter \
+            python3-xlrd \
+            python3-zeep \
+            python3-ldap
+
+      - name: Create virtual environment
+        run: |
+          python -m venv venv
+          echo "$GITHUB_WORKSPACE/venv/bin" >> $GITHUB_PATH
+
+      - name: Checkout Odoo
+        uses: actions/checkout@v4
+        with:
+          repository: odoo/odoo
+          ref: "18.0"
+          path: odoo
+          fetch-depth: 1
+
+      - name: Install Odoo dependencies
+        run: |
+          sed -i -E "s/(gevent==)21\.8\.0( ; sys_platform != 'win32' and python_version == '3.10')/\122.10.2\2/;s/(greenlet==)1.1.2( ; sys_platform != 'win32' and python_version == '3.10')/\12.0.2\2/" odoo/requirements.txt
+          venv/bin/pip install -r odoo/requirements.txt
+          venv/bin/pip install websocket-client
+
+      - name: Install Odoo
+        run: |
+          venv/bin/pip install ./odoo
+ 
+      - name: Install oduit
+        run: |
+          venv/bin/pip install ./oduit
+
+      - name: Install pytest
+        run: |
+          venv/bin/pip install pytest 
+          
+      - name: Create .oduit.toml configuration
+        run: |
+          cat > oduit/integration_tests/.oduit.toml << EOF
+          python_bin = "$GITHUB_WORKSPACE/venv/bin/python"
+          odoo_bin = "$GITHUB_WORKSPACE/odoo/odoo-bin"
+          db_name = "oduit"
+          db_user = "odoo"
+          db_password = "odoo"
+          db_port = 5432
+          http_port = 8075
+          gevent_port = 8076
+          http_interface = "0.0.0.0"
+          addons_path = [
+            "$GITHUB_WORKSPACE/odoo/addons",
+            "$GITHUB_WORKSPACE/oduit/integration_tests/myaddons"
+          ]
+          EOF
+
+      - name: Run pytest tests locally
+        working-directory: oduit
+        run: |
+          ../venv/bin/pytest -m integration integration_tests -v
