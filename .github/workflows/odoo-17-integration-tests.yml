@@ -127,18 +127,20 @@ jobs:
           
       - name: Create .oduit.toml configuration
         run: |
-          cat > .oduit.toml << 'EOF'
-          [binaries]
-            odoo_bin = "odoo"
-          [odoo_params]
-            db_name = "oduit"
-            db_user = "odoo"
-            db_password = "odoo"
-            db_port = 5432
-            http_port = 8075
-            gevent_port = 8076
-            http_interface = "0.0.0.0"
-            addons_path = ["odoo/addons", "oduit/integration_tests/myaddons"]
+          cat > oduit/integration_tests/.oduit.toml << EOF
+          python_bin = "$GITHUB_WORKSPACE/venv/bin/python"
+          odoo_bin = "$GITHUB_WORKSPACE/odoo/odoo-bin"
+          db_name = "oduit"
+          db_user = "odoo"
+          db_password = "odoo"
+          db_port = 5432
+          http_port = 8075
+          gevent_port = 8076
+          http_interface = "0.0.0.0"
+          addons_path = [
+            "$GITHUB_WORKSPACE/odoo/addons",
+            "$GITHUB_WORKSPACE/oduit/integration_tests/myaddons"
+          ]
           EOF
 
       - name: Run pytest tests locally
