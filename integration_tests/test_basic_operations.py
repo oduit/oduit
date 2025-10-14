@@ -2,7 +2,11 @@ from typing import Any
 
 import pytest
 
-from oduit.builders import InstallCommandBuilder, OdooTestCommandBuilder
+from oduit.builders import (
+    InstallCommandBuilder,
+    OdooTestCommandBuilder,
+    UpdateCommandBuilder,
+)
 from oduit.config_provider import ConfigProvider
 from oduit.process_manager import ProcessManager
 
@@ -116,3 +120,43 @@ def test_run_module_tests_success(integration_config: dict[str, Any]) -> None:
     result = pm.run_operation(test_operation, verbose=True)
 
     assert "total_tests" in result or "success" in result
+
+
+@pytest.mark.integration
+def test_update_module_success(integration_config: dict[str, Any]) -> None:
+    pm = ProcessManager()
+    config_provider = ConfigProvider(integration_config)
+
+    install_builder = InstallCommandBuilder(config_provider, "c")
+    install_builder.stop_after_init(True)
+    install_op = install_builder.build_operation()
+    install_result = pm.run_operation(install_op, verbose=False)
+
+    if not install_result["success"]:
+        pytest.skip("Module c installation failed, cannot test update")
+
+    update_builder = UpdateCommandBuilder(config_provider, "c")
+    update_builder.stop_after_init(True)
+    update_operation = update_builder.build_operation()
+
+    result = pm.run_operation(update_operation, verbose=True)
+
+    assert result["success"] is True
+    assert result.get("modules_loaded", 0) > 0
+
+
+@pytest.mark.integration
+def test_update_nonexistent_module(integration_config: dict[str, Any]) -> None:
+    pm = ProcessManager()
+    config_provider = ConfigProvider(integration_config)
+
+    update_builder = UpdateCommandBuilder(
+        config_provider, "nonexistent_module_update_xyz"
+    )
+    update_builder.stop_after_init(True)
+    update_operation = update_builder.build_operation()
+
+    result = pm.run_operation(update_operation, verbose=True)
+
+    assert result["success"] is False
+    assert len(result.get("dependency_errors", [])) > 0 or result.get("error")
