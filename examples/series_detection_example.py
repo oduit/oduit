@@ -8,7 +8,7 @@ from oduit.module_manager import ModuleManager
 
 def main():
     """Demonstrate series detection and version display features."""
-    addons_path = str(Path(__file__).parent.parent / "tmp" / "myaddons")
+    addons_path = str(Path(__file__).parent.parent / "integration" / "myaddons")
 
     print("=== Odoo Series Detection and Enhanced Version Display ===\n")
 

@@ -25,7 +25,7 @@ def main():
 
     try:
         # Load configuration - adjust environment name as needed
-        env_config = config_loader.load_config("common-test")
+        env_config = config_loader.load_local_config()
 
         print("1. Starting Odoo shell with embedded manager:")
         print("   Note: Embedded shell is interactive, can't be fully automated")

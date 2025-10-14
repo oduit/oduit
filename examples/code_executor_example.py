@@ -33,7 +33,7 @@ def main():
         # Initialize config provider with basic Odoo configuration
 
         config_loader = ConfigLoader()
-        basic_config = config_loader.load_config("common-test")
+        basic_config = config_loader.load_local_config()
         config_provider = ConfigProvider(basic_config)
         executor = OdooCodeExecutor(config_provider)
 

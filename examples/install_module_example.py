@@ -18,7 +18,7 @@ def main():
     config_loader = ConfigLoader()
     # Option 1: Load configuration from ~/.config/oduit/development.yaml
     # Replace "development" with your environment name
-    env_config = config_loader.load_config("common-test")
+    env_config = config_loader.load_local_config()
 
     # Option 2: Load from local .oduit.toml file in current directory
     # Uncomment the following line if you have a local config file:

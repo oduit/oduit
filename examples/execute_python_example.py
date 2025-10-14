@@ -17,7 +17,7 @@ from oduit.odoo_operations import OdooOperations
 def main():
     # Initialize configuration and operations
     config_loader = ConfigLoader()
-    env_config = config_loader.load_config("common-test")
+    env_config = config_loader.load_local_config()
     odoo_ops = OdooOperations(env_config, verbose=True)
     odoo_ops_quiet = OdooOperations(env_config, verbose=False)
 

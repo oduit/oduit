@@ -45,7 +45,7 @@ def main():  # noqa: C901
     # Option 1: Load configuration from ~/.config/oduit/common-test.yaml
     # Replace "common-test" with your environment name
     try:
-        env_config = config_loader.load_config("common-test")
+        env_config = config_loader.load_local_config()
         addons_path = env_config.get(
             "addons_path", "/opt/odoo/addons,/opt/custom/addons"
         )

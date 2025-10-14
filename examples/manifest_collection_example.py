@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from oduit.module_manager import ModuleManager
 
-addons_path = "tmp/myaddons"
+addons_path = "integration/myaddons"
 manager = ModuleManager(addons_path)
 
 collection = manager.find_modules()

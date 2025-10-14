@@ -9,6 +9,7 @@
 import functools
 import json
 import os
+import shutil
 from typing import Any
 
 import typer
@@ -230,6 +231,7 @@ def main(
 
         if has_local:
             print("Available commands:")
+            print("  init ENV           Initialize new environment")
             print("  run                Run Odoo server")
             print("  shell              Start Odoo shell")
             print("  install MODULE     Install a module")
@@ -258,7 +260,10 @@ def main(
             print("Usage: oduit [--env ENV] COMMAND [arguments]")
             print("")
             print("Available commands:")
-            print("  run, shell, install, update, test, create-db, list-db, list-env")
+            print(
+                "  init, run, shell, install, update, test, create-db, "
+                "list-db, list-env"
+            )
             print(
                 "  create-addon, list-addons, list-depends, list-codepends, "
                 "list-missing"
@@ -860,6 +865,9 @@ def list_env() -> None:
 @app.command("print-config")
 def print_config_cmd(ctx: typer.Context) -> None:
     """Print environment config."""
+    from rich.console import Console
+    from rich.table import Table
+
     if ctx.obj is None:
         print_error("No global configuration found")
         raise typer.Exit(1) from None
@@ -879,14 +887,35 @@ def print_config_cmd(ctx: typer.Context) -> None:
         print_error("No environment configuration available")
         raise typer.Exit(1) from None
 
-    print_info(f"Environment: {global_config.env_name}")
-    for key, value in global_config.env_config.items():
+    if global_config.format == OutputFormat.JSON:
+        output_data = {
+            "environment": global_config.env_name,
+            "config": global_config.env_config,
+        }
+        print(json.dumps(output_data))
+        return
+
+    console = Console()
+    table = Table(
+        title=f"Environment Configuration: {global_config.env_name}",
+        show_header=True,
+        header_style="bold cyan",
+    )
+    table.add_column("Setting", style="cyan", no_wrap=True)
+    table.add_column("Value", style="green")
+
+    for key, value in sorted(global_config.env_config.items()):
         if isinstance(value, list):
-            print_info(f"{key}:")
-            for item in value:
-                print_info(f"  - {item}")
+            formatted_value = "\n".join(f"• {item}" for item in value)
+            table.add_row(key, formatted_value)
+        elif isinstance(value, str) and key == "addons_path" and "," in value:
+            paths = [p.strip() for p in value.split(",")]
+            formatted_value = "\n".join(f"• {item}" for item in paths)
+            table.add_row(key, formatted_value)
         else:
-            print_info(f"{key}: {value}")
+            table.add_row(key, str(value))
+
+    console.print(table)
 
 
 @app.command("create-addon")
@@ -1321,6 +1350,223 @@ def list_missing(
                 print_info("All dependencies are available")
     except ValueError as e:
         print_error(f"Error checking missing dependencies: {e}")
+        raise typer.Exit(1) from None
+
+
+def _check_environment_exists(config_loader: ConfigLoader, env_name: str) -> None:
+    """Check if environment already exists and exit if it does."""
+    try:
+        existing_envs = config_loader.get_available_environments()
+        if env_name in existing_envs:
+            print_error(f"Environment '{env_name}' already exists")
+            raise typer.Exit(1) from None
+    except FileNotFoundError:
+        pass
+
+
+def _detect_binaries(
+    python_bin: str | None,
+    odoo_bin: str | None,
+    coverage_bin: str | None,
+) -> tuple[str, str | None, str | None]:
+    """Auto-detect binary paths if not provided.
+
+    Returns:
+        Tuple of (python_bin, odoo_bin, coverage_bin)
+    """
+    if python_bin is None:
+        python_bin = shutil.which("python3") or shutil.which("python")
+        if python_bin is None:
+            print_error("Python binary not found in PATH")
+            raise typer.Exit(1) from None
+
+    if odoo_bin is None:
+        odoo_bin = shutil.which("odoo") or shutil.which("odoo-bin")
+        if odoo_bin is None:
+            print_warning(
+                "Odoo binary not found in PATH, you may need to specify --odoo-bin"
+            )
+
+    if coverage_bin is None:
+        coverage_bin = shutil.which("coverage")
+        if coverage_bin is None:
+            print_warning(
+                "Coverage binary not found in PATH, "
+                "you may need to specify --coverage-bin"
+            )
+
+    return python_bin, odoo_bin, coverage_bin
+
+
+def _build_initial_config(
+    python_bin: str,
+    odoo_bin: str | None,
+    coverage_bin: str | None,
+) -> dict[str, Any]:
+    """Build initial flat configuration dictionary."""
+    env_config: dict[str, Any] = {
+        "python_bin": python_bin,
+        "coverage_bin": coverage_bin,
+    }
+
+    if odoo_bin:
+        env_config["odoo_bin"] = odoo_bin
+
+    return env_config
+
+
+def _import_or_convert_config(
+    env_config: dict[str, Any],
+    from_conf: str | None,
+    config_loader: ConfigLoader,
+    python_bin: str,
+    odoo_bin: str | None,
+    coverage_bin: str | None,
+) -> dict[str, Any]:
+    """Import config from .conf file or convert flat config to sectioned format."""
+    if from_conf:
+        if not os.path.exists(from_conf):
+            print_error(f"Odoo configuration file not found: {from_conf}")
+            raise typer.Exit(1) from None
+
+        try:
+            env_config = config_loader.import_odoo_conf(from_conf, sectioned=True)
+
+            if "binaries" not in env_config:
+                env_config["binaries"] = {}
+
+            binaries_section = env_config.get("binaries")
+            if isinstance(binaries_section, dict):
+                if python_bin:
+                    binaries_section["python_bin"] = python_bin
+                if odoo_bin:
+                    binaries_section["odoo_bin"] = odoo_bin
+                if coverage_bin:
+                    binaries_section["coverage_bin"] = coverage_bin
+
+            print_info(f"Imported configuration from: {from_conf}")
+        except Exception as e:
+            print_error(f"Failed to import Odoo configuration: {e}")
+            raise typer.Exit(1) from None
+    else:
+        from .config_provider import ConfigProvider
+
+        provider = ConfigProvider(env_config)
+        env_config = provider.to_sectioned_dict()
+
+    return env_config
+
+
+def _normalize_addons_path(env_config: dict[str, Any]) -> None:
+    """Convert addons_path from comma-separated string to list in-place."""
+    odoo_params_section = env_config.get("odoo_params")
+    if isinstance(odoo_params_section, dict) and "addons_path" in odoo_params_section:
+        addons_path_value = odoo_params_section["addons_path"]
+        if isinstance(addons_path_value, str):
+            odoo_params_section["addons_path"] = [
+                p.strip() for p in addons_path_value.split(",")
+            ]
+
+
+def _save_config_file(
+    config_path: str,
+    env_config: dict[str, Any],
+    config_loader: ConfigLoader,
+) -> None:
+    """Save configuration to TOML file."""
+    tomllib, tomli_w = config_loader._import_toml_libs()
+    if tomli_w is None:
+        print_error(
+            "TOML writing support not available. Install with: pip install tomli-w"
+        )
+        raise typer.Exit(1) from None
+
+    os.makedirs(config_loader.config_dir, exist_ok=True)
+
+    with open(config_path, "wb") as f:
+        tomli_w.dump(env_config, f)
+
+
+def _display_config_summary(env_config: dict[str, Any]) -> None:
+    """Display configuration summary to user."""
+    print_info("\nConfiguration summary:")
+
+    binaries = env_config.get("binaries")
+    if isinstance(binaries, dict):
+        if binaries.get("python_bin"):
+            print_info(f"  python_bin: {binaries['python_bin']}")
+        if binaries.get("odoo_bin"):
+            print_info(f"  odoo_bin: {binaries['odoo_bin']}")
+        if binaries.get("coverage_bin"):
+            print_info(f"  coverage_bin: {binaries['coverage_bin']}")
+
+    params = env_config.get("odoo_params")
+    if isinstance(params, dict):
+        if params.get("db_name"):
+            print_info(f"  db_name: {params['db_name']}")
+        if params.get("addons_path"):
+            addons = params["addons_path"]
+            if isinstance(addons, list):
+                print_info(f"  addons_path: {', '.join(addons)}")
+            else:
+                print_info(f"  addons_path: {addons}")
+
+
+@app.command("init")
+def init_env(
+    env_name: str = typer.Argument(help="Environment name to create"),
+    from_conf: str | None = typer.Option(
+        None,
+        "--from-conf",
+        help="Import configuration from existing Odoo .conf file",
+    ),
+    python_bin: str | None = typer.Option(
+        None,
+        "--python-bin",
+        help="Python binary path (auto-detected if not provided)",
+    ),
+    odoo_bin: str | None = typer.Option(
+        None,
+        "--odoo-bin",
+        help="Odoo binary path (auto-detected if not provided)",
+    ),
+    coverage_bin: str | None = typer.Option(
+        None,
+        "--coverage-bin",
+        help="Coverage binary path (auto-detected if not provided)",
+    ),
+) -> None:
+    """Initialize a new oduit environment configuration.
+
+    Creates a new environment configuration in ~/.config/oduit/<env_name>.toml.
+    Auto-detects python and odoo binaries from PATH unless explicitly provided.
+    Can import settings from existing Odoo .conf file.
+    """
+    config_loader = ConfigLoader()
+
+    _check_environment_exists(config_loader, env_name)
+
+    python_bin, odoo_bin, coverage_bin = _detect_binaries(
+        python_bin, odoo_bin, coverage_bin
+    )
+
+    env_config = _build_initial_config(python_bin, odoo_bin, coverage_bin)
+
+    env_config = _import_or_convert_config(
+        env_config, from_conf, config_loader, python_bin, odoo_bin, coverage_bin
+    )
+
+    _normalize_addons_path(env_config)
+
+    config_path = config_loader.get_config_path(env_name, "toml")
+
+    try:
+        _save_config_file(config_path, env_config, config_loader)
+        print_info(f"Environment '{env_name}' created successfully")
+        print_info(f"Configuration saved to: {config_path}")
+        _display_config_summary(env_config)
+    except Exception as e:
+        print_error(f"Failed to save configuration: {e}")
         raise typer.Exit(1) from None
 
 

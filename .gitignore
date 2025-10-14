@@ -209,3 +209,6 @@ oduit/_version.py
 
 .opencode/
 .serena/
+
+examples/.oduit.toml
+integration/.oduit.toml

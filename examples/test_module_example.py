@@ -16,13 +16,8 @@ from oduit.odoo_operations import ModuleUpdateError, OdooOperations
 def main():
     # Initialize the configuration loader and operations
     config_loader = ConfigLoader()
-    # Option 1: Load configuration from ~/.config/oduit/development.yaml
-    # Replace "development" with your environment name
-    env_config = config_loader.load_config("common-test")
 
-    # Option 2: Load from local .oduit.toml file in current directory
-    # Uncomment the following line if you have a local config file:
-    # env_config = config_loader.load_local_config()
+    env_config = config_loader.load_local_config()
 
     odoo_ops = OdooOperations(env_config, verbose=True)
 
