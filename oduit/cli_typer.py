@@ -1634,24 +1634,35 @@ def export_lang(
 
 @app.command("version")
 def get_odoo_version_cmd(
-    env: str | None = typer.Option(None, "--env", "-e", help="Environment to use"),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output result as JSON", is_flag=True
-    ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+    ctx: typer.Context,
 ) -> None:
     """Get Odoo version from odoo-bin."""
-    global_config = create_global_config(env=env, json=json_output, verbose=verbose)
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
 
     if global_config.env_config is None:
         print_error("No environment configuration available")
         raise typer.Exit(1) from None
 
-    ops = OdooOperations(global_config.env_config, verbose=verbose)
-    result = ops.get_odoo_version(suppress_output=json_output)
+    ops = OdooOperations(global_config.env_config, verbose=global_config.verbose)
+    result = ops.get_odoo_version(suppress_output=True)
 
-    if json_output:
-        output_result_to_json(result)
+    if global_config.format == OutputFormat.JSON:
+        result_json = output_result_to_json(result)
+        result_json["type"] = "result"
+        print(json.dumps(result_json))
     else:
         if result.get("success", False) and result.get("version"):
             typer.echo(result["version"])
