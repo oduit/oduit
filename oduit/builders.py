@@ -827,6 +827,27 @@ class LanguageCommandBuilder(BaseOdooCommandBuilder):
         )
 
 
+class VersionCommandBuilder(BaseOdooCommandBuilder):
+    """Specialized builder for version command"""
+
+    def __init__(self, config_provider: ConfigProvider):
+        super().__init__(config_provider)
+        config_provider.validate_keys(["odoo_bin"], "version command")
+        self._setup_base_command()
+        self._set_flag("version")
+
+    def build_operation(self) -> CommandOperation:
+        return CommandOperation(
+            command=self.build(),
+            operation_type="version",
+            database=None,
+            modules=[],
+            is_odoo_command=True,
+            expected_result_fields={"version": None},
+            result_parsers=["version"],
+        )
+
+
 class DatabaseCommandBuilder(AbstractCommandBuilder):
     """Builder for database-related commands"""
 

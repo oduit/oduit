@@ -216,3 +216,6 @@ oduit/_version.py
 
 examples/.oduit.toml
 integration/.oduit.toml
+
+# Integration test generated files
+integration_tests/myaddons/**/__manifest__.py

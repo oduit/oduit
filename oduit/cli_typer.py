@@ -1632,6 +1632,34 @@ def export_lang(
     )
 
 
+@app.command("version")
+def get_odoo_version_cmd(
+    env: str | None = typer.Option(None, "--env", "-e", help="Environment to use"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output result as JSON", is_flag=True
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+) -> None:
+    """Get Odoo version from odoo-bin."""
+    global_config = create_global_config(env=env, json=json_output, verbose=verbose)
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    ops = OdooOperations(global_config.env_config, verbose=verbose)
+    result = ops.get_odoo_version(suppress_output=json_output)
+
+    if json_output:
+        output_result_to_json(result)
+    else:
+        if result.get("success", False) and result.get("version"):
+            typer.echo(result["version"])
+        else:
+            print_error("Failed to detect Odoo version")
+            raise typer.Exit(1)
+
+
 def cli_main() -> None:
     """Entry point for the CLI application."""
     app()

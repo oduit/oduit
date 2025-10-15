@@ -17,6 +17,7 @@ from .builders import (
     RunCommandBuilder,
     ShellCommandBuilder,
     UpdateCommandBuilder,
+    VersionCommandBuilder,
 )
 from .demo_process_manager import DemoProcessManager
 from .exceptions import (
@@ -989,7 +990,6 @@ class OdooOperations:
         """
         print_info(f"Creating addon: {addon_name}")
 
-        # Validate addon name (basic validation)
         if not validate_addon_name(addon_name):
             error_msg = (
                 f"Invalid addon name: {addon_name}. "
@@ -1013,26 +1013,20 @@ class OdooOperations:
             addon_name,
         ]
 
-        # Add destination if provided, otherwise use first addons_path
         if destination:
             cmd.append(destination)
         elif self.config.get_required("addons_path"):
-            # Use first path in addons_path
             first_addon_path = (
                 self.config.get_required("addons_path").split(",")[0].strip()
             )
             cmd.append(first_addon_path)
 
-        # Add template if provided
         if template:
             cmd.extend(["-t", template])
 
         try:
-            # For scaffold command, we don't have a builder with build_operation() yet
-            # So we'll use the legacy approach temporarily
             result = self.process_manager.run_command(cmd)
 
-            # Enhance result with metadata
             if result:
                 result.update(
                     {
@@ -1052,6 +1046,94 @@ class OdooOperations:
                 print_error(str(e))
 
         return result
+
+    def get_odoo_version(
+        self,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+    ) -> dict:
+        """Get the Odoo version from odoo-bin
+
+        Args:
+            suppress_output: Suppress all output (for programmatic use)
+            raise_on_error: Raise exception on failure instead of returning error
+
+        Returns:
+            Dictionary with operation result including version string and
+            success status. The 'version' key contains the version
+            (e.g., '17.0', '18.0').
+
+        Raises:
+            OdooOperationError: If raise_on_error=True and operation fails
+            ConfigError: If configuration is invalid
+
+        Example:
+            >>> ops = OdooOperations(config)
+            >>> result = ops.get_odoo_version()
+            >>> if result['success']:
+            >>>     print(f"Odoo version: {result['version']}")
+        """
+        builder = VersionCommandBuilder(self.config)
+
+        try:
+            if self.verbose and not suppress_output:
+                print_info("Getting Odoo version...")
+
+            operation = builder.build_operation()
+            version_result = self.process_manager.run_operation(
+                operation, verbose=self.verbose, suppress_output=suppress_output
+            )
+
+            version = None
+            if version_result and version_result.get("success", False):
+                output = version_result.get("stdout", "").strip()
+                import re
+
+                match = re.search(r"(\d+\.\d+)", output)
+                if match:
+                    version = match.group(1)
+
+            final_result = {
+                "success": version_result.get("success", False)
+                if version_result
+                else False,
+                "version": version,
+                "return_code": version_result.get("return_code", 1)
+                if version_result
+                else 1,
+                "command": operation.command,
+                "operation": "get_odoo_version",
+            }
+
+            if version_result:
+                final_result.update(
+                    {
+                        "stdout": version_result.get("stdout", ""),
+                        "stderr": version_result.get("stderr", ""),
+                    }
+                )
+
+        except ConfigError as e:
+            final_result = {
+                "success": False,
+                "version": None,
+                "error": str(e),
+                "error_type": "ConfigError",
+            }
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(e), 1)
+                else:
+                    print_error(str(e))
+
+        if raise_on_error and not final_result.get("success", False):
+            error_msg = final_result.get("error", "Failed to get Odoo version")
+            raise OdooOperationError(
+                str(error_msg) if error_msg else "Failed to get Odoo version",
+                operation_result=final_result,
+            )
+
+        return final_result
 
     def execute_python_code(
         self,

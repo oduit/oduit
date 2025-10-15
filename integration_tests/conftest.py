@@ -5,6 +5,19 @@ from typing import Any
 import pytest
 
 from oduit.config_loader import ConfigLoader
+from oduit.odoo_operations import OdooOperations
+
+
+def _generate_manifests_from_templates(odoo_version: str) -> None:
+    integration_dir = Path(__file__).parent
+    myaddons_dir = integration_dir / "myaddons"
+
+    for template_path in myaddons_dir.rglob("__manifest__.py.tmpl"):
+        content = template_path.read_text()
+        generated_content = content.replace("{odoo_major}", odoo_version)
+
+        manifest_path = template_path.with_suffix("")
+        manifest_path.write_text(generated_content)
 
 
 @pytest.fixture
@@ -30,6 +43,13 @@ def integration_config() -> dict[str, Any]:
     python_bin = config.get("python_bin")
     if not python_bin or not Path(python_bin).exists():
         pytest.skip(f"Python binary not found at {python_bin}")
+
+    ops = OdooOperations(config, verbose=False)
+    result = ops.get_odoo_version(suppress_output=True)
+
+    if result.get("success", False) and result.get("version"):
+        odoo_version = result["version"]
+        _generate_manifests_from_templates(odoo_version)
 
     return config
 
