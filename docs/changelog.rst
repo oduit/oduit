@@ -1,18 +1,86 @@
 Changelog
 =========
 
-Unreleased
+0.2.2
 ----------
 
 
 Added
 ~~~~~~~~~~~~~~~~~~~~~
 
-- Short json parameter
+- Improved print-config and .oduit.toml support for examples
 
-- (cli) More parameters
+- Get odoo version
 
-- Improve lang option
+- Improve json odoo version output
+
+- (cli) Improved list-addons with include/exclude filters and new list-manifest and list-manifest-values command
+
+
+
+Testing
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add integration test
+
+
+
+Miscellaneous
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add integration test to github action
+
+- Fix path
+
+- Fix pre-commit and add missing pytest
+
+- Fix test discovery
+
+- Change working dir
+
+- Improve integration test
+
+- Fix oduit.toml location
+
+- Add integration test for odoo 18
+
+
+0.2.1
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Better json output
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- Exit code for install and update cli
+
+- Cli test returns results and correct exit code
+
+- Mypy parser fixes
+
+- Mypy parser fixes
+
+
+
+Miscellaneous
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update ruff
+
+
+0.2.0
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
 
 - Improved list-addons command
 
@@ -43,9 +111,42 @@ Added
 Fixed
 ~~~~~~~~~~~~~~~~~~~~~
 
-- (cli) Add error message
-
 - Codepends
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add new classes
+
+
+
+Miscellaneous
+~~~~~~~~~~~~~~~~~~~~~
+
+- Fix static type checker mypy
+
+
+0.1.7
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Short json parameter
+
+- (cli) More parameters
+
+- Improve lang option
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- (cli) Add error message
 
 
 
@@ -58,8 +159,6 @@ Documentation
 
 - Improve doc with no-index
 
-- Add new classes
-
 
 
 Miscellaneous
@@ -70,8 +169,6 @@ Miscellaneous
 - Fix link
 
 - Fix pre-commit
-
-- Fix static type checker mypy
 
 
 0.1.6
