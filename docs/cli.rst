@@ -391,6 +391,129 @@ List available addons in the configured addons path.
    basename. For example, if your addons path is ``/path/to/custom_addons``,
    you must use ``--select-dir custom_addons`` (not ``custom`` or ``addons``).
 
+**Filtering Options:**
+
+- ``--include FIELD:VALUE``: Include only addons where FIELD contains VALUE
+- ``--exclude FIELD:VALUE``: Exclude addons where FIELD contains VALUE
+- ``--exclude-core-addons``: Exclude Odoo core addons
+- ``--exclude-enterprise-addons``: Exclude Odoo enterprise addons
+
+Valid filter fields: ``name``, ``version``, ``summary``, ``author``, ``website``,
+``license``, ``category``, ``module_path``, ``depends``, ``addon_type``
+
+**Filtering Examples:**
+
+.. code-block:: bash
+
+   # Exclude all Theme addons
+   oduit --env dev list-addons --exclude category:Theme
+
+   # Include only Odoo-authored addons (excluding core addons)
+   oduit --env dev list-addons --include author:Odoo --exclude-core-addons
+
+   # List only LGPL licensed addons
+   oduit --env dev list-addons --include license:LGPL
+
+   # Exclude addons depending on sale
+   oduit --env dev list-addons --exclude depends:sale
+
+   # Combine multiple filters
+   oduit --env dev list-addons --exclude category:Theme --exclude category:Hidden
+
+print-manifest
+^^^^^^^^^^^^^^
+
+Display detailed manifest information for a specific addon.
+
+.. code-block:: bash
+
+   oduit --env dev print-manifest ADDON_NAME [OPTIONS]
+
+**Options:**
+
+- ``--select-dir TEXT``: Filter addons by exact directory name match
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Print manifest for sale module
+   oduit --env dev print-manifest sale
+
+   # Print manifest for module in specific directory
+   oduit --env dev print-manifest my_module --select-dir custom_addons
+
+   # Output as JSON
+   oduit --env dev --json print-manifest sale
+
+**Output:**
+
+The command displays a Rich table with the following information:
+
+- **Name**: Technical module name
+- **Display Name**: Human-readable name
+- **Version**: Module version
+- **Addon Type**: Odoo CE, Odoo EE, or Custom
+- **Summary**: Brief description
+- **Author**: Module author(s)
+- **Website**: Project website
+- **License**: License type (e.g., LGPL-3, OPL-1)
+- **Category**: Module category
+- **Installable**: Whether the module can be installed
+- **Auto Install**: Whether the module auto-installs
+- **Depends**: Module dependencies
+- **External Dependencies (Python)**: Required Python packages
+- **External Dependencies (Bin)**: Required binary dependencies
+- **Module Path**: Full filesystem path to the module
+
+list-manifest-values
+^^^^^^^^^^^^^^^^^^^^
+
+List unique values for a specific manifest field across all addons.
+
+.. code-block:: bash
+
+   oduit --env dev list-manifest-values FIELD [OPTIONS]
+
+This command scans all available addons and collects unique values for the
+specified manifest field. Useful for discovering what values exist in your
+addons (e.g., all categories, licenses, authors in use).
+
+**Arguments:**
+
+- ``FIELD``: The manifest field to list values for (e.g., ``category``, ``license``, ``author``)
+
+**Options:**
+
+- ``--separator TEXT``: Separator for output (default: newline)
+- ``--select-dir TEXT``: Filter addons by exact directory name match
+- ``--exclude-core-addons``: Exclude Odoo core addons
+- ``--exclude-enterprise-addons``: Exclude Odoo enterprise addons
+
+**Examples:**
+
+.. code-block:: bash
+
+   # List all unique categories
+   oduit --env dev list-manifest-values category
+
+   # List all licenses used in custom addons only
+   oduit --env dev list-manifest-values license --exclude-core-addons
+
+   # List authors with comma separator
+   oduit --env dev list-manifest-values author --separator ", "
+
+   # List categories in a specific directory
+   oduit --env dev list-manifest-values category --select-dir myaddons
+
+   # Output as JSON
+   oduit --env dev --json list-manifest-values category
+
+**Output:**
+
+- Text mode: One value per line (or separated by custom separator)
+- JSON mode: Array of unique values
+
 list-depends
 ^^^^^^^^^^^^
 

@@ -12,6 +12,7 @@ import os
 import shutil
 from typing import Any
 
+import click
 import typer
 from manifestoo_core.odoo_series import OdooSeries
 
@@ -83,6 +84,30 @@ SORT_OPTION = typer.Option(
     help="Choice between 'alphabetical' and 'topological'. "
     "Topological sorting is useful when seeking a migration order.",
     show_default=True,
+)
+
+# Pre-computed help string for filter options
+_VALID_FILTER_FIELDS_STR = (
+    "name, version, summary, author, website, license, "
+    "category, module_path, depends, addon_type"
+)
+
+INCLUDE_FILTER_OPTION = typer.Option(
+    [],
+    "--include",
+    help=(
+        "Include filter as 'FIELD:VALUE'. Can be used multiple times. "
+        f"Valid fields: {_VALID_FILTER_FIELDS_STR}"
+    ),
+)
+
+EXCLUDE_FILTER_OPTION = typer.Option(
+    [],
+    "--exclude",
+    help=(
+        "Exclude filter as 'FIELD:VALUE'. Can be used multiple times. "
+        f"Valid fields: {_VALID_FILTER_FIELDS_STR}"
+    ),
 )
 
 
@@ -242,6 +267,7 @@ def main(
             print("  list-env           List available environments")
             print("  create-addon NAME  Create new addon")
             print("  list-addons        List available addons")
+            print("  print-manifest NAME   Print addon manifest information")
             print("  list-depends MODULES   List direct dependencies for installation")
             print("  list-codepends MODULE  List codependencies of a module")
             print("  list-missing MODULES   Find missing dependencies")
@@ -265,8 +291,8 @@ def main(
                 "list-db, list-env"
             )
             print(
-                "  create-addon, list-addons, list-depends, list-codepends, "
-                "list-missing"
+                "  create-addon, list-addons, print-manifest, list-depends, "
+                "list-codepends, list-missing"
             )
             print("  export-lang, print-config")
             print("")
@@ -960,6 +986,387 @@ def create_addon(
     odoo_operations.create_addon(addon_name, destination=path, template=template.value)
 
 
+def _get_addon_type(addon_name: str, odoo_series: OdooSeries | None) -> str:
+    """Determine the addon type (CE, EE, or Custom)."""
+    from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
+
+    if odoo_series:
+        if is_core_ce_addon(addon_name, odoo_series):
+            return "Odoo CE (Community)"
+        elif is_core_ee_addon(addon_name, odoo_series):
+            return "Odoo EE (Enterprise)"
+    return "Custom"
+
+
+def _build_addon_table(
+    addon_name: str,
+    manifest: Any,
+    addon_type: str,
+) -> Any:
+    """Build a Rich table with addon information."""
+    from rich.table import Table
+
+    table = Table(
+        title=f"Addon: {addon_name}",
+        show_header=True,
+        header_style="bold cyan",
+    )
+    table.add_column("Field", style="cyan", no_wrap=True)
+    table.add_column("Value", style="green")
+
+    # Add rows for each important field
+    table.add_row("Technical Name", addon_name)
+    table.add_row("Display Name", manifest.name)
+    table.add_row("Version", manifest.version)
+    table.add_row("Addon Type", addon_type)
+
+    if manifest.summary:
+        table.add_row("Summary", manifest.summary)
+    if manifest.author:
+        table.add_row("Author", manifest.author)
+    if manifest.website:
+        table.add_row("Website", manifest.website)
+    if manifest.license:
+        table.add_row("License", manifest.license)
+
+    # Get category from raw data
+    raw_data = manifest.get_raw_data()
+    if "category" in raw_data:
+        table.add_row("Category", str(raw_data["category"]))
+
+    table.add_row("Installable", "Yes" if manifest.installable else "No")
+    table.add_row("Auto Install", "Yes" if manifest.auto_install else "No")
+
+    deps_str = (
+        ", ".join(manifest.codependencies) if manifest.codependencies else "(none)"
+    )
+    table.add_row("Dependencies", deps_str)
+
+    if manifest.python_dependencies:
+        table.add_row("Python Dependencies", ", ".join(manifest.python_dependencies))
+    if manifest.binary_dependencies:
+        table.add_row("Binary Dependencies", ", ".join(manifest.binary_dependencies))
+
+    table.add_row("Module Path", manifest.module_path)
+
+    return table
+
+
+# Valid filter fields for --include and --exclude options
+VALID_FILTER_FIELDS = [
+    "name",
+    "version",
+    "summary",
+    "author",
+    "website",
+    "license",
+    "category",
+    "module_path",
+    "depends",
+    "addon_type",
+]
+
+
+def _get_addon_field_value(
+    addon_name: str,
+    field: str,
+    module_manager: ModuleManager,
+    odoo_series: OdooSeries | None = None,
+) -> str:
+    """Get the value of a specific field for an addon.
+
+    Args:
+        addon_name: Name of the addon
+        field: Field name to retrieve
+        module_manager: ModuleManager instance
+        odoo_series: Optional Odoo series for addon_type detection
+
+    Returns:
+        String value of the field, or empty string if not found
+    """
+    # Handle module_path separately as it's not in manifest
+    if field == "module_path":
+        path = module_manager.find_module_path(addon_name)
+        return path if path else ""
+
+    # Handle addon_type separately
+    if field == "addon_type":
+        if odoo_series is None:
+            odoo_series = module_manager.detect_odoo_series()
+        return _get_addon_type(addon_name, odoo_series)
+
+    manifest = module_manager.get_manifest(addon_name)
+    if not manifest:
+        return ""
+
+    # Map field names to manifest properties
+    if field == "name":
+        return manifest.name
+    elif field == "version":
+        return manifest.version
+    elif field == "summary":
+        return manifest.summary
+    elif field == "author":
+        return manifest.author
+    elif field == "website":
+        return manifest.website
+    elif field == "license":
+        return manifest.license
+    elif field == "depends":
+        return ",".join(manifest.codependencies)
+    elif field == "category":
+        raw_data = manifest.get_raw_data()
+        return str(raw_data.get("category", ""))
+
+    return ""
+
+
+def _filter_addons_by_field(
+    addons: list[str],
+    module_manager: ModuleManager,
+    field: str,
+    filter_value: str,
+    is_include: bool,
+    odoo_series: OdooSeries | None = None,
+) -> list[str]:
+    """Filter addons by a specific field value.
+
+    Args:
+        addons: List of addon names to filter
+        module_manager: ModuleManager instance
+        field: Field name to filter on
+        filter_value: Value to match (case-insensitive substring match)
+        is_include: If True, include matching addons; if False, exclude them
+        odoo_series: Optional Odoo series for addon_type detection
+
+    Returns:
+        Filtered list of addon names
+    """
+    filtered_addons = []
+    filter_lower = filter_value.lower()
+
+    for addon in addons:
+        field_value = _get_addon_field_value(addon, field, module_manager, odoo_series)
+        field_value_lower = field_value.lower() if field_value else ""
+
+        matches = filter_lower in field_value_lower
+
+        if is_include:
+            # Include only if it matches
+            if matches:
+                filtered_addons.append(addon)
+        else:
+            # Exclude if it matches (include if it doesn't match)
+            if not matches:
+                filtered_addons.append(addon)
+
+    return filtered_addons
+
+
+def _apply_core_addon_filters(
+    addons: list[str],
+    exclude_core_addons: bool,
+    exclude_enterprise_addons: bool,
+    odoo_series: OdooSeries | None,
+) -> list[str]:
+    """Apply CE/EE core addon exclusion filters.
+
+    Args:
+        addons: List of addon names to filter
+        exclude_core_addons: Whether to exclude CE core addons
+        exclude_enterprise_addons: Whether to exclude EE addons
+        odoo_series: Odoo series for detection
+
+    Returns:
+        Filtered list of addon names
+
+    Raises:
+        typer.Exit: If Odoo series cannot be detected
+    """
+    from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
+
+    if not odoo_series:
+        print_error(
+            "Could not detect Odoo series. "
+            "Please specify --odoo-series to use exclusion filters"
+        )
+        raise typer.Exit(1) from None
+
+    filtered_addons = []
+    for addon in addons:
+        if exclude_core_addons and is_core_ce_addon(addon, odoo_series):
+            continue
+        if exclude_enterprise_addons and is_core_ee_addon(addon, odoo_series):
+            continue
+        filtered_addons.append(addon)
+    return filtered_addons
+
+
+def _apply_field_filters(
+    addons: list[str],
+    module_manager: ModuleManager,
+    include_filter: list[tuple[str, str]],
+    exclude_filter: list[tuple[str, str]],
+    odoo_series: OdooSeries | None,
+) -> list[str]:
+    """Apply include/exclude field filters to addon list.
+
+    Args:
+        addons: List of addon names to filter
+        module_manager: ModuleManager instance
+        include_filter: List of (field, value) tuples for include filters
+        exclude_filter: List of (field, value) tuples for exclude filters
+        odoo_series: Odoo series for addon_type detection
+
+    Returns:
+        Filtered list of addon names
+
+    Raises:
+        typer.Exit: If field is invalid
+    """
+    # Apply include filters (skip if empty list)
+    if include_filter:
+        for field, value in include_filter:
+            if field not in VALID_FILTER_FIELDS:
+                print_error(
+                    f"Invalid field '{field}'. "
+                    f"Valid fields: {', '.join(VALID_FILTER_FIELDS)}"
+                )
+                raise typer.Exit(1) from None
+            addons = _filter_addons_by_field(
+                addons,
+                module_manager,
+                field,
+                value,
+                is_include=True,
+                odoo_series=odoo_series,
+            )
+
+    # Apply exclude filters (skip if empty list)
+    if exclude_filter:
+        for field, value in exclude_filter:
+            if field not in VALID_FILTER_FIELDS:
+                print_error(
+                    f"Invalid field '{field}'. "
+                    f"Valid fields: {', '.join(VALID_FILTER_FIELDS)}"
+                )
+                raise typer.Exit(1) from None
+            addons = _filter_addons_by_field(
+                addons,
+                module_manager,
+                field,
+                value,
+                is_include=False,
+                odoo_series=odoo_series,
+            )
+
+    return addons
+
+
+@app.command("print-manifest")
+def print_manifest(
+    ctx: typer.Context,
+    addon_name: str = typer.Argument(help="Name of the addon to display"),
+) -> None:
+    """Print addon manifest information in a table.
+
+    Displays key manifest fields including name, version, author, license,
+    dependencies, and whether the addon is a core CE/EE addon.
+    """
+    from rich.console import Console
+
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    module_manager = ModuleManager(global_config.env_config["addons_path"])
+
+    manifest = module_manager.get_manifest(addon_name)
+    if not manifest:
+        print_error(f"Addon '{addon_name}' not found in addons path")
+        raise typer.Exit(1) from None
+
+    # Detect Odoo series for CE/EE detection
+    odoo_series = (
+        global_config.odoo_series
+        if global_config.odoo_series
+        else module_manager.detect_odoo_series()
+    )
+
+    addon_type = _get_addon_type(addon_name, odoo_series)
+
+    # JSON output
+    if global_config.format == OutputFormat.JSON:
+        raw_data = manifest.get_raw_data()
+        output_data: dict[str, Any] = {
+            "technical_name": addon_name,
+            "name": manifest.name,
+            "version": manifest.version,
+            "summary": manifest.summary,
+            "author": manifest.author,
+            "website": manifest.website,
+            "license": manifest.license,
+            "installable": manifest.installable,
+            "auto_install": manifest.auto_install,
+            "depends": manifest.codependencies,
+            "addon_type": addon_type,
+            "module_path": manifest.module_path,
+        }
+        if manifest.python_dependencies:
+            output_data["python_dependencies"] = manifest.python_dependencies
+        if manifest.binary_dependencies:
+            output_data["binary_dependencies"] = manifest.binary_dependencies
+        if "category" in raw_data:
+            output_data["category"] = raw_data["category"]
+        print(json.dumps(output_data))
+        return
+
+    # Table output
+    console = Console()
+    table = _build_addon_table(addon_name, manifest, addon_type)
+    console.print(table)
+
+
+def _parse_filter_option(
+    ctx: click.Context, param: click.Parameter, value: tuple[str, ...]
+) -> list[tuple[str, str]]:
+    """Parse filter option values into list of (field, value) tuples.
+
+    Args:
+        ctx: Click context
+        param: Click parameter
+        value: Tuple of strings from multiple --include/--exclude options
+
+    Returns:
+        List of (field, value) tuples
+    """
+    if not value:
+        return []
+
+    # value comes as flat tuple: ('field1', 'value1', 'field2', 'value2', ...)
+    # We need to pair them up
+    result: list[tuple[str, str]] = []
+    for i in range(0, len(value), 2):
+        if i + 1 < len(value):
+            result.append((value[i], value[i + 1]))
+    return result
+
+
 @app.command("list-addons")
 def list_addons(
     ctx: typer.Context,
@@ -984,9 +1391,20 @@ def list_addons(
         "--exclude-enterprise-addons",
         help="Exclude Odoo Enterprise Edition (EE) addons from the list",
     ),
+    include: list[str] = INCLUDE_FILTER_OPTION,
+    exclude: list[str] = EXCLUDE_FILTER_OPTION,
     sorting: str = SORT_OPTION,
 ) -> None:
-    """List available addons."""
+    """List available addons.
+
+    Filter addons using --include or --exclude with FIELD:VALUE format.
+
+    Examples:
+
+      oduit list-addons --exclude category:Theme
+
+      oduit list-addons --include author:Odoo --include category:Sales
+    """
     if ctx.obj is None:
         print_error("No global configuration found")
         raise typer.Exit(1) from None
@@ -1006,34 +1424,51 @@ def list_addons(
         print_error("No environment configuration available")
         raise typer.Exit(1) from None
 
+    # Parse include/exclude filters from FIELD:VALUE format
+    include_filter: list[tuple[str, str]] = []
+    exclude_filter: list[tuple[str, str]] = []
+
+    for filter_str in include:
+        if ":" not in filter_str:
+            print_error(
+                f"Invalid include filter '{filter_str}'. "
+                f"Use format 'FIELD:VALUE' (e.g., 'category:Sales')"
+            )
+            raise typer.Exit(1) from None
+        field, value = filter_str.split(":", 1)
+        include_filter.append((field.strip(), value.strip()))
+
+    for filter_str in exclude:
+        if ":" not in filter_str:
+            print_error(
+                f"Invalid exclude filter '{filter_str}'. "
+                f"Use format 'FIELD:VALUE' (e.g., 'category:Theme')"
+            )
+            raise typer.Exit(1) from None
+        field, value = filter_str.split(":", 1)
+        exclude_filter.append((field.strip(), value.strip()))
+
     module_manager = ModuleManager(global_config.env_config["addons_path"])
     addons = module_manager.find_module_dirs(filter_dir=select_dir)
 
     addons = [addon for addon in addons if not addon.startswith("test_")]
 
-    if exclude_core_addons or exclude_enterprise_addons:
-        from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
+    # Detect Odoo series once for filters that need it
+    odoo_series = (
+        global_config.odoo_series
+        if global_config.odoo_series
+        else module_manager.detect_odoo_series()
+    )
 
-        odoo_series = (
-            global_config.odoo_series
-            if global_config.odoo_series
-            else module_manager.detect_odoo_series()
+    if exclude_core_addons or exclude_enterprise_addons:
+        addons = _apply_core_addon_filters(
+            addons, exclude_core_addons, exclude_enterprise_addons, odoo_series
         )
-        if odoo_series:
-            filtered_addons = []
-            for addon in addons:
-                if exclude_core_addons and is_core_ce_addon(addon, odoo_series):
-                    continue
-                if exclude_enterprise_addons and is_core_ee_addon(addon, odoo_series):
-                    continue
-                filtered_addons.append(addon)
-            addons = filtered_addons
-        else:
-            print_error(
-                "Could not detect Odoo series. "
-                "Please specify --odoo-series to use exclusion filters"
-            )
-            raise typer.Exit(1) from None
+
+    # Apply include/exclude filters
+    addons = _apply_field_filters(
+        addons, module_manager, include_filter, exclude_filter, odoo_series
+    )
 
     try:
         sorted_addons = module_manager.sort_modules(addons, sorting)
@@ -1046,6 +1481,121 @@ def list_addons(
     else:
         for addon in sorted_addons:
             print(addon)
+
+
+@app.command("list-manifest-values")
+def list_manifest_values(
+    ctx: typer.Context,
+    field: str = typer.Argument(
+        help=(
+            "Manifest field to list unique values for. "
+            f"Valid fields: {_VALID_FILTER_FIELDS_STR}"
+        ),
+    ),
+    separator: str | None = typer.Option(
+        None,
+        "--separator",
+        help="Separator for output (e.g., ',' for 'a,b,c')",
+    ),
+    select_dir: str | None = typer.Option(
+        None,
+        "--select-dir",
+        help="Filter addons by directory (e.g., 'myaddons')",
+    ),
+    exclude_core_addons: bool = typer.Option(
+        False,
+        "--exclude-core-addons",
+        help="Exclude Odoo Community Edition (CE) core addons from the list",
+    ),
+    exclude_enterprise_addons: bool = typer.Option(
+        False,
+        "--exclude-enterprise-addons",
+        help="Exclude Odoo Enterprise Edition (EE) addons from the list",
+    ),
+) -> None:
+    """List unique values for a manifest field across all addons.
+
+    Examples:
+
+      oduit list-manifest-values category
+
+      oduit list-manifest-values author --exclude-core-addons
+
+      oduit list-manifest-values license --separator ","
+    """
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    # Validate field
+    if field not in VALID_FILTER_FIELDS:
+        print_error(
+            f"Invalid field '{field}'. Valid fields: {', '.join(VALID_FILTER_FIELDS)}"
+        )
+        raise typer.Exit(1) from None
+
+    module_manager = ModuleManager(global_config.env_config["addons_path"])
+    addons = module_manager.find_module_dirs(filter_dir=select_dir)
+
+    # Detect Odoo series for filters that need it
+    odoo_series = (
+        global_config.odoo_series
+        if global_config.odoo_series
+        else module_manager.detect_odoo_series()
+    )
+
+    if exclude_core_addons or exclude_enterprise_addons:
+        addons = _apply_core_addon_filters(
+            addons, exclude_core_addons, exclude_enterprise_addons, odoo_series
+        )
+
+    # Collect unique values
+    unique_values: set[str] = set()
+    for addon in addons:
+        value = _get_addon_field_value(addon, field, module_manager, odoo_series)
+        if not value:
+            continue
+        # Handle comma-separated values (e.g., depends field)
+        if field == "depends":
+            for v in value.split(","):
+                v = v.strip()
+                if v:
+                    unique_values.add(v)
+        else:
+            unique_values.add(value)
+
+    sorted_values = sorted(unique_values)
+
+    # JSON output
+    if global_config.format == OutputFormat.JSON:
+        output_data = {
+            "field": field,
+            "values": sorted_values,
+        }
+        print(json.dumps(output_data))
+        return
+
+    # Text output
+    if separator:
+        print(separator.join(sorted_values))
+    else:
+        for value in sorted_values:
+            print(value)
 
 
 def _print_dependency_tree(

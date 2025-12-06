@@ -79,6 +79,17 @@ oduit --env dev export-lang sale --language de_DE
 
 # List available addons
 oduit --env dev list-addons
+
+# List addons with filters
+oduit --env dev list-addons --exclude category:Theme
+oduit --env dev list-addons --include author:Odoo --exclude-core-addons
+
+# Print addon manifest information
+oduit --env dev print-manifest sale
+
+# List unique values for a manifest field
+oduit --env dev list-manifest-values category
+oduit --env dev list-manifest-values license --exclude-core-addons
 ```
 
 **Local Project Configuration:**
