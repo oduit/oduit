@@ -52,16 +52,16 @@ class OdooOperations:
         Basic usage for module operations:
 
         >>> from oduit import OdooOperations, ConfigLoader
-        >>> config = ConfigLoader.load_config('config.yaml')
-        >>> ops = OdooOperations()
+        >>> env_config = ConfigLoader.load_config('config.yaml')
+        >>> ops = OdooOperations(env_config)
         >>>
         >>> # Install a module
-        >>> result = ops.install_module(config, 'sale')
+        >>> result = ops.install_module('sale')
         >>> if result['success']:
         >>>     print("Module installed successfully")
         >>>
         >>> # Run tests
-        >>> test_result = ops.run_module_tests(config, 'sale')
+        >>> test_result = ops.run_tests(module='sale')
     """
 
     def __init__(self, env_config: dict, verbose: bool = False):
@@ -106,10 +106,10 @@ class OdooOperations:
             ConfigError: If the environment configuration is invalid or incomplete
 
         Example:
-            >>> ops = OdooOperations()
-            >>> config = {'python_bin': '/usr/bin/python3',
-            ...           'odoo_bin': '/path/to/odoo-bin'}
-            >>> ops.run_odoo(config, verbose=True)
+            >>> env_config = {'python_bin': '/usr/bin/python3',
+            ...               'odoo_bin': '/path/to/odoo-bin'}
+            >>> ops = OdooOperations(env_config, verbose=True)
+            >>> ops.run_odoo()
         """
 
         if self.verbose:
@@ -118,8 +118,7 @@ class OdooOperations:
         builder = RunCommandBuilder(self.config)
 
         if no_http:
-            builder._remove_http_config()
-            builder.no_http(True)
+            builder.disable_http()
         if dev_mode and isinstance(dev_mode, str):
             builder.dev(dev_mode)
         if log_level and isinstance(log_level, str):
@@ -194,8 +193,7 @@ class OdooOperations:
         builder = ShellCommandBuilder(self.config)
 
         if no_http:
-            builder._remove_http_config()
-            builder.no_http(True)
+            builder.disable_http()
         if shell_interface:
             builder.shell_interface(shell_interface)
         if compact:
@@ -275,8 +273,7 @@ class OdooOperations:
             builder.load_language(language)
 
         if no_http:
-            builder._remove_http_config()
-            builder.no_http(True)
+            builder.disable_http()
         if compact:
             builder.log_level("warn")
         elif log_level and isinstance(log_level, str):
@@ -355,8 +352,7 @@ class OdooOperations:
         if language and isinstance(language, str):
             builder.load_language(language)
         if no_http:
-            builder._remove_http_config()
-            builder.no_http(True)
+            builder.disable_http()
         if compact:
             builder.log_level("warn")
         elif log_level and isinstance(log_level, str):
@@ -428,16 +424,17 @@ class OdooOperations:
             ConfigError: If the environment configuration is invalid
 
         Example:
-            >>> ops = OdooOperations()
-            >>> ops.export_module_language(config, 'sale', 'sale_fr.po', 'fr_FR')
+            >>> env_config = {'python_bin': '/usr/bin/python3',
+            ...               'odoo_bin': '/path/to/odoo-bin'}
+            >>> ops = OdooOperations(env_config)
+            >>> ops.export_module_language('sale', 'sale_fr.po', 'fr_FR')
         """
         if self.verbose:
             print_info(f"Export language {language} to {filename} for module: {module}")
         builder = LanguageCommandBuilder(self.config, module, filename, language)
 
         if no_http:
-            builder._remove_http_config()
-            builder.no_http(True)
+            builder.disable_http()
         if log_level and isinstance(log_level, str):
             builder.log_level(log_level)
 
@@ -968,8 +965,6 @@ class OdooOperations:
         If no destination is specified, the first path in addons_path is used.
 
         Args:
-            env_config (dict): Environment configuration dictionary containing
-                Odoo settings
             addon_name (str): Name for the new addon (must follow naming conventions)
             destination (str | None, optional): Target directory for the new addon.
                 If None, uses first path from addons_path. Defaults to None.
@@ -983,8 +978,11 @@ class OdooOperations:
             ConfigError: If the environment configuration is invalid
 
         Example:
-            >>> ops = OdooOperations()
-            >>> result = ops.create_addon(config, 'my_custom_module')
+            >>> env_config = {'python_bin': '/usr/bin/python3',
+            ...               'odoo_bin': '/path/to/odoo-bin',
+            ...               'addons_path': '/path/to/addons'}
+            >>> ops = OdooOperations(env_config)
+            >>> result = ops.create_addon('my_custom_module')
             >>> if result['success']:
             ...     print("Addon created successfully")
         """
@@ -1175,8 +1173,7 @@ class OdooOperations:
         if shell_interface:
             builder.shell_interface(shell_interface)
         if no_http:
-            builder._remove_http_config()
-            builder.no_http(True)
+            builder.disable_http()
         if log_level and isinstance(log_level, str):
             builder.log_level(log_level)
 

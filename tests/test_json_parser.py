@@ -78,6 +78,37 @@ class TestOutputFormatterJSONParsing(unittest.TestCase):
         result = self.formatter._parse_odoo_log_line(invalid_line)
         self.assertIsNone(result)
 
+    def test_parse_odoo_log_line_is_stateless(self):
+        """Each parsed log line should contain a full self-contained record."""
+        first_line = (
+            "2025-08-21 09:07:24,574 65551 INFO test_db "
+            "odoo.service.server: Starting post tests"
+        )
+        second_line = (
+            "2025-08-21 09:07:25,001 65551 INFO test_db "
+            "odoo.service.server: Running test suite"
+        )
+
+        first = self.formatter._parse_odoo_log_line(first_line)
+        second = self.formatter._parse_odoo_log_line(second_line)
+
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+
+        expected_keys = {
+            "source",
+            "level",
+            "timestamp",
+            "process_id",
+            "database",
+            "module",
+            "message",
+        }
+
+        if first and second:
+            self.assertEqual(set(first.keys()), expected_keys)
+            self.assertEqual(set(second.keys()), expected_keys)
+
     def test_is_coverage_report_line_detection(self):
         """Test coverage report line detection."""
         # Valid coverage lines

@@ -250,6 +250,9 @@ class ProcessManager(BaseProcessManager):
         self, process: Any, suppress_output: bool, info_pattern: Any
     ) -> list[str]:
         """Collect additional lines for error context"""
+        if IS_WINDOWS:
+            return []
+
         context_lines = []
         remaining = 20
 
@@ -464,20 +467,26 @@ class ProcessManager(BaseProcessManager):
             process.wait()
 
             if process.returncode != 0:
+                output_text = "".join(output_lines)
                 if not suppress_output:
                     print_error(f"Command exited with code {process.returncode}")
                 return {
                     "success": False,
                     "return_code": process.returncode,
-                    "output": "".join(output_lines),
+                    "output": output_text,
+                    "stdout": output_text,
+                    "stderr": "",
                     "command": " ".join(cmd),
                     "warnings": warnings,
                 }
 
+            output_text = "".join(output_lines)
             return {
                 "success": True,
                 "return_code": 0,
-                "output": "".join(output_lines),
+                "output": output_text,
+                "stdout": output_text,
+                "stderr": "",
                 "command": " ".join(cmd),
                 "warnings": warnings,
             }
@@ -489,8 +498,11 @@ class ProcessManager(BaseProcessManager):
                 self._terminate_process_cross_platform(process)
             return {
                 "success": False,
+                "return_code": 130,
                 "error": "Interrupted by user",
                 "output": "".join(output_lines),
+                "stdout": "".join(output_lines),
+                "stderr": "",
                 "command": " ".join(cmd),
                 "warnings": warnings,
             }
@@ -501,7 +513,11 @@ class ProcessManager(BaseProcessManager):
                 print_error(error_msg)
             return {
                 "success": False,
+                "return_code": 127,
                 "error": error_msg,
+                "output": "",
+                "stdout": "",
+                "stderr": "",
                 "command": " ".join(cmd),
                 "warnings": warnings,
             }
@@ -511,8 +527,11 @@ class ProcessManager(BaseProcessManager):
                 print_error(error_msg)
             return {
                 "success": False,
+                "return_code": 1,
                 "error": error_msg,
                 "output": "".join(output_lines),
+                "stdout": "".join(output_lines),
+                "stderr": "",
                 "command": " ".join(cmd),
                 "warnings": warnings,
             }
@@ -720,11 +739,32 @@ class ProcessManager(BaseProcessManager):
         """
         # Determine if cmd is a string (shell evaluation) or list (direct execution)
         use_shell = isinstance(cmd, str)
+        command_text = cmd if use_shell else " ".join(cmd)
+
+        def _build_result(
+            *,
+            success: bool,
+            return_code: int,
+            stdout: str = "",
+            stderr: str = "",
+            error: str | None = None,
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {
+                "success": success,
+                "return_code": return_code,
+                "stdout": stdout,
+                "stderr": stderr,
+                "output": stdout + stderr,
+                "command": command_text,
+            }
+            if error is not None:
+                result["error"] = error
+            return result
 
         if use_shell and not allow_shell:
             error_msg = "String commands require allow_shell=True"
             print_error(error_msg)
-            return {"success": False, "error": error_msg}
+            return _build_result(success=False, return_code=1, error=error_msg)
 
         if (
             not use_shell
@@ -767,7 +807,8 @@ class ProcessManager(BaseProcessManager):
                     "return_code": return_code,
                     "stdout": stdout,
                     "stderr": stderr,
-                    "command": cmd if use_shell else " ".join(cmd),
+                    "output": stdout + stderr,
+                    "command": command_text,
                 }
 
                 if return_code != 0:
@@ -796,17 +837,13 @@ class ProcessManager(BaseProcessManager):
 
                 if return_code != 0:
                     print_error(f"Shell command exited with code {return_code}")
-                    return {
-                        "success": False,
-                        "return_code": return_code,
-                        "command": cmd if use_shell else " ".join(cmd),
-                    }
+                    return _build_result(
+                        success=False,
+                        return_code=return_code,
+                        error=f"Shell command exited with code {return_code}",
+                    )
 
-                return {
-                    "success": True,
-                    "return_code": 0,
-                    "command": cmd if use_shell else " ".join(cmd),
-                }
+                return _build_result(success=True, return_code=0)
 
         except KeyboardInterrupt:
             print_error("Interrupted by user. Terminating subprocess...")
@@ -814,8 +851,12 @@ class ProcessManager(BaseProcessManager):
                 self._terminate_process_cross_platform(process)
             return {
                 "success": False,
+                "return_code": 130,
                 "error": "Interrupted by user",
-                "command": cmd if use_shell else " ".join(cmd),
+                "stdout": "",
+                "stderr": "",
+                "output": "",
+                "command": command_text,
             }
 
         except FileNotFoundError:
@@ -824,19 +865,11 @@ class ProcessManager(BaseProcessManager):
             else:
                 error_msg = f"Command not found: {cmd[0]}"
             print_error(error_msg)
-            return {
-                "success": False,
-                "error": error_msg,
-                "command": cmd if use_shell else " ".join(cmd),
-            }
+            return _build_result(success=False, return_code=127, error=error_msg)
         except Exception as e:
             error_msg = f"Error running shell command: {e}"
             print_error(error_msg)
-            return {
-                "success": False,
-                "error": error_msg,
-                "command": cmd if use_shell else " ".join(cmd),
-            }
+            return _build_result(success=False, return_code=1, error=error_msg)
 
     @staticmethod
     def run_interactive_shell(cmd: list[str]) -> int:

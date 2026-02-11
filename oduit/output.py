@@ -15,7 +15,6 @@ class OutputFormatter:
     def __init__(self, format_type: str = "text", non_interactive: bool = False):
         self.format_type = format_type.lower()
         self.non_interactive = non_interactive
-        self._previous_fields: dict[str, Any] = {}
 
     def output(
         self, message: str, level: str = "info", data: dict[str, Any] | None = None
@@ -88,8 +87,7 @@ class OutputFormatter:
         database = match.group("database")
         module = match.group("module")
 
-        # Full set of fields
-        current_fields = {
+        return {
             "source": "odoo",
             "level": level,
             "timestamp": timestamp,
@@ -98,28 +96,6 @@ class OutputFormatter:
             "module": module,
             "message": message,
         }
-
-        # Build result with only changed fields (always include message and level)
-        result = {
-            "level": level,
-            "message": message,
-        }
-
-        # Check each field against previous values and include if changed
-        for field, value in current_fields.items():
-            if field in ["level", "message"]:
-                # Always include these essential fields
-                continue
-
-            # Include field if different from previous value or first time seeing it
-            if (
-                field not in self._previous_fields
-                or self._previous_fields[field] != value
-            ):
-                result[field] = value
-                self._previous_fields[field] = value
-
-        return result
 
     def _output_text(self, message: str, level: str) -> None:
         """Output in text format."""

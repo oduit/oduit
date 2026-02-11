@@ -232,6 +232,11 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
         self._remove_by_key("db_maxconn_gevent")
         return self
 
+    def disable_http(self) -> "BaseOdooCommandBuilder":
+        """Disable all HTTP-related options and enable --no-http."""
+        self._remove_http_config()
+        return self.no_http(True)
+
     def _apply_multiprocessing_config(self) -> None:
         """Apply multiprocessing related configuration"""
         if workers := self.config.get_optional("workers"):

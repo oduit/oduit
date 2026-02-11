@@ -982,13 +982,39 @@ class DemoProcessManager(BaseProcessManager):
         input_data: str | None = None,
     ) -> dict[str, Any]:
         """Simulate shell command execution"""
+        if isinstance(cmd, str) and not allow_shell:
+            return {
+                "success": False,
+                "return_code": 1,
+                "error": "String commands require allow_shell=True",
+                "stdout": "",
+                "stderr": "",
+                "output": "",
+                "command": cmd,
+            }
+
         if isinstance(cmd, str):
             cmd_list: list[str] = [cmd]
+            command_text = cmd
         else:
             cmd_list = cmd
-        return self._simulate_shell_operation(
+            command_text = " ".join(cmd)
+
+        result = self._simulate_shell_operation(
             cmd_list, verbose=verbose, suppress_output=False
         )
+
+        stdout = result.get("stdout", result.get("output", ""))
+        stderr = result.get("stderr", "")
+        return {
+            "success": result.get("success", False),
+            "return_code": result.get("return_code", 1),
+            "stdout": stdout,
+            "stderr": stderr,
+            "output": result.get("output", stdout + stderr),
+            "command": command_text,
+            **({"error": result["error"]} if "error" in result else {}),
+        }
 
     @staticmethod
     def run_interactive_shell(cmd: list[str]) -> int:
