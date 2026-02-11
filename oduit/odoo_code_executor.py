@@ -14,6 +14,7 @@ and get the results back as Python objects.
 """
 
 import io
+import signal
 import sys
 import threading
 import traceback
@@ -61,14 +62,16 @@ class OdooCodeExecutor:
         database: str | None = None,
         commit: bool = False,
         timeout: float = 30.0,
+        allow_unsafe: bool = False,
     ) -> dict[str, Any]:
-        """Execute Python code within an Odoo environment.
+        """Execute trusted Python code within an Odoo environment.
 
         Args:
             code: Python code to execute (can be expression or statements)
             database: Database name to connect to (uses config default if None)
             commit: Whether to commit changes (default: False for safety)
             timeout: Maximum execution time in seconds
+            allow_unsafe: Must be True to allow arbitrary code execution
 
         Returns:
             Dictionary with execution results:
@@ -78,6 +81,15 @@ class OdooCodeExecutor:
             - error (str): Error message if execution failed
             - traceback (str): Full traceback if an exception occurred
         """
+        if not allow_unsafe:
+            return {
+                "success": False,
+                "error": (
+                    "Refusing to execute arbitrary code. "
+                    "Pass allow_unsafe=True for trusted code."
+                ),
+            }
+
         try:
             from odoo.tools import config
 
@@ -161,7 +173,7 @@ class OdooCodeExecutor:
                 }
 
                 # Execute the code with timeout and output capture
-                result = self._safe_execute(code, execution_context, timeout)
+                result = self._execute_trusted(code, execution_context, timeout)
 
                 if result["success"] and commit:
                     cr.commit()
@@ -179,10 +191,10 @@ class OdooCodeExecutor:
                 "traceback": traceback.format_exc(),
             }
 
-    def _safe_execute(
+    def _execute_trusted(
         self, code: str, context: dict[str, Any], timeout: float
     ) -> dict[str, Any]:
-        """Safely execute code with output capture and timeout."""
+        """Execute trusted code with output capture and enforced timeout."""
         import ast
 
         # Capture stdout and stderr
@@ -199,10 +211,43 @@ class OdooCodeExecutor:
             "traceback": "",
         }
 
+        old_handler: Any = None
+        timer_enabled = False
+
         try:
             # Redirect output streams
             sys.stdout = stdout_capture
             sys.stderr = stderr_capture
+
+            if timeout <= 0:
+                result["error"] = "Timeout must be greater than zero"
+                return result
+
+            if sys.platform == "win32":
+                result["error"] = (
+                    "Timeout-enforced execution is not supported on Windows"
+                )
+                return result
+
+            if threading.current_thread() is not threading.main_thread():
+                result["error"] = (
+                    "Timeout-enforced execution requires running on the main thread"
+                )
+                return result
+
+            if not hasattr(signal, "setitimer") or not hasattr(signal, "ITIMER_REAL"):
+                result["error"] = (
+                    "Timeout enforcement is not available on this platform"
+                )
+                return result
+
+            def _timeout_handler(signum: int, frame: Any) -> None:
+                raise TimeoutError(f"Execution timed out after {timeout} seconds")
+
+            old_handler = signal.getsignal(signal.SIGALRM)
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.setitimer(signal.ITIMER_REAL, timeout)
+            timer_enabled = True
 
             # Clean the code
             code_stripped = code.strip()
@@ -270,11 +315,19 @@ class OdooCodeExecutor:
                     result["error"] = f"Syntax error: {e}"
                     result["traceback"] = traceback.format_exc()
 
+        except TimeoutError as e:
+            result["error"] = str(e)
+            result["traceback"] = traceback.format_exc()
         except Exception as e:
             result["error"] = str(e)
             result["traceback"] = traceback.format_exc()
 
         finally:
+            if timer_enabled:
+                signal.setitimer(signal.ITIMER_REAL, 0.0)
+                if old_handler is not None:
+                    signal.signal(signal.SIGALRM, old_handler)
+
             # Restore original streams and capture output
             sys.stdout = old_stdout
             sys.stderr = old_stderr
@@ -290,20 +343,30 @@ class OdooCodeExecutor:
 
         return result
 
+    def _safe_execute(
+        self, code: str, context: dict[str, Any], timeout: float
+    ) -> dict[str, Any]:
+        """Backward wrapper for trusted execution path."""
+        return self._execute_trusted(code, context, timeout)
+
     def execute_multiple(
         self,
         code_blocks: list[str],
         database: str | None = None,
         commit: bool = False,
         stop_on_error: bool = True,
+        timeout: float = 30.0,
+        allow_unsafe: bool = False,
     ) -> dict[str, Any]:
-        """Execute multiple code blocks in sequence within the same transaction.
+        """Execute multiple trusted code blocks within the same transaction.
 
         Args:
             code_blocks: List of Python code strings to execute
             database: Database name to connect to
             commit: Whether to commit changes after all blocks succeed
             stop_on_error: Whether to stop execution if any block fails
+            timeout: Maximum execution time per block in seconds
+            allow_unsafe: Must be True to allow arbitrary code execution
 
         Returns:
             Dictionary with execution results:
@@ -312,6 +375,15 @@ class OdooCodeExecutor:
             - failed_at (int): Index of failed block (if stop_on_error=True)
             - error (str): Overall error message
         """
+        if not allow_unsafe:
+            return {
+                "success": False,
+                "error": (
+                    "Refusing to execute arbitrary code. "
+                    "Pass allow_unsafe=True for trusted code."
+                ),
+            }
+
         try:
             from odoo.tools import config
 
@@ -345,7 +417,11 @@ class OdooCodeExecutor:
                 }
 
             return self._execute_multiple_with_database(
-                code_blocks, db_name, commit, stop_on_error
+                code_blocks,
+                db_name,
+                commit,
+                stop_on_error,
+                timeout,
             )
 
         except Exception as e:
@@ -357,7 +433,12 @@ class OdooCodeExecutor:
             }
 
     def _execute_multiple_with_database(
-        self, code_blocks: list[str], db_name: str, commit: bool, stop_on_error: bool
+        self,
+        code_blocks: list[str],
+        db_name: str,
+        commit: bool,
+        stop_on_error: bool,
+        timeout: float,
     ) -> dict[str, Any]:
         """Execute multiple code blocks with database connection."""
         try:
@@ -397,7 +478,7 @@ class OdooCodeExecutor:
                 for i, code in enumerate(code_blocks):
                     print_info(f"Executing code block {i + 1}/{len(code_blocks)}")
 
-                    result = self._safe_execute(code, execution_context, 30.0)
+                    result = self._execute_trusted(code, execution_context, timeout)
                     results.append(result)
 
                     if not result["success"]:

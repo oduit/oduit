@@ -46,7 +46,10 @@ def main():
         print(f"   Full command: {full_command}")
 
         result = pm_system.run_shell_command(
-            full_command, verbose=True, capture_output=True
+            full_command,
+            verbose=True,
+            capture_output=True,
+            allow_shell=True,
         )
 
         if result["success"]:
@@ -80,6 +83,7 @@ def main():
             full_command,
             verbose=False,  # Reduce verbosity for cleaner output
             capture_output=True,
+            allow_shell=True,
         )
 
         if result["success"]:
@@ -106,7 +110,10 @@ def main():
 
         print("   Code: print(nonexistent_variable)")
         result = pm_system.run_shell_command(
-            full_command, verbose=False, capture_output=True
+            full_command,
+            verbose=False,
+            capture_output=True,
+            allow_shell=True,
         )
 
         if result["success"]:

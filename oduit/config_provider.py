@@ -163,10 +163,14 @@ class ConfigProvider:
             "translate_modules": "modules",
             "list_db": "database-list",
             "no_http": "no-http",
+            "pg_path": "pg_path",
             "db_user": "db_user",
             "db_host": "db_host",
             "db_port": "db_port",
             "db_password": "db_password",
+            "db_sslmode": "db_sslmode",
+            "db_maxconn": "db_maxconn",
+            "db_maxconn_gevent": "db_maxconn_gevent",
         }
 
         params_list = []

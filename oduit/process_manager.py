@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import getpass
 import os
 import re
 import select
@@ -61,7 +62,7 @@ class ProcessManager(BaseProcessManager):
 
     Provides comprehensive process management functionality including:
     - Command execution with output streaming and error handling
-    - Cross-platform sudo authentication via askpass scripts
+    - Cross-platform sudo authentication via stdin
     - Interactive shell support with pseudo-terminal (PTY) handling
     - Real-time output colorization and formatting
     - JSON-structured logging for programmatic consumption
@@ -88,6 +89,33 @@ class ProcessManager(BaseProcessManager):
 
     def __init__(self) -> None:
         self._sudo_password = None
+
+    def clear_sudo_password(self) -> None:
+        """Clear cached sudo password from memory."""
+        self._sudo_password = None
+
+    def _get_sudo_password(self) -> str:
+        """Get sudo password from cache, env var, or interactive prompt."""
+        if self._sudo_password is not None:
+            return self._sudo_password
+
+        env_password = os.environ.get("SUDO_PASSWORD")
+        if env_password:
+            self._sudo_password = env_password
+            return self._sudo_password
+
+        self._sudo_password = getpass.getpass("Sudo password: ")
+        return self._sudo_password
+
+    @staticmethod
+    def _write_process_stdin(process: Any, stdin_data: str | None) -> None:
+        """Write optional stdin data to process and close stdin."""
+        if stdin_data is None or process.stdin is None:
+            return
+
+        process.stdin.write(stdin_data)
+        process.stdin.flush()
+        process.stdin.close()
 
     def run_operation(
         self,
@@ -160,61 +188,20 @@ class ProcessManager(BaseProcessManager):
     def _spawn_process_with_optional_sudo(
         self, cmd: list[str]
     ) -> tuple[Any, str | None]:
-        """Spawn subprocess handling sudo -S via askpass.
+        """Spawn subprocess handling sudo -S via stdin.
 
-        Returns (process, askpass_path).
+        Returns (process, stdin_data).
         """
-        askpass_path = None
-
-        # Use askpass script for sudo commands instead of -S flag
-        is_sudo_command = cmd[0] == "sudo" and "-S" in cmd
+        is_sudo_command = bool(cmd) and cmd[0] == "sudo" and "-S" in cmd
 
         if is_sudo_command:
-            # Remove the -S flag
-            cmd_copy = list(cmd)  # Create a copy of the command list
-            cmd_copy.remove("-S")
-
-            # Create a temporary askpass script
-            import getpass
-            import stat
-            import tempfile
-
-            # Create the askpass script in a way that persists
-            if IS_WINDOWS:
-                askpass_fd, askpass_path = tempfile.mkstemp(suffix=".bat", text=True)
-            else:
-                askpass_fd, askpass_path = tempfile.mkstemp(suffix=".sh", text=True)
-
-            # Only prompt for password if we don't already have one
-            if self._sudo_password is None:
-                self._sudo_password = getpass.getpass("Sudo password: ")
-
-            with os.fdopen(askpass_fd, "w") as askpass_file:
-                if IS_WINDOWS:
-                    askpass_file.write("@echo off\n")
-                    askpass_file.write(f"echo {self._sudo_password}\n")
-                else:
-                    askpass_file.write("#!/bin/sh\n")
-                    askpass_file.write(f'echo "{self._sudo_password}"\n')
-
-            # Make the script executable (Unix only)
-            if not IS_WINDOWS:
-                os.chmod(askpass_path, stat.S_IRWXU)
-
-            # Set environment variable to use the askpass script
-            env = os.environ.copy()
-            env["SUDO_ASKPASS"] = askpass_path
-
-            # Replace sudo -S with sudo -A
-            cmd_copy[0] = "sudo"
-            cmd_copy.insert(1, "-A")
-
-            process = self._create_subprocess(cmd_copy, env)
-            return process, askpass_path
+            sudo_password = self._get_sudo_password()
+            process = self._create_subprocess(cmd, stdin_pipe=True)
+            return process, f"{sudo_password}\n"
 
         # Non-sudo command
         process = self._create_subprocess(cmd)
-        return process, askpass_path
+        return process, None
 
     def _get_process_kwargs(self) -> dict[str, Any]:
         """Get platform-appropriate process creation kwargs"""
@@ -224,15 +211,21 @@ class ProcessManager(BaseProcessManager):
             return {"preexec_fn": os.setsid}
 
     def _create_subprocess(
-        self, cmd: list[str], env: dict[str, str] | None = None
+        self,
+        cmd: list[str],
+        env: dict[str, str] | None = None,
+        stdin_pipe: bool = False,
     ) -> Any:
         """Create subprocess with platform-appropriate settings"""
         kwargs = self._get_process_kwargs()
         if env:
             kwargs["env"] = env
 
+        stdin_target = subprocess.PIPE if stdin_pipe else None
+
         return subprocess.Popen(
             cmd,
+            stdin=stdin_target,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -458,12 +451,13 @@ class ProcessManager(BaseProcessManager):
         if verbose and not suppress_output:
             print_info(f"Running command: {' '.join(cmd)}")
         process = None
-        askpass_path = None
+        stdin_data = None
         output_lines = []
         warnings: list[str] = []
 
         try:
-            process, askpass_path = self._spawn_process_with_optional_sudo(cmd)
+            process, stdin_data = self._spawn_process_with_optional_sudo(cmd)
+            self._write_process_stdin(process, stdin_data)
             output_lines = self._stream_output_and_maybe_abort(
                 process, stop_on_error, compact, suppress_output, warnings
             )
@@ -522,15 +516,6 @@ class ProcessManager(BaseProcessManager):
                 "command": " ".join(cmd),
                 "warnings": warnings,
             }
-
-        finally:
-            # Clean up the temporary askpass script after the process has completed
-            if askpass_path and os.path.exists(askpass_path):
-                try:
-                    os.unlink(askpass_path)
-                except Exception as e:
-                    if not suppress_output:
-                        print_error(f"Error removing temporary file: {e}")
 
     def _stream_output_yielding(
         self,
@@ -634,11 +619,12 @@ class ProcessManager(BaseProcessManager):
         if verbose and not suppress_output:
             print_info(f"Running command: {' '.join(cmd)}")
         process = None
-        askpass_path = None
+        stdin_data = None
         output_lines = []
 
         try:
-            process, askpass_path = self._spawn_process_with_optional_sudo(cmd)
+            process, stdin_data = self._spawn_process_with_optional_sudo(cmd)
+            self._write_process_stdin(process, stdin_data)
 
             # Yield from the streaming generator
             for item in self._stream_output_yielding(
@@ -715,17 +701,13 @@ class ProcessManager(BaseProcessManager):
                 "process_running": False,
             }
 
-        finally:
-            # Clean up the temporary askpass script after the process has completed
-            if askpass_path and os.path.exists(askpass_path):
-                try:
-                    os.unlink(askpass_path)
-                except Exception as e:
-                    if not suppress_output:
-                        print_error(f"Error removing temporary file: {e}")
-
     def run_shell_command(
-        self, cmd: list[str] | str, verbose: bool = False, capture_output: bool = False
+        self,
+        cmd: list[str] | str,
+        verbose: bool = False,
+        capture_output: bool = False,
+        allow_shell: bool = False,
+        input_data: str | None = None,
     ) -> dict[str, Any]:
         """Run a shell command that may receive piped input
 
@@ -733,9 +715,28 @@ class ProcessManager(BaseProcessManager):
             cmd: Either a list of command arguments or a string to be evaluated by shell
             verbose: Print command before execution
             capture_output: Capture stdout/stderr instead of inheriting
+            allow_shell: Allow shell string evaluation when cmd is a string
+            input_data: Optional data to send to stdin
         """
         # Determine if cmd is a string (shell evaluation) or list (direct execution)
         use_shell = isinstance(cmd, str)
+
+        if use_shell and not allow_shell:
+            error_msg = "String commands require allow_shell=True"
+            print_error(error_msg)
+            return {"success": False, "error": error_msg}
+
+        if (
+            not use_shell
+            and isinstance(cmd, list)
+            and cmd
+            and cmd[0] == "sudo"
+            and "-S" in cmd
+            and input_data is None
+        ):
+            input_data = f"{self._get_sudo_password()}\n"
+
+        stdin_target = subprocess.PIPE if input_data is not None else None
 
         if verbose:
             if use_shell:
@@ -750,15 +751,15 @@ class ProcessManager(BaseProcessManager):
                 process = subprocess.Popen(
                     cmd,
                     shell=use_shell,
-                    stdin=None,  # Inherit stdin from parent (allows piped input)
-                    stdout=subprocess.PIPE,  # Capture stdout
-                    stderr=subprocess.PIPE,  # Capture stderr
+                    stdin=stdin_target,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
                     **self._get_process_kwargs(),
                 )
 
                 # Wait for completion and capture output
-                stdout, stderr = process.communicate()
+                stdout, stderr = process.communicate(input=input_data)
                 return_code = process.returncode
 
                 result = {
@@ -766,6 +767,7 @@ class ProcessManager(BaseProcessManager):
                     "return_code": return_code,
                     "stdout": stdout,
                     "stderr": stderr,
+                    "command": cmd if use_shell else " ".join(cmd),
                 }
 
                 if return_code != 0:
@@ -778,27 +780,43 @@ class ProcessManager(BaseProcessManager):
                 process = subprocess.Popen(
                     cmd,
                     shell=use_shell,
-                    stdin=None,  # Inherit stdin from parent (allows piped input)
-                    stdout=None,  # Inherit stdout (direct output to terminal)
-                    stderr=None,  # Inherit stderr (direct output to terminal)
+                    stdin=stdin_target,
+                    stdout=None,
+                    stderr=None,
                     text=True,
                     **self._get_process_kwargs(),
                 )
 
                 # Wait for the process to complete
-                return_code = process.wait()
+                if input_data is not None:
+                    process.communicate(input=input_data)
+                    return_code = process.returncode
+                else:
+                    return_code = process.wait()
 
                 if return_code != 0:
                     print_error(f"Shell command exited with code {return_code}")
-                    return {"success": False, "return_code": return_code}
+                    return {
+                        "success": False,
+                        "return_code": return_code,
+                        "command": cmd if use_shell else " ".join(cmd),
+                    }
 
-                return {"success": True, "return_code": 0}
+                return {
+                    "success": True,
+                    "return_code": 0,
+                    "command": cmd if use_shell else " ".join(cmd),
+                }
 
         except KeyboardInterrupt:
             print_error("Interrupted by user. Terminating subprocess...")
             if process:
                 self._terminate_process_cross_platform(process)
-            return {"success": False, "error": "Interrupted by user"}
+            return {
+                "success": False,
+                "error": "Interrupted by user",
+                "command": cmd if use_shell else " ".join(cmd),
+            }
 
         except FileNotFoundError:
             if use_shell:
@@ -806,11 +824,19 @@ class ProcessManager(BaseProcessManager):
             else:
                 error_msg = f"Command not found: {cmd[0]}"
             print_error(error_msg)
-            return {"success": False, "error": error_msg}
+            return {
+                "success": False,
+                "error": error_msg,
+                "command": cmd if use_shell else " ".join(cmd),
+            }
         except Exception as e:
             error_msg = f"Error running shell command: {e}"
             print_error(error_msg)
-            return {"success": False, "error": error_msg}
+            return {
+                "success": False,
+                "error": error_msg,
+                "command": cmd if use_shell else " ".join(cmd),
+            }
 
     @staticmethod
     def run_interactive_shell(cmd: list[str]) -> int:

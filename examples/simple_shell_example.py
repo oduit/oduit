@@ -20,7 +20,10 @@ def main():
     print("1. Basic pipe command:")
     print("   Command: 'echo \"Hello World\" | wc -w'")
     result = pm.run_shell_command(
-        'echo "Hello World" | wc -w', verbose=True, capture_output=True
+        'echo "Hello World" | wc -w',
+        verbose=True,
+        capture_output=True,
+        allow_shell=True,
     )
     if result["success"]:
         print(f"   ✓ Word count: {result['stdout'].strip()}")
@@ -32,7 +35,10 @@ def main():
     print("2. Multiple pipes with grep:")
     print("   Command: 'ps aux | grep python | grep -v grep | wc -l'")
     result = pm.run_shell_command(
-        "ps aux | grep python | grep -v grep | wc -l", verbose=True, capture_output=True
+        "ps aux | grep python | grep -v grep | wc -l",
+        verbose=True,
+        capture_output=True,
+        allow_shell=True,
     )
     if result["success"]:
         print(f"   ✓ Python processes running: {result['stdout'].strip()}")
@@ -44,7 +50,10 @@ def main():
     print("3. Environment variable expansion:")
     print("   Command: 'echo \"User: $USER, Home: $HOME\"'")
     result = pm.run_shell_command(
-        'echo "User: $USER, Home: $HOME"', verbose=True, capture_output=True
+        'echo "User: $USER, Home: $HOME"',
+        verbose=True,
+        capture_output=True,
+        allow_shell=True,
     )
     if result["success"]:
         print(f"   ✓ {result['stdout'].strip()}")
@@ -56,7 +65,10 @@ def main():
     print("4. File operations with find and head:")
     print("   Command: 'find . -name \"*.py\" -type f | head -5'")
     result = pm.run_shell_command(
-        'find . -name "*.py" -type f | head -5', verbose=True, capture_output=True
+        'find . -name "*.py" -type f | head -5',
+        verbose=True,
+        capture_output=True,
+        allow_shell=True,
     )
     if result["success"]:
         print("   ✓ First 5 Python files:")
@@ -71,7 +83,10 @@ def main():
     print("5. Mathematical operations using bc:")
     print("   Command: 'echo \"scale=2; 22/7\" | bc'")
     result = pm.run_shell_command(
-        'echo "scale=2; 22/7" | bc', verbose=True, capture_output=True
+        'echo "scale=2; 22/7" | bc',
+        verbose=True,
+        capture_output=True,
+        allow_shell=True,
     )
     if result["success"]:
         print(f"   ✓ 22/7 = {result['stdout'].strip()}")
@@ -100,7 +115,12 @@ def main():
     )
     command = f'echo "{python_code}" | python3'
     print('   Command: echo "<python_code>" | python3')
-    result = pm.run_shell_command(command, verbose=True, capture_output=True)
+    result = pm.run_shell_command(
+        command,
+        verbose=True,
+        capture_output=True,
+        allow_shell=True,
+    )
     if result["success"]:
         print("   ✓ Python output:")
         for line in result["stdout"].strip().split("\n"):
@@ -118,6 +138,7 @@ def main():
         'echo "This output goes directly to terminal"',
         verbose=False,
         capture_output=False,  # Direct to terminal
+        allow_shell=True,
     )
     if result["success"]:
         print("   ✓ Command completed successfully")
@@ -126,7 +147,7 @@ def main():
     print()
 
     print("=== Summary ===")
-    print("✓ String commands enable full shell functionality")
+    print("✓ String commands enable full shell functionality (allow_shell=True)")
     print("✓ Pipes, redirects, and variables work as expected")
     print("✓ List commands maintain backward compatibility")
     print("✓ Both capture_output modes work correctly")

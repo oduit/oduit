@@ -978,7 +978,8 @@ class DemoProcessManager(BaseProcessManager):
         cmd: list[str] | str,
         verbose: bool = False,
         capture_output: bool = True,
-        suppress_output: bool = False,
+        allow_shell: bool = False,
+        input_data: str | None = None,
     ) -> dict[str, Any]:
         """Simulate shell command execution"""
         if isinstance(cmd, str):

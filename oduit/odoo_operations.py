@@ -1188,12 +1188,11 @@ class OdooOperations:
                 if self.verbose:
                     print_info(f"Code: {python_code}")
 
-            full_command = f'echo "{python_code}" | {" ".join(operation.command)}'
-
             process_result = self.process_manager.run_shell_command(
-                full_command,
+                operation.command,
                 verbose=self.verbose and not suppress_output,
                 capture_output=capture_output,
+                input_data=f"{python_code}\n",
             )
 
             if process_result:
@@ -1204,7 +1203,6 @@ class OdooOperations:
                     "stderr": process_result.get("stderr", ""),
                     "operation": "execute_python_code",
                     "command": operation.command,
-                    "full_command": full_command,
                     "python_code": python_code,
                 }
 

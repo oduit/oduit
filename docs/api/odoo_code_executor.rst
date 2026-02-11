@@ -1,7 +1,7 @@
 OdooCodeExecutor
 ================
 
-The OdooCodeExecutor class provides a way to execute Python code within an Odoo environment and capture results directly as Python objects, without printing to console. It's perfect for programmatic use cases where you want to query data, perform operations, and get results back.
+The OdooCodeExecutor class provides a way to execute trusted Python code within an Odoo environment and capture results directly as Python objects, without printing to console. It's perfect for programmatic use cases where you want to query data, perform operations, and get results back.
 
 .. automodule:: oduit.odoo_code_executor
    :members:
@@ -17,6 +17,7 @@ Features
 - **Automatic Database Connection**: Handles database connection and cleanup automatically
 - **Thread-Safe Execution**: Proper threading context setup for Odoo
 - **Transaction Management**: Read-only by default with optional commit functionality
+- **Explicit Trust Gate**: ``allow_unsafe=True`` is required to execute arbitrary code
 
 Basic Usage
 -----------
@@ -35,7 +36,10 @@ Execute a single expression and get the result:
     executor = OdooCodeExecutor(config_provider)
 
     # Get partner name
-    result = executor.execute_code("env['res.partner'].search([],limit=1).name")
+    result = executor.execute_code(
+        "env['res.partner'].search([],limit=1).name",
+        allow_unsafe=True,
+    )
     if result["success"]:
         partner_name = result["value"]  # Returns actual string
         print(f"Partner: {partner_name}")
@@ -60,7 +64,7 @@ Execute complex code blocks that end with an expression:
     }
     """
 
-    result = executor.execute_code(code)
+    result = executor.execute_code(code, allow_unsafe=True)
     if result["success"]:
         stats = result["value"]  # Returns the dictionary
         print(f"Statistics: {stats}")
@@ -82,7 +86,7 @@ Create or modify data with explicit commit control:
     """
 
     # Execute with commit=True to persist changes
-    result = executor.execute_code(create_code, commit=True)
+    result = executor.execute_code(create_code, commit=True, allow_unsafe=True)
     if result["success"]:
         partner_data = result["value"]
         print(f"Created partner: {partner_data}")
@@ -100,7 +104,7 @@ Execute multiple related code blocks in sequence within the same transaction:
         "{'count': len(partner_names), 'names': partner_names}"
     ]
 
-    result = executor.execute_multiple(code_blocks)
+    result = executor.execute_multiple(code_blocks, allow_unsafe=True)
     if result["success"]:
         # Get result from the last block
         final_result = result["results"][-1]["value"]
@@ -113,7 +117,7 @@ The OdooCodeExecutor provides comprehensive error handling with detailed informa
 
 .. code-block:: python
 
-    result = executor.execute_code("nonexistent_variable + 42")
+    result = executor.execute_code("nonexistent_variable + 42", allow_unsafe=True)
     if not result["success"]:
         print(f"Error: {result['error']}")
         print(f"Traceback: {result['traceback']}")
@@ -219,8 +223,10 @@ When using OdooCodeExecutor:
 - Code is executed with SUPERUSER_ID privileges
 - All database operations are performed within transactions
 - By default, all changes are rolled back unless ``commit=True`` is specified
-- Input code should be trusted as it has full access to the Odoo environment
+- ``allow_unsafe=True`` is required to execute code
+- Input code must be trusted as it has full access to the Odoo environment
 - Consider implementing additional access controls in production environments
+- Timeout enforcement uses ``signal.setitimer`` and requires Unix + main thread
 
 Best Practices
 --------------
@@ -231,3 +237,4 @@ Best Practices
 4. **Keep code blocks focused** - break complex operations into smaller pieces
 5. **Test expressions first** before using in production code
 6. **Use timeouts** for long-running operations to prevent hanging
+7. **Pass ``allow_unsafe=True`` only for trusted, reviewed code snippets**

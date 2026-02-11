@@ -190,8 +190,8 @@ class TestConfigProvider(unittest.TestCase):
             "--db_port=5432",
             "--db_user=odoo",
             "--db_password=admin",
-            "--db-sslmode=prefer",
-            "--db-maxconn=64",
+            "--db_sslmode=prefer",
+            "--db_maxconn=64",
             "--db-template=template0",
             "--addons-path=/path/to/addons",
             "--upgrade-path=/path/to/upgrades",
@@ -227,6 +227,10 @@ class TestConfigProvider(unittest.TestCase):
         self.assertIn("--db_port=5432", params_list)
         self.assertIn("--db_user=odoo", params_list)
         self.assertIn("--db_password=admin", params_list)
+        self.assertIn("--db_sslmode=prefer", params_list)
+        self.assertIn("--db_maxconn=64", params_list)
+        self.assertNotIn("--db-sslmode=prefer", params_list)
+        self.assertNotIn("--db-maxconn=64", params_list)
 
     def test_get_odoo_params_list_skip_keys(self):
         """Test get_odoo_params_list with skip_keys parameter."""

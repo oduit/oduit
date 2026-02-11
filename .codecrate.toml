@@ -1,0 +1,10 @@
+[codecrate]
+output = "context_oduit.md"
+keep_docstrings = true
+dedupe = true
+respect_gitignore = true
+exclude = ["*/.venv/*", "integration_tests", "examples", "docs"]
+include = ["**/*.py", "**/*.toml", "**/*.rst"]
+split_max_chars = 0
+manifest = false
+layout = "full"

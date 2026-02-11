@@ -219,3 +219,4 @@ integration/.oduit.toml
 
 # Integration test generated files
 integration_tests/myaddons/**/__manifest__.py
+context_oduit.md

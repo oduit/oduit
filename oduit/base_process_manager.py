@@ -110,7 +110,12 @@ class BaseProcessManager(ABC):
 
     @abstractmethod
     def run_shell_command(
-        self, cmd: list[str] | str, verbose: bool = False, capture_output: bool = False
+        self,
+        cmd: list[str] | str,
+        verbose: bool = False,
+        capture_output: bool = False,
+        allow_shell: bool = False,
+        input_data: str | None = None,
     ) -> dict[str, Any]:
         """Execute a shell command that may receive piped input.
 
@@ -118,6 +123,8 @@ class BaseProcessManager(ABC):
             cmd: Either a list of command arguments or a string to be evaluated by shell
             verbose: Print command before execution
             capture_output: Capture stdout/stderr instead of inheriting
+            allow_shell: Allow shell string evaluation when cmd is a string
+            input_data: Optional data sent to subprocess stdin
 
         Returns:
             Dict with execution results (format similar to run_command)

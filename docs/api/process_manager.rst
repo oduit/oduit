@@ -1,7 +1,7 @@
 ProcessManager
 ==============
 
-The ProcessManager class is responsible for managing Odoo processes and operations. It provides enhanced structured operation execution through the new ``run_operation()`` method and maintains backward compatibility with existing command execution methods.
+The ProcessManager class is responsible for managing Odoo processes and operations. It provides enhanced structured operation execution through ``run_operation()`` and secure-by-default shell execution.
 
 .. automodule:: oduit.process_manager
    :members:
@@ -34,11 +34,15 @@ The default process manager uses subprocess execution for all commands:
    pm = ProcessManager()
 
    # Good for: shell scripting, piped commands, external tools
-   result = pm.run_shell_command('echo "Hello" | grep "Hello"', capture_output=True)
+   result = pm.run_shell_command(
+       'echo "Hello" | grep "Hello"',
+       capture_output=True,
+       allow_shell=True,
+   )
 
 **Features:**
-- Full subprocess support with piped commands
-- Shell scripting capabilities
+- Full subprocess support with list-based commands
+- Explicit shell scripting support with ``allow_shell=True``
 - Best compatibility with system tools
 - Standard subprocess behavior
 
@@ -74,11 +78,19 @@ SystemProcessManager Shell Commands
 
    pm = ProcessManager()  # SystemProcessManager
 
-   # Full shell features supported
-   result = pm.run_shell_command('echo "SELECT version();" | psql mydb', capture_output=True)
+   # Full shell features supported with explicit opt-in
+   result = pm.run_shell_command(
+       'echo "SELECT version();" | psql mydb',
+       capture_output=True,
+       allow_shell=True,
+   )
 
-   # Piped commands work perfectly
-   result = pm.run_shell_command('ls -la | grep ".py"', capture_output=True)
+   # Piped commands work with allow_shell=True
+   result = pm.run_shell_command(
+       'ls -la | grep ".py"',
+       capture_output=True,
+       allow_shell=True,
+   )
 
 **Method Signature:**
 
@@ -88,39 +100,46 @@ SystemProcessManager Shell Commands
        self,
        cmd: str | list[str],
        verbose: bool = False,
-       capture_output: bool = False
+       capture_output: bool = False,
+       allow_shell: bool = False,
+       input_data: str | None = None,
    ) -> dict[str, Any]:
        """Execute a shell command.
 
        Args:
-           cmd: Command string or argument list
-           verbose: Print command before execution
-           capture_output: Capture stdout/stderr instead of inheriting
+            cmd: Command string or argument list
+            verbose: Print command before execution
+            capture_output: Capture stdout/stderr instead of inheriting
+            allow_shell: Required for string commands using shell parsing
+            input_data: Optional stdin payload
 
        Returns:
-           Dict with success, return_code, stdout, stderr (if captured)
+            Dict with success, return_code, stdout, stderr (if captured)
        """
 
 **Usage Examples:**
 
 .. code-block:: python
 
-   # Basic shell command
-   result = pm.run_shell_command("echo 'Hello World'")
+   # Basic command (recommended: list form)
+   result = pm.run_shell_command(["echo", "Hello World"])
    print(f"Success: {result['success']}")
 
    # Capture output
-   result = pm.run_shell_command("ls -la", capture_output=True)
+   result = pm.run_shell_command(["ls", "-la"], capture_output=True)
    if result['success']:
        print(f"Output: {result['stdout']}")
 
-   # List command format
+   # List command format with explicit stdin
    result = pm.run_shell_command(["python", "-c", "print('test')"], capture_output=True)
 
-   # Error handling
+   # String command requires explicit shell opt-in
+   result = pm.run_shell_command("ls -la | grep .py", capture_output=True, allow_shell=True)
+
+   # Error handling: string command without allow_shell fails fast
    result = pm.run_shell_command("nonexistent_command")
    if not result['success']:
-       print(f"Error: {result.get('stderr', 'Unknown error')}")
+       print(f"Error: {result.get('error', 'Unknown error')}")
 
 Enhanced Operation Execution
 ----------------------------
