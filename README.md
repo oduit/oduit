@@ -324,8 +324,15 @@ pm = DemoProcessManager(config, available_modules=["base", "sale"])
 **Shell Command Examples:**
 
 ```python
-# System manager: Full shell support
-result = pm.run_shell_command('echo "data" | psql mydb', capture_output=True)
+# List commands are safe by default
+result = pm.run_shell_command(["echo", "data"], capture_output=True)
+
+# String shell commands require explicit opt-in
+result = pm.run_shell_command(
+    'echo "data" | psql mydb',
+    capture_output=True,
+    allow_shell=True,
+)
 ```
 
 ### ModuleManager
@@ -352,7 +359,7 @@ result = mm.install_modules(["sale", "purchase", "stock"], "mydb")
 
 ### OdooCodeExecutor
 
-Execute Python code within an Odoo environment and capture results directly as Python objects:
+Execute trusted Python code within an Odoo environment and capture results directly as Python objects:
 
 ```python
 from oduit.config_provider import ConfigProvider
@@ -370,7 +377,10 @@ config_provider = ConfigProvider(basic_config)
 executor = OdooCodeExecutor(config_provider)
 
 # Execute simple expressions - get partner name
-result = executor.execute_code("env['res.partner'].search([],limit=1).name")
+result = executor.execute_code(
+    "env['res.partner'].search([],limit=1).name",
+    allow_unsafe=True,
+)
 if result["success"]:
     partner_name = result["value"]  # Returns actual string, not printed output
     print(f"Partner: {partner_name}")
@@ -388,7 +398,7 @@ company_count = len(env['res.partner'].search([('is_company', '=', True)]))
     'ratio': f"{customer_count}/{company_count}" if company_count > 0 else "N/A"
 }
 """
-result = executor.execute_code(code)
+result = executor.execute_code(code, allow_unsafe=True)
 if result["success"]:
     stats = result["value"]  # Returns the dictionary directly
     print(f"Total partners: {stats['total_partners']}")
@@ -403,7 +413,11 @@ partner = env['res.partner'].create({
 })
 {'id': partner.id, 'name': partner.name, 'email': partner.email}
 """
-result = executor.execute_code(create_code, commit=True)  # Will commit changes
+result = executor.execute_code(
+    create_code,
+    commit=True,
+    allow_unsafe=True,
+)  # Will commit changes
 if result["success"]:
     partner_data = result["value"]
     print(f"Created partner: {partner_data}")
@@ -414,13 +428,13 @@ code_blocks = [
     "partner_names = [p.name for p in partners]",
     "{'count': len(partner_names), 'names': partner_names}"
 ]
-result = executor.execute_multiple(code_blocks)
+result = executor.execute_multiple(code_blocks, allow_unsafe=True)
 if result["success"]:
     final_result = result["results"][-1]["value"]
     print(f"Found {final_result['count']} companies: {final_result['names']}")
 
 # Error handling
-result = executor.execute_code("nonexistent_variable + 42")
+result = executor.execute_code("nonexistent_variable + 42", allow_unsafe=True)
 if not result["success"]:
     print(f"Error: {result['error']}")
     print(f"Traceback: {result['traceback']}")
@@ -434,6 +448,7 @@ if not result["success"]:
 - **Error Handling**: Detailed error messages and tracebacks
 - **Multiple Code Blocks**: Execute sequences of related code in same transaction
 - **Odoo Environment**: Full access to `env`, `cr`, `uid`, and common Python modules
+- **Explicit Trust Gate**: `allow_unsafe=True` is required for code execution
 
 ### Manifest
 
