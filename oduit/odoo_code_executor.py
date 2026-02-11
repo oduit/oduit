@@ -4,6 +4,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
+# mypy: disable-error-code=import-untyped
+
 """
 Odoo code execution for programmatic use.
 
@@ -154,7 +156,7 @@ class OdooCodeExecutor:
             with registry.cursor() as cr:
                 # Create Odoo environment
                 uid = odoo.SUPERUSER_ID
-                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()  # type: ignore[attr-defined]
+                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()
                 env = odoo.api.Environment(cr, uid, ctx)
 
                 # Set up execution context
@@ -453,7 +455,7 @@ class OdooCodeExecutor:
             with registry.cursor() as cr:
                 # Create Odoo environment
                 uid = odoo.SUPERUSER_ID
-                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()  # type: ignore[attr-defined]
+                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()
                 env = odoo.api.Environment(cr, uid, ctx)
 
                 # Set up execution context (shared across all blocks)

@@ -4,6 +4,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
+# mypy: disable-error-code=import-untyped
+
 """
 Embedded Odoo server management for direct Odoo execution.
 
@@ -158,7 +160,7 @@ class OdooEmbeddedManager:
                 preload = config["db_name"].split(",")
                 for db_name in preload:
                     try:
-                        odoo.service.db._create_empty_database(db_name)  # type: ignore[attr-defined]
+                        odoo.service.db._create_empty_database(db_name)
                         config["init"]["base"] = True
                     except ProgrammingError as err:
                         if err.pgcode == errorcodes.INSUFFICIENT_PRIVILEGE:
@@ -431,7 +433,7 @@ class OdooEmbeddedManager:
             signal.signal(signal.SIGINT, raise_keyboard_interrupt)
 
             # Set up shell environment
-            local_vars = {
+            local_vars: dict[str, Any] = {
                 "openerp": odoo,
                 "odoo": odoo,
             }
@@ -448,9 +450,9 @@ class OdooEmbeddedManager:
                         uid = odoo.SUPERUSER_ID
                         ctx = odoo.api.Environment(cr, uid, {})[
                             "res.users"
-                        ].context_get()  # type: ignore[attr-defined]
+                        ].context_get()
                         env = odoo.api.Environment(cr, uid, ctx)
-                        local_vars["env"] = env  # type: ignore[assignment]
+                        local_vars["env"] = env
                         local_vars["self"] = env.user
 
                         # Rollback to avoid transaction warnings
