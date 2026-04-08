@@ -976,19 +976,14 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         if db_user is None:
             db_user = self.config.get_optional("db_user")
 
-        connection_tokens = self._get_psql_connection_tokens(db_user)
-
         if self.with_sudo:
-            tokens = self._with_password_env(["psql", "-l", *connection_tokens])
-            self._set_command(self._shell_join(tokens))
+            if db_user:
+                self._set_command(f'psql -l -U "{db_user}"')
+            else:
+                self._set_command("psql -l")
         else:
-            tokens = self._with_password_env(["psql"])
-            self._append_raw_tokens(tokens)
+            self._set_command("psql")
             self._set_flag("l", prefix="-")
-            if db_host := self.config.get_optional("db_host"):
-                self._set_parameter("h", str(db_host), prefix="-", sep=" ")
-            if db_port := self.config.get_optional("db_port"):
-                self._set_parameter("p", str(db_port), prefix="-", sep=" ")
             if db_user:
                 self._set_parameter("U", str(db_user), prefix="-", sep=" ")
         return self
