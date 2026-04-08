@@ -161,7 +161,7 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
             "-",
             "postgres",
             "-c",
-            "psql -l -U test_user",
+            'psql -l -U "test_user"',
         ]
         self.assertEqual(result, expected)
 
@@ -181,7 +181,7 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
             "-",
             "postgres",
             "-c",
-            "psql -l -U custom_user",
+            'psql -l -U "custom_user"',
         ]
         self.assertEqual(result, expected)
 
