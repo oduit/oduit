@@ -250,12 +250,12 @@ class OdooQuery:
 
     def _validate_name_list(
         self,
-        values: list[str] | tuple[str, ...] | None,
+        values: object | None,
         field_name: str,
     ) -> tuple[list[str] | None, str | None]:
         if values is None:
             return None, None
-        if not isinstance(values, (list, tuple)):
+        if not isinstance(values, list | tuple):
             return None, f"{field_name} must be a list of strings"
 
         validated_values: list[str] = []
@@ -282,21 +282,19 @@ class OdooQuery:
             return "database must be a non-empty string when provided"
         return None
 
-    def _validate_domain(
-        self, domain: list[Any] | tuple[Any, ...] | None
-    ) -> str | None:
+    def _validate_domain(self, domain: object | None) -> str | None:
         if domain is None:
             return None
-        if not isinstance(domain, (list, tuple)):
+        if not isinstance(domain, list | tuple):
             return "domain must be a list or tuple"
         if not self._is_safe_literal(domain):
             return "domain must contain only literal-safe values"
         return None
 
     def _is_safe_literal(self, value: Any) -> bool:
-        if isinstance(value, (str, int, float, bool)) or value is None:
+        if isinstance(value, str | int | float | bool) or value is None:
             return True
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list | tuple):
             return all(self._is_safe_literal(item) for item in value)
         if isinstance(value, dict):
             return all(

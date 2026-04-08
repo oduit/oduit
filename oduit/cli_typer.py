@@ -173,6 +173,7 @@ def _build_doctor_check(
 def _resolve_binary_candidate(candidate: str) -> dict[str, Any]:
     """Resolve a binary candidate either from PATH or filesystem."""
     is_path_like = os.path.isabs(candidate) or os.sep in candidate
+    resolved_path: str | None
 
     if is_path_like:
         resolved_path = os.path.abspath(candidate)

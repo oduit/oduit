@@ -9,7 +9,7 @@ import sys
 from configparser import ConfigParser, SectionProxy
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from .config_provider import ConfigProvider
 

@@ -112,6 +112,7 @@ Use it when updating README, CLI docs, and API examples.
 - `execute_multiple()`
 
 Note:
+
 - Arbitrary code execution still requires `allow_unsafe=True`.
 
 ## `OdooQuery` methods
