@@ -16,6 +16,7 @@ import click
 import typer
 from manifestoo_core.odoo_series import OdooSeries
 
+from .addons_path_manager import AddonsPathManager
 from .cli_types import (
     AddonListType,
     AddonTemplate,
@@ -29,7 +30,12 @@ from .config_loader import ConfigLoader
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
 from .output import configure_output, print_error, print_info, print_warning
-from .utils import format_dependency_tree, output_result_to_json, validate_addon_name
+from .utils import (
+    JSON_SCHEMA_VERSION,
+    format_dependency_tree,
+    output_result_to_json,
+    validate_addon_name,
+)
 
 SHELL_INTERFACE_OPTION = typer.Option(
     "python",
@@ -111,6 +117,569 @@ EXCLUDE_FILTER_OPTION = typer.Option(
 )
 
 
+def _resolve_config_source(
+    config_loader: ConfigLoader,
+    env: str | None,
+    env_config: dict[str, Any] | None,
+) -> tuple[str | None, str | None]:
+    """Resolve where the active configuration came from."""
+    config_path = None
+    source = "local" if env is None else "env"
+
+    if env is None:
+        if config_loader.has_local_config():
+            try:
+                config_path = config_loader.get_local_config_path()
+            except Exception:
+                config_path = os.path.abspath(".oduit.toml")
+    else:
+        resolved_path = None
+        try:
+            resolved = config_loader.resolve_config_path(env.strip())
+            if isinstance(resolved, tuple) and len(resolved) == 2:
+                resolved_path = resolved[0]
+        except Exception:
+            resolved_path = None
+
+        if isinstance(resolved_path, str) and os.path.exists(resolved_path):
+            config_path = os.path.abspath(resolved_path)
+
+    if env_config and env_config.get("demo_mode", False):
+        source = "demo"
+
+    return source, config_path
+
+
+def _build_doctor_check(
+    name: str,
+    status: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+    remediation: str | None = None,
+) -> dict[str, Any]:
+    """Create a normalized doctor check entry."""
+    check: dict[str, Any] = {
+        "name": name,
+        "status": status,
+        "message": message,
+    }
+    if details:
+        check["details"] = details
+    if remediation:
+        check["remediation"] = remediation
+    return check
+
+
+def _resolve_binary_candidate(candidate: str) -> dict[str, Any]:
+    """Resolve a binary candidate either from PATH or filesystem."""
+    is_path_like = os.path.isabs(candidate) or os.sep in candidate
+
+    if is_path_like:
+        resolved_path = os.path.abspath(candidate)
+        exists = os.path.exists(resolved_path)
+        executable = exists and os.access(resolved_path, os.X_OK)
+        return {
+            "value": candidate,
+            "resolved_path": resolved_path,
+            "exists": exists,
+            "executable": executable,
+        }
+
+    resolved_path = shutil.which(candidate)
+    return {
+        "value": candidate,
+        "resolved_path": resolved_path,
+        "exists": resolved_path is not None,
+        "executable": resolved_path is not None,
+    }
+
+
+def _probe_binary(
+    configured_value: str | None, auto_candidates: list[str]
+) -> dict[str, Any]:
+    """Probe a configured binary or try to auto-detect it."""
+    if configured_value:
+        result = _resolve_binary_candidate(configured_value)
+        result["configured"] = True
+        result["auto_detected"] = False
+        return result
+
+    for candidate in auto_candidates:
+        result = _resolve_binary_candidate(candidate)
+        if result["exists"]:
+            result["configured"] = False
+            result["auto_detected"] = True
+            return result
+
+    return {
+        "value": configured_value,
+        "resolved_path": None,
+        "exists": False,
+        "executable": False,
+        "configured": False,
+        "auto_detected": False,
+    }
+
+
+def _format_doctor_value(value: Any) -> str:
+    """Format a doctor value for human-readable output."""
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value)
+    if isinstance(value, dict):
+        return ", ".join(f"{key}={val}" for key, val in value.items())
+    return str(value)
+
+
+def _print_command_error_result(
+    global_config: GlobalConfig,
+    operation: str,
+    message: str,
+    error_type: str = "CommandError",
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Print a command error in text or JSON mode."""
+    if global_config.format == OutputFormat.JSON:
+        payload = output_result_to_json(
+            {
+                "success": False,
+                "operation": operation,
+                "error": message,
+                "error_type": error_type,
+            },
+            additional_fields=details,
+        )
+        print(json.dumps(payload))
+    else:
+        print_error(message)
+
+
+def _build_doctor_report(global_config: GlobalConfig) -> dict[str, Any]:
+    """Build a diagnostics report for the active configuration."""
+    env_config = global_config.env_config or {}
+    checks: list[dict[str, Any]] = []
+    next_steps: list[str] = []
+
+    checks.append(
+        _build_doctor_check(
+            "config_source",
+            "ok",
+            f"Using {global_config.config_source or 'unknown'} configuration",
+            details={
+                "env_name": global_config.env_name,
+                "config_path": global_config.config_path,
+            },
+        )
+    )
+
+    python_info = _probe_binary(env_config.get("python_bin"), ["python3", "python"])
+    if python_info["exists"] and python_info["executable"]:
+        checks.append(
+            _build_doctor_check(
+                "python_bin",
+                "ok",
+                (
+                    f"python_bin is available at {python_info['resolved_path']}"
+                    if python_info["configured"]
+                    else f"python_bin auto-detected at {python_info['resolved_path']}"
+                ),
+                details=python_info,
+            )
+        )
+    else:
+        checks.append(
+            _build_doctor_check(
+                "python_bin",
+                "error",
+                "Configured python_bin is missing or not executable"
+                if python_info["configured"]
+                else "python_bin was not configured and could not be auto-detected",
+                details=python_info,
+                remediation=(
+                    "Set `python_bin` in `.oduit.toml` or install Python on PATH."
+                ),
+            )
+        )
+
+    odoo_info = _probe_binary(env_config.get("odoo_bin"), ["odoo", "odoo-bin"])
+    if odoo_info["exists"] and odoo_info["executable"]:
+        checks.append(
+            _build_doctor_check(
+                "odoo_bin",
+                "ok",
+                (
+                    f"odoo_bin is available at {odoo_info['resolved_path']}"
+                    if odoo_info["configured"]
+                    else f"odoo_bin auto-detected at {odoo_info['resolved_path']}"
+                ),
+                details=odoo_info,
+            )
+        )
+    else:
+        checks.append(
+            _build_doctor_check(
+                "odoo_bin",
+                "error",
+                "Configured odoo_bin does not exist or is not executable"
+                if odoo_info["configured"]
+                else "odoo_bin was not configured and could not be auto-detected",
+                details=odoo_info,
+                remediation=(
+                    "Set `odoo_bin` in `.oduit.toml` or add `odoo-bin` to PATH."
+                ),
+            )
+        )
+
+    coverage_info = _probe_binary(env_config.get("coverage_bin"), ["coverage"])
+    if coverage_info["exists"] and coverage_info["executable"]:
+        checks.append(
+            _build_doctor_check(
+                "coverage_bin",
+                "ok",
+                (
+                    f"coverage_bin is available at {coverage_info['resolved_path']}"
+                    if coverage_info["configured"]
+                    else (
+                        "coverage_bin auto-detected at "
+                        f"{coverage_info['resolved_path']}"
+                    )
+                ),
+                details=coverage_info,
+            )
+        )
+    else:
+        checks.append(
+            _build_doctor_check(
+                "coverage_bin",
+                "warning",
+                "coverage_bin is not configured and could not be auto-detected",
+                details=coverage_info,
+                remediation=(
+                    "Install `coverage` or set `coverage_bin` if you use "
+                    "coverage-enabled test runs."
+                ),
+            )
+        )
+
+    pairing_status = "ok" if python_info["exists"] and odoo_info["exists"] else "error"
+    checks.append(
+        _build_doctor_check(
+            "binary_pairing",
+            pairing_status,
+            "python_bin and odoo_bin are both available"
+            if pairing_status == "ok"
+            else "python_bin and odoo_bin are not both available",
+            details={
+                "python_bin": python_info.get("resolved_path")
+                or python_info.get("value"),
+                "odoo_bin": odoo_info.get("resolved_path") or odoo_info.get("value"),
+            },
+            remediation=(
+                "Ensure both `python_bin` and `odoo_bin` resolve correctly "
+                "before running Odoo commands."
+            )
+            if pairing_status == "error"
+            else None,
+        )
+    )
+
+    addons_path = env_config.get("addons_path")
+    module_manager: ModuleManager | None = None
+    if not addons_path:
+        checks.append(
+            _build_doctor_check(
+                "addons_path",
+                "error",
+                "addons_path is not configured",
+                remediation=(
+                    "Set `addons_path` in `.oduit.toml` or import an existing "
+                    "Odoo config with `oduit init`."
+                ),
+            )
+        )
+    else:
+        path_manager = AddonsPathManager(addons_path)
+        configured_paths = path_manager.get_configured_paths()
+        invalid_paths: list[str] = []
+        valid_paths: list[str] = []
+
+        for path in configured_paths:
+            absolute_path = os.path.abspath(path)
+            if not os.path.exists(absolute_path):
+                invalid_paths.append(path)
+            elif not os.path.isdir(absolute_path):
+                invalid_paths.append(path)
+            else:
+                valid_paths.append(absolute_path)
+
+        if invalid_paths:
+            checks.append(
+                _build_doctor_check(
+                    "addons_path",
+                    "error",
+                    f"Configured addons paths are invalid: {', '.join(invalid_paths)}",
+                    details={
+                        "configured_paths": configured_paths,
+                        "invalid_paths": invalid_paths,
+                    },
+                    remediation=(
+                        "Fix `addons_path` so every configured path exists and "
+                        "is a directory. Invalid paths: "
+                        f"{', '.join(invalid_paths)}"
+                    ),
+                )
+            )
+        else:
+            checks.append(
+                _build_doctor_check(
+                    "addons_path",
+                    "ok",
+                    f"Configured addons paths are valid ({len(valid_paths)} path(s))",
+                    details={"configured_paths": valid_paths},
+                )
+            )
+            module_manager = ModuleManager(addons_path)
+            modules = module_manager.find_modules(skip_invalid=True)
+            checks.append(
+                _build_doctor_check(
+                    "addons_scan",
+                    "ok",
+                    f"Discovered {len(modules)} addon(s)",
+                    details={"module_count": len(modules)},
+                )
+            )
+
+            base_paths = path_manager.get_base_addons_paths()
+            base_status = "ok" if base_paths else "warning"
+            checks.append(
+                _build_doctor_check(
+                    "base_addons",
+                    base_status,
+                    "Base Odoo addons were auto-discovered"
+                    if base_paths
+                    else "Base Odoo addons were not auto-discovered",
+                    details={"base_addons_paths": base_paths},
+                    remediation=(
+                        "Check whether `odoo_bin` and your addons layout match "
+                        "a standard Odoo checkout if base addons should be "
+                        "discoverable."
+                    )
+                    if not base_paths
+                    else None,
+                )
+            )
+
+            duplicate_modules = path_manager.find_duplicate_module_names()
+            if duplicate_modules:
+                checks.append(
+                    _build_doctor_check(
+                        "duplicate_addons",
+                        "warning",
+                        "Duplicate addon names found: "
+                        f"{', '.join(sorted(duplicate_modules))}",
+                        details={"duplicates": duplicate_modules},
+                        remediation=(
+                            "Remove or reorder duplicate addon paths to avoid "
+                            "ambiguous module resolution."
+                        ),
+                    )
+                )
+
+    ops = OdooOperations(env_config, verbose=False)
+    version_result = ops.get_odoo_version(suppress_output=True)
+    if version_result.get("success") and version_result.get("version"):
+        checks.append(
+            _build_doctor_check(
+                "odoo_version",
+                "ok",
+                f"Detected Odoo version {version_result['version']}",
+                details={"version": version_result.get("version")},
+            )
+        )
+        if module_manager is not None:
+            detected_series = (
+                global_config.odoo_series or module_manager.detect_odoo_series()
+            )
+            if detected_series and detected_series.value != version_result["version"]:
+                checks.append(
+                    _build_doctor_check(
+                        "odoo_series_mismatch",
+                        "warning",
+                        "Detected Odoo version does not match addon manifest series",
+                        details={
+                            "odoo_version": version_result["version"],
+                            "addons_series": detected_series.value,
+                        },
+                        remediation=(
+                            "Verify that `odoo_bin` and `addons_path` point to "
+                            "the same Odoo series."
+                        ),
+                    )
+                )
+    else:
+        checks.append(
+            _build_doctor_check(
+                "odoo_version",
+                "error",
+                "Failed to detect Odoo version",
+                details={
+                    "error": version_result.get("error"),
+                    "return_code": version_result.get("return_code"),
+                },
+                remediation=(
+                    "Check `odoo_bin` and run `oduit version` to inspect the "
+                    "failure directly."
+                ),
+            )
+        )
+
+    db_name = env_config.get("db_name")
+    if not db_name:
+        checks.append(
+            _build_doctor_check(
+                "db_config",
+                "warning",
+                "db_name is not configured",
+                remediation=(
+                    "Set `db_name` if this environment should target a database."
+                ),
+            )
+        )
+    else:
+        db_host = env_config.get("db_host") or "localhost"
+        db_user = env_config.get("db_user")
+        db_config_status = "ok" if db_user else "warning"
+        checks.append(
+            _build_doctor_check(
+                "db_config",
+                db_config_status,
+                f"Database configuration is present for '{db_name}'",
+                details={
+                    "db_name": db_name,
+                    "db_host": db_host,
+                    "db_user": db_user,
+                },
+                remediation=(
+                    "Set `db_user` if the default PostgreSQL user is not "
+                    "correct for this environment."
+                )
+                if not db_user
+                else None,
+            )
+        )
+
+        db_result = ops.db_exists(with_sudo=False, suppress_output=True)
+        if db_result.get("success") and db_result.get("exists"):
+            checks.append(
+                _build_doctor_check(
+                    "db_exists",
+                    "ok",
+                    f"Database '{db_name}' exists",
+                    details={"database": db_name},
+                )
+            )
+        elif db_result.get("success"):
+            checks.append(
+                _build_doctor_check(
+                    "db_exists",
+                    "warning",
+                    f"Database '{db_name}' does not exist",
+                    details={
+                        "database": db_name,
+                        "return_code": db_result.get("return_code"),
+                    },
+                    remediation=(
+                        "Create the database with `oduit --env "
+                        f"{global_config.env_name or 'dev'} create-db` if it "
+                        "should exist."
+                    ),
+                )
+            )
+        else:
+            checks.append(
+                _build_doctor_check(
+                    "db_exists",
+                    "error",
+                    "Database existence check failed",
+                    details={
+                        "database": db_name,
+                        "error": db_result.get("error"),
+                        "return_code": db_result.get("return_code"),
+                    },
+                    remediation=(
+                        "Verify PostgreSQL access and database credentials, "
+                        "then retry `oduit doctor`."
+                    ),
+                )
+            )
+
+    for check in checks:
+        remediation = check.get("remediation")
+        if remediation and remediation not in next_steps:
+            next_steps.append(remediation)
+
+    summary = {
+        "ok": sum(1 for check in checks if check["status"] == "ok"),
+        "warning": sum(1 for check in checks if check["status"] == "warning"),
+        "error": sum(1 for check in checks if check["status"] == "error"),
+    }
+
+    return {
+        "schema_version": JSON_SCHEMA_VERSION,
+        "type": "doctor_report",
+        "success": summary["error"] == 0,
+        "source": {
+            "kind": global_config.config_source,
+            "env_name": global_config.env_name,
+            "config_path": global_config.config_path,
+        },
+        "checks": checks,
+        "summary": summary,
+        "next_steps": next_steps,
+    }
+
+
+def _print_doctor_report(report: dict[str, Any]) -> None:
+    """Render a doctor report in text mode."""
+    labels = {
+        "ok": "OK",
+        "warning": "WARNING",
+        "error": "ERROR",
+    }
+
+    source = report.get("source", {})
+    source_kind = source.get("kind") or "unknown"
+    config_path = source.get("config_path")
+    source_line = f"Config source: {source_kind}"
+    if config_path:
+        source_line += f" ({config_path})"
+    typer.echo(source_line)
+    typer.echo("")
+
+    for check in report.get("checks", []):
+        status = labels.get(check.get("status", "ok"), "OK")
+        typer.echo(f"[{status}] {check['message']}")
+        details = check.get("details")
+        if details:
+            for key, value in details.items():
+                if value in (None, "", [], {}):
+                    continue
+                typer.echo(f"  {key}: {_format_doctor_value(value)}")
+
+    summary = report.get("summary", {})
+    typer.echo("")
+    typer.echo(
+        "Summary: "
+        f"{summary.get('ok', 0)} OK, "
+        f"{summary.get('warning', 0)} WARNING, "
+        f"{summary.get('error', 0)} ERROR"
+    )
+
+    if report.get("next_steps"):
+        typer.echo("Next steps:")
+        for step in report["next_steps"]:
+            typer.echo(f"- {step}")
+
+
 def create_global_config(
     env: str | None = None,
     json: bool = False,
@@ -158,6 +727,8 @@ def create_global_config(
             print_error(f"Error loading environment '{env_name}': {str(e)}")
             raise typer.Exit(1) from e
 
+    config_source, config_path = _resolve_config_source(config_loader, env, env_config)
+
     return GlobalConfig(
         env=env,
         format=format,
@@ -166,6 +737,8 @@ def create_global_config(
         env_config=env_config,
         env_name=env_name,
         odoo_series=odoo_series,
+        config_source=config_source,
+        config_path=config_path,
     )
 
 
@@ -265,11 +838,14 @@ def main(
             print("  create-db          Create database")
             print("  list-db            List databases")
             print("  list-env           List available environments")
+            print("  doctor             Diagnose environment issues")
             print("  create-addon NAME  Create new addon")
             print("  list-addons        List available addons")
             print("  print-manifest NAME   Print addon manifest information")
             print("  list-depends MODULES   List direct dependencies for installation")
+            print("  install-order MODULES Dependency-resolved install order")
             print("  list-codepends MODULE  List codependencies of a module")
+            print("  impact-of-update MODULE  Addons affected by an update")
             print("  list-missing MODULES   Find missing dependencies")
             print("  export-lang MODULE Export language translations")
             print("  print-config       Print environment configuration")
@@ -288,11 +864,11 @@ def main(
             print("Available commands:")
             print(
                 "  init, run, shell, install, update, test, create-db, "
-                "list-db, list-env"
+                "list-db, list-env, doctor"
             )
             print(
                 "  create-addon, list-addons, print-manifest, list-depends, "
-                "list-codepends, list-missing"
+                "install-order, list-codepends, impact-of-update, list-missing"
             )
             print("  export-lang, print-config")
             print("")
@@ -300,6 +876,38 @@ def main(
             print("  oduit --env dev run               # Run Odoo server")
             print("  oduit --env dev update sale       # Update module 'sale'")
         raise typer.Exit(1) from None
+
+
+@app.command()
+def doctor(ctx: typer.Context) -> None:
+    """Diagnose environment and configuration issues."""
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    report = _build_doctor_report(global_config)
+    if global_config.format == OutputFormat.JSON:
+        print(json.dumps(report))
+    else:
+        _print_doctor_report(report)
+
+    if not report.get("success", False):
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -470,7 +1078,6 @@ def install(
         result_json = output_result_to_json(
             output, additional_fields=additional_fields, exclude_fields=exclude_fields
         )
-        result_json["type"] = "result"
         print(json.dumps(result_json))
 
     # Exit with code 1 on failure regardless of output format
@@ -666,7 +1273,6 @@ def test(
         result_json = output_result_to_json(
             result, additional_fields=additional_fields, exclude_fields=exclude_fields
         )
-        result_json["type"] = "result"
         print(json.dumps(result_json))
 
     # Exit with code 1 on failure regardless of output format
@@ -852,7 +1458,6 @@ def list_db(
         result_json = output_result_to_json(
             result, additional_fields=additional_fields, exclude_fields=exclude_fields
         )
-        result_json["type"] = "result"
         print(json.dumps(result_json))
     elif not result.get("success"):
         raise typer.Exit(1)
@@ -914,10 +1519,14 @@ def print_config_cmd(ctx: typer.Context) -> None:
         raise typer.Exit(1) from None
 
     if global_config.format == OutputFormat.JSON:
-        output_data = {
-            "environment": global_config.env_name,
-            "config": global_config.env_config,
-        }
+        output_data = output_result_to_json(
+            {
+                "success": True,
+                "operation": "print_config",
+                "environment": global_config.env_name,
+                "config": global_config.env_config,
+            }
+        )
         print(json.dumps(output_data))
         return
 
@@ -1313,20 +1922,25 @@ def print_manifest(
     # JSON output
     if global_config.format == OutputFormat.JSON:
         raw_data = manifest.get_raw_data()
-        output_data: dict[str, Any] = {
-            "technical_name": addon_name,
-            "name": manifest.name,
-            "version": manifest.version,
-            "summary": manifest.summary,
-            "author": manifest.author,
-            "website": manifest.website,
-            "license": manifest.license,
-            "installable": manifest.installable,
-            "auto_install": manifest.auto_install,
-            "depends": manifest.codependencies,
-            "addon_type": addon_type,
-            "module_path": manifest.module_path,
-        }
+        output_data: dict[str, Any] = output_result_to_json(
+            {
+                "success": True,
+                "operation": "print_manifest",
+                "technical_name": addon_name,
+                "name": manifest.name,
+                "version": manifest.version,
+                "summary": manifest.summary,
+                "author": manifest.author,
+                "website": manifest.website,
+                "license": manifest.license,
+                "installable": manifest.installable,
+                "auto_install": manifest.auto_install,
+                "depends": manifest.codependencies,
+                "addon_type": addon_type,
+                "module_path": manifest.module_path,
+            },
+            result_type="manifest",
+        )
         if manifest.python_dependencies:
             output_data["python_dependencies"] = manifest.python_dependencies
         if manifest.binary_dependencies:
@@ -1583,10 +2197,15 @@ def list_manifest_values(
 
     # JSON output
     if global_config.format == OutputFormat.JSON:
-        output_data = {
-            "field": field,
-            "values": sorted_values,
-        }
+        output_data = output_result_to_json(
+            {
+                "success": True,
+                "operation": "list_manifest_values",
+                "field": field,
+                "values": sorted_values,
+            },
+            result_type="manifest_values",
+        )
         print(json.dumps(output_data))
         return
 
@@ -1818,6 +2437,193 @@ def list_codepends(
             print(f"{dep}")
     else:
         print_info(f"Module '{module}' has no codependencies")
+
+
+@app.command("install-order")
+def install_order(
+    ctx: typer.Context,
+    modules: str | None = typer.Argument(
+        None, help="Comma-separated module names to compute install order for"
+    ),
+    separator: str | None = typer.Option(
+        None,
+        "--separator",
+        help="Separator for output (e.g., ',' for 'a,b,c')",
+    ),
+    select_dir: str | None = typer.Option(
+        None,
+        "--select-dir",
+        help="Get install order for all modules in a specific directory",
+    ),
+) -> None:
+    """Return the dependency-resolved install order for one or more addons."""
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    module_manager = ModuleManager(global_config.env_config["addons_path"])
+
+    if modules is None and select_dir is None:
+        _print_command_error_result(
+            global_config,
+            "install_order",
+            "Either provide module names or use --select-dir option",
+            details={"modules": modules, "select_dir": select_dir},
+        )
+        raise typer.Exit(1) from None
+
+    if modules is not None and select_dir is not None:
+        _print_command_error_result(
+            global_config,
+            "install_order",
+            "Cannot use both module names and --select-dir option",
+            details={"modules": modules, "select_dir": select_dir},
+        )
+        raise typer.Exit(1) from None
+
+    if select_dir:
+        module_list = sorted(module_manager.find_module_dirs(filter_dir=select_dir))
+        if not module_list:
+            _print_command_error_result(
+                global_config,
+                "install_order",
+                f"No modules found in directory '{select_dir}'",
+                details={"select_dir": select_dir},
+            )
+            raise typer.Exit(1) from None
+        source = "select_dir"
+    else:
+        assert modules is not None
+        module_list = [
+            module.strip() for module in modules.split(",") if module.strip()
+        ]
+        missing_modules = [
+            module
+            for module in module_list
+            if module_manager.find_module_path(module) is None
+        ]
+        if missing_modules:
+            _print_command_error_result(
+                global_config,
+                "install_order",
+                f"Modules not found in addons_path: {', '.join(missing_modules)}",
+                details={"modules": module_list, "missing_modules": missing_modules},
+            )
+            raise typer.Exit(1) from None
+        source = "modules"
+
+    try:
+        ordered_modules = module_manager.get_install_order(*module_list)
+    except ValueError as e:
+        _print_command_error_result(
+            global_config,
+            "install_order",
+            f"Failed to compute install order: {e}",
+            error_type="DependencyError",
+            details={"modules": module_list, "select_dir": select_dir},
+        )
+        raise typer.Exit(1) from None
+
+    if global_config.format == OutputFormat.JSON:
+        result_json = output_result_to_json(
+            {
+                "success": True,
+                "operation": "install_order",
+                "modules": module_list,
+                "install_order": ordered_modules,
+                "source": source,
+                "select_dir": select_dir,
+            }
+        )
+        print(json.dumps(result_json))
+        return
+
+    if separator:
+        print(separator.join(ordered_modules))
+    else:
+        for module in ordered_modules:
+            print(module)
+
+
+@app.command("impact-of-update")
+def impact_of_update(
+    ctx: typer.Context,
+    module: str = typer.Argument(help="Module to analyze for update impact"),
+    separator: str | None = typer.Option(
+        None,
+        "--separator",
+        help="Separator for output (e.g., ',' for 'a,b,c')",
+    ),
+) -> None:
+    """Show addons affected by updating a specific module."""
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    module_manager = ModuleManager(global_config.env_config["addons_path"])
+    if module_manager.find_module_path(module) is None:
+        _print_command_error_result(
+            global_config,
+            "impact_of_update",
+            f"Module '{module}' was not found in addons_path",
+            details={"module": module},
+        )
+        raise typer.Exit(1) from None
+
+    impacted_modules = module_manager.get_reverse_dependencies(module)
+
+    if global_config.format == OutputFormat.JSON:
+        result_json = output_result_to_json(
+            {
+                "success": True,
+                "operation": "impact_of_update",
+                "module": module,
+                "impacted_modules": impacted_modules,
+                "impact_count": len(impacted_modules),
+            }
+        )
+        print(json.dumps(result_json))
+        return
+
+    if not impacted_modules:
+        print_info(f"No addons would be impacted by updating '{module}'")
+        return
+
+    if separator:
+        print(separator.join(impacted_modules))
+    else:
+        for impacted_module in impacted_modules:
+            print(impacted_module)
 
 
 @app.command("list-missing")
@@ -2211,7 +3017,6 @@ def get_odoo_version_cmd(
 
     if global_config.format == OutputFormat.JSON:
         result_json = output_result_to_json(result)
-        result_json["type"] = "result"
         print(json.dumps(result_json))
     else:
         if result.get("success", False) and result.get("version"):

@@ -1,259 +1,152 @@
 Quick Start Guide
 =================
 
-This guide will help you get started with oduit's OdooOperations class quickly.
+This guide shows the current recommended setup and the main user-facing
+workflows.
 
-Basic Setup
------------
+Preferred Configuration
+-----------------------
 
-**Using ConfigLoader with YAML Files**
+Use sectioned TOML for both local and named environments.
 
-First, create a YAML configuration file in ``~/.config/oduit/`` (e.g., ``development.yaml``):
-
-.. code-block:: yaml
-
-   python_bin: "/usr/bin/python3"
-   odoo_bin: "/path/to/odoo-bin"
-   db_name: "test_db"
-   addons_path: "/path/to/custom/addons"
-   coverage_bin: "/usr/bin/coverage"
-
-Then load it using ConfigLoader:
-
-.. code-block:: python
-
-   from oduit.config_loader import ConfigLoader
-   from oduit.odoo_operations import OdooOperations
-
-   # Load configuration from YAML file
-   config_loader = ConfigLoader()
-   env_config = config_loader.load_config('development')
-
-   # Create operations manager
-   ops = OdooOperations(env_config, verbose=True)
-
-**Using ConfigLoader with Local Config**
-
-Create a ``.oduit.toml`` file in your project directory:
+Local ``.oduit.toml``
+~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: toml
 
+   [binaries]
+   python_bin = "./venv/bin/python"
+   odoo_bin = "./odoo/odoo-bin"
+
+   [odoo_params]
+   addons_path = "./addons"
+   db_name = "project_dev"
+
+Then you can run commands without ``--env``:
+
+.. code-block:: bash
+
+   oduit doctor
+   oduit version
+   oduit list-addons
+
+Named Environment Config
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: toml
+
+   [binaries]
    python_bin = "/usr/bin/python3"
-   odoo_bin = "/path/to/odoo-bin"
-   db_name = "test_db"
-   addons_path = ["/path/to/custom/addons", "/path/to/other/addons"]
+   odoo_bin = "/opt/odoo/odoo-bin"
 
-Load the local configuration:
+   [odoo_params]
+   addons_path = "/opt/odoo/addons,/opt/custom/addons"
+   db_name = "odoo_dev"
+   db_user = "odoo"
 
-.. code-block:: python
+Save that as ``~/.config/oduit/dev.toml`` and use it with:
 
-   from oduit.config_loader import ConfigLoader
-   from oduit.odoo_operations import OdooOperations
+.. code-block:: bash
 
-   # Load local .oduit.toml configuration
-   config_loader = ConfigLoader()
-   env_config = config_loader.load_local_config()
+   oduit --env dev doctor
+   oduit --env dev run
 
-   # Create operations manager
-   ops = OdooOperations(env_config, verbose=True)
+CLI Workflows
+-------------
 
-**Import from Existing Odoo Configuration**
+Diagnostics and Version Detection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
+.. code-block:: bash
 
-   from oduit.config_loader import ConfigLoader
-   from oduit.odoo_operations import OdooOperations
+   oduit --env dev doctor
+   oduit --env dev version
 
-   # Import from existing Odoo .conf file
-   config_loader = ConfigLoader()
-   env_config = config_loader.import_odoo_conf('/path/to/odoo.conf')
+Addon Intelligence
+~~~~~~~~~~~~~~~~~~
 
-   # Create operations manager
-   ops = OdooOperations(env_config, verbose=True)
+.. code-block:: bash
 
-**Using Demo Configuration**
+   oduit --env dev list-addons
+   oduit --env dev print-manifest sale
+   oduit --env dev list-manifest-values category
+   oduit --env dev list-depends sale
+   oduit --env dev install-order sale,purchase
+   oduit --env dev impact-of-update sale
 
-For testing and development, you can use the demo configuration:
+Operations
+~~~~~~~~~~
 
-.. code-block:: python
+.. code-block:: bash
 
-   from oduit.config_loader import ConfigLoader
-   from oduit.odoo_operations import OdooOperations
+   oduit --env dev install sale
+   oduit --env dev update sale
+   oduit --env dev test --test-tags /sale
+   oduit --env dev shell
 
-   # Load demo configuration (no Odoo installation required)
-   config_loader = ConfigLoader()
-   env_config = config_loader.load_demo_config()
-   ops = OdooOperations(env_config, verbose=True)
+Python API
+----------
 
-Core Operations
----------------
-
-**Starting Odoo Server**
-
-.. code-block:: python
-
-   # Start Odoo server (runs until manually stopped)
-   ops.run_odoo(no_http=False, verbose=True)
-
-   # Start server without HTTP (for shell operations)
-   ops.run_odoo(no_http=True)
-
-**Module Operations**
+High-level Operations
+~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   # Install a module
-   result = ops.install_module(module='sale')
-   if result['success']:
-       print("Module installed successfully!")
-       print(f"Duration: {result['duration']:.2f} seconds")
+   from oduit import ConfigLoader, OdooOperations
 
-   # Update a module
-   result = ops.update_module(module='sale')
+   loader = ConfigLoader()
+   config = loader.load_config("dev")
+   ops = OdooOperations(config, verbose=True)
 
-   # Install module without demo data
-   result = ops.install_module(module='purchase', without_demo=True)
+   result = ops.install_module("sale")
+   version = ops.get_odoo_version(suppress_output=True)
 
-**Running Tests**
+Addon Analysis
+~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   # Run tests for a specific module
-   result = ops.run_tests(module='sale')
+   from oduit import ConfigLoader, ModuleManager
 
-   # Run tests with coverage
-   result = ops.run_tests(module='sale', coverage='sale')
+   loader = ConfigLoader()
+   config = loader.load_config("dev")
+   manager = ModuleManager(config["addons_path"])
 
-   # Run tests and stop on first error
-   result = ops.run_tests(module='sale', stop_on_error=True)
+   addons = manager.find_modules()
+   install_order = manager.get_install_order("sale", "purchase")
 
-**Interactive Shell**
-
-.. code-block:: python
-
-   # Start Python shell
-   result = ops.run_shell(shell_interface='python')
-
-   # Start IPython shell
-   result = ops.run_shell(shell_interface='ipython')
-
-**Execute Python Code**
+Safe Read-Only Queries
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   # Execute Python code in Odoo environment
-   python_code = "print(env['res.users'].search_count([]))"
-   result = ops.execute_python_code(python_code)
-   if result['success']:
-       print(result['stdout'])
+   from oduit import OdooQuery
 
-Database Operations
--------------------
-
-**Create Database**
-
-.. code-block:: python
-
-   # Drop and recreate database
-   result = ops.create_db()
-   if result['success']:
-       print("Database created successfully!")
-
-Addon Development
------------------
-
-**Create New Addon**
-
-.. code-block:: python
-
-   # Create new addon with default template
-   result = ops.create_addon(addon_name='my_custom_module')
-
-   # Create addon with specific template
-   result = ops.create_addon(addon_name='my_module', template='theme')
-
-   # Create addon in specific directory
-   result = ops.create_addon(addon_name='my_module', destination='/path/to/addons')
-
-Language Operations
--------------------
-
-**Export Module Translations**
-
-.. code-block:: python
-
-   # Export French translations for sale module
-   result = ops.export_module_language(
-       module='sale',
-       filename='sale_fr.po',
-       language='fr_FR'
+   query = OdooQuery(config)
+   partners = query.query_model(
+       "res.partner",
+       domain=[("customer_rank", ">", 0)],
+       fields=["name", "email"],
+       limit=5,
    )
 
-Error Handling
---------------
-
-**Using raise_on_error**
+Raw Trusted Code Execution
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from oduit.exceptions import ModuleInstallError
+   from oduit import OdooCodeExecutor
+   from oduit.config_provider import ConfigProvider
 
-   try:
-       result = ops.install_module(
-           module='nonexistent_module',
-           raise_on_error=True
-       )
-   except ModuleInstallError as e:
-       print(f"Installation failed: {e}")
-       if e.operation_result:
-           print(f"Operation result: {e.operation_result}")
-
-**Checking Results**
-
-.. code-block:: python
-
-   result = ops.install_module(module='sale')
-
-   if result['success']:
-       print("Installation successful")
-       print(f"Duration: {result['duration']:.2f} seconds")
-   else:
-       print(f"Installation failed: {result.get('error', 'Unknown error')}")
-       print(f"Return code: {result.get('return_code')}")
-
-Silent Operations
------------------
-
-For programmatic use without output:
-
-.. code-block:: python
-
-   # Silent operations (no output)
-   result = ops.install_module(module='sale', suppress_output=True)
-   result = ops.run_tests(module='sale', suppress_output=True)
-
-Demo Mode
----------
-
-For testing without requiring a real Odoo installation:
-
-.. code-block:: python
-
-   from oduit.config_loader import ConfigLoader
-   from oduit.odoo_operations import OdooOperations
-
-   # Load demo configuration
-   config_loader = ConfigLoader()
-   env_config = config_loader.load_demo_config()
-   ops = OdooOperations(env_config, verbose=True)
-
-   # All operations work in demo mode with simulated output
-   result = ops.install_module(module='sale')
-   result = ops.run_tests(module='sale')
+   executor = OdooCodeExecutor(ConfigProvider(config))
+   result = executor.execute_code(
+       "env['res.partner'].search_count([])",
+       allow_unsafe=True,
+   )
 
 Next Steps
 ----------
 
-* Read the :doc:`configuration` guide for detailed configuration options
-* Check out the :doc:`examples` for more usage scenarios
-* Browse the :doc:`api` documentation for complete API reference
+* Read :doc:`configuration` for config details
+* Read :doc:`cli` for command reference
+* Read :doc:`api` for Python API reference

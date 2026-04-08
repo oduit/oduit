@@ -1,17 +1,9 @@
 DemoProcessManager
 ==================
 
-The DemoProcessManager extends ProcessManager with demo mode capabilities.
+``DemoProcessManager`` simulates Odoo command execution for tests and demos.
 
 .. automodule:: oduit.demo_process_manager
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Class Reference
----------------
-
-.. autoclass:: oduit.DemoProcessManager
    :members:
    :undoc-members:
    :show-inheritance:
@@ -19,41 +11,28 @@ Class Reference
 Usage Examples
 --------------
 
-Demo Mode Operations
-~~~~~~~~~~~~~~~~~~~~
-
 .. code-block:: python
 
-   from oduit import DemoProcessManager, ConfigLoader
+   from oduit import DemoProcessManager
+   from oduit.builders import InstallCommandBuilder
 
-   loader = ConfigLoader()
-   config = loader.load_demo_config()
-   demo_manager = DemoProcessManager(config)
+   config = {
+       "python_bin": "python3",
+       "odoo_bin": "odoo-bin",
+       "db_name": "demo_db",
+       "addons_path": "./addons",
+       "demo_mode": True,
+   }
 
-   # Run demo scenario
-   result = demo_manager.run_demo_scenario()
-   if result.success:
-       print("Demo scenario completed successfully")
+   manager = DemoProcessManager(available_modules=["base", "sale", "purchase"])
+   operation = InstallCommandBuilder(config, "sale").build_operation()
+   result = manager.run_operation(operation)
 
-   # Run with specific modules
-   result = demo_manager.run_demo_scenario(
-       modules=['sale', 'purchase'],
-       scenario='full_workflow'
-   )
+   assert result["success"]
 
-Advanced Demo Features
-~~~~~~~~~~~~~~~~~~~~~~
+Notes
+-----
 
-.. code-block:: python
-
-   # Setup demo environment
-   demo_manager.setup_demo_environment()
-
-   # Run comparison scenarios
-   results = demo_manager.run_comparison_scenarios([
-       'scenario_a',
-       'scenario_b'
-   ])
-
-   # Cleanup demo data
-   demo_manager.cleanup_demo_data()
+- This is intended for simulated execution and test scenarios
+- It is public, but separate from the supported runtime manager types exposed to
+  users through normal process-manager selection

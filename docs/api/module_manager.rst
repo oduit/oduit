@@ -1,17 +1,9 @@
 ModuleManager
 =============
 
-The ModuleManager class handles module-specific operations and management.
+``ModuleManager`` is the addon discovery and dependency-analysis API.
 
 .. automodule:: oduit.module_manager
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Class Reference
----------------
-
-.. autoclass:: oduit.ModuleManager
    :members:
    :undoc-members:
    :show-inheritance:
@@ -19,42 +11,27 @@ Class Reference
 Usage Examples
 --------------
 
-Basic Module Operations
-~~~~~~~~~~~~~~~~~~~~~~~
-
 .. code-block:: python
 
-   from oduit import ModuleManager, ConfigLoader
+   from oduit import ConfigLoader, ModuleManager
 
    loader = ConfigLoader()
-   config = loader.load_config('dev')
-   manager = ModuleManager(config)
+   config = loader.load_config("dev")
+   manager = ModuleManager(config["addons_path"])
 
-   # List available modules
-   modules = manager.list_modules()
-   print(f"Available modules: {modules}")
+   addons = manager.find_modules()
+   sale_manifest = manager.get_manifest("sale")
+   install_order = manager.get_install_order("sale", "purchase")
+   reverse_deps = manager.get_reverse_dependencies("sale")
 
-   # Check module status
-   status = manager.get_module_status('sale')
-   print(f"Sale module status: {status}")
+Key Methods
+-----------
 
-Module Discovery
-~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Find modules in addon paths
-   addons = manager.discover_addons()
-
-   # Get module codependencies (what this module depends on)
-   codeps = manager.get_module_codependencies('sale')
-   print(f"Sale module codependencies: {codeps}")
-
-   # Get direct dependencies (external modules needed)
-   deps = manager.get_direct_dependencies('sale')
-   print(f"Sale module direct dependencies: {deps}")
-
-   # Validate module
-   is_valid = manager.validate_module('my_custom_module')
-   if is_valid:
-       print("Module is valid")
+- ``find_module_dirs()`` and ``find_modules()``: discover addons from ``addons_path``
+- ``find_module_path()`` and ``get_manifest()``: inspect one addon
+- ``get_module_codependencies()`` and ``get_direct_dependencies()``: dependency lookups
+- ``get_dependency_tree()`` and ``get_formatted_dependency_tree()``: dependency trees
+- ``get_install_order()``: dependency-resolved installation order
+- ``get_reverse_dependencies()``: update impact analysis
+- ``find_missing_dependencies()``: missing addon detection
+- ``detect_odoo_series()``: infer Odoo series from addon versions

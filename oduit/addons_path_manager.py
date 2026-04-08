@@ -80,6 +80,30 @@ class AddonsPathManager:
         """
         return self._parse_paths(self.addons_path)
 
+    def get_base_addons_paths(self) -> list[str]:
+        """Get auto-discovered base Odoo addon paths."""
+        return list(self._find_odoo_base_addons_paths())
+
+    def find_duplicate_module_names(self) -> dict[str, list[str]]:
+        """Return module names that appear in more than one addons path."""
+        module_locations: dict[str, list[str]] = {}
+
+        for path in self.get_all_paths():
+            if not os.path.isdir(path):
+                continue
+
+            for entry in os.listdir(path):
+                full_path = os.path.join(path, entry)
+                manifest_file = os.path.join(full_path, "__manifest__.py")
+                if os.path.isdir(full_path) and os.path.exists(manifest_file):
+                    module_locations.setdefault(entry, []).append(full_path)
+
+        return {
+            module_name: locations
+            for module_name, locations in module_locations.items()
+            if len(locations) > 1
+        }
+
     def _iter_modules_in_path(
         self, path: str, skip_invalid: bool = False
     ) -> Iterator[tuple[str, Manifest]]:

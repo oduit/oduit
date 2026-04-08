@@ -62,6 +62,7 @@ class TestOutputFormatterJSONParsing(unittest.TestCase):
 
         expected = {
             "source": "odoo",
+            "type": "log",
             "level": "info",
             "timestamp": "2025-08-21T09:07:24.574000",
             "process_id": 65551,
@@ -97,6 +98,7 @@ class TestOutputFormatterJSONParsing(unittest.TestCase):
 
         expected_keys = {
             "source",
+            "type",
             "level",
             "timestamp",
             "process_id",
@@ -260,6 +262,9 @@ class TestProcessManagerJSONOutput(unittest.TestCase):
 
         self.assertIsNotNone(result)
         if result:
+            self.assertEqual(result["schema_version"], "1")
+            self.assertEqual(result["type"], "log")
+            self.assertTrue(result["success"])
             self.assertEqual(result["source"], "odoo")
             self.assertEqual(result["level"], "info")
             self.assertEqual(result["process_id"], 65551)
@@ -279,6 +284,8 @@ class TestProcessManagerJSONOutput(unittest.TestCase):
 
         self.assertIsNotNone(result)
         if result:
+            self.assertEqual(result["schema_version"], "1")
+            self.assertTrue(result["success"])
             self.assertEqual(result["source"], "coverage")
             self.assertEqual(result["type"], "file_coverage")
             self.assertEqual(
@@ -301,6 +308,9 @@ class TestProcessManagerJSONOutput(unittest.TestCase):
 
         self.assertIsNotNone(result)
         if result:
+            self.assertEqual(result["schema_version"], "1")
+            self.assertEqual(result["type"], "log")
+            self.assertTrue(result["success"])
             self.assertEqual(result["source"], "process")
             self.assertEqual(result["level"], "info")
             self.assertEqual(result["message"], "Some random process output")
@@ -375,7 +385,9 @@ class TestIntegrationJSONParsing(unittest.TestCase):
                 result = json.loads(output)
 
                 # Should merge the result data with parsed Odoo log
-                self.assertEqual(result["status"], "success")
+                self.assertEqual(result["schema_version"], "1")
+                self.assertEqual(result["type"], "result")
+                self.assertTrue(result["success"])
                 self.assertEqual(result["result"], test_data)
                 self.assertEqual(result["source"], "odoo")
                 self.assertEqual(result["level"], "info")
@@ -408,8 +420,11 @@ class TestIntegrationJSONParsing(unittest.TestCase):
                 result = json.loads(output)
 
                 # Should merge the error info with parsed Odoo log
-                self.assertEqual(result["status"], "error")
+                self.assertEqual(result["schema_version"], "1")
+                self.assertEqual(result["type"], "error")
+                self.assertFalse(result["success"])
                 self.assertEqual(result["error_code"], 1)
+                self.assertEqual(result["error"], "Module loading failed")
                 self.assertEqual(result["source"], "odoo")
                 self.assertEqual(result["level"], "error")
                 self.assertEqual(result["message"], "Module loading failed")

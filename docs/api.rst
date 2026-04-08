@@ -13,6 +13,7 @@ Core Modules
    api/config_loader
    api/odoo_operations
    api/odoo_code_executor
+   api/odoo_query
    api/module_manager
    api/manifest
    api/manifest_collection

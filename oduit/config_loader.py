@@ -147,6 +147,14 @@ class ConfigLoader:
         """Check if a local .oduit.toml file exists in current directory."""
         return os.path.exists(".oduit.toml")
 
+    def get_local_config_path(self) -> str:
+        """Return the absolute path to the local .oduit.toml file."""
+        return os.path.abspath(".oduit.toml")
+
+    def resolve_config_path(self, env_name: str) -> tuple[str, str]:
+        """Resolve the config path and format for an environment name."""
+        return self._detect_config_format(env_name)
+
     def load_local_config(self) -> dict[str, Any]:
         """Load config from .oduit.toml in current directory."""
         config_path = ".oduit.toml"

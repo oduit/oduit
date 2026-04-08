@@ -1,6 +1,9 @@
 import re
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from oduit.base_process_manager import ProcessManagerFactory
 from oduit.builders import CommandOperation
 from oduit.process_manager import ProcessManager
 
@@ -56,6 +59,12 @@ class TestProcessManagerInitialization:
         assert pm is not None
         assert hasattr(pm, "_sudo_password")
         assert pm._sudo_password is None
+
+
+class TestProcessManagerFactory:
+    def test_create_manager_invalid_type_lists_public_types_only(self) -> None:
+        with pytest.raises(ValueError, match="Valid types: 'system', 'demo'"):
+            ProcessManagerFactory.create_manager("embedded")
 
 
 class TestCommandOperation:

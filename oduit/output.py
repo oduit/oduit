@@ -8,6 +8,8 @@ import json
 import sys
 from typing import Any
 
+from .utils import build_json_payload
+
 
 class OutputFormatter:
     """Handles different output formats and modes."""
@@ -33,17 +35,23 @@ class OutputFormatter:
         if self._is_odoo_log_line(message):
             parsed_log = self._parse_odoo_log_line(message)
             if parsed_log:
-                parsed_log["type"] = "log"
-                print(json.dumps(parsed_log))
+                print(
+                    json.dumps(
+                        build_json_payload("log", parsed_log, success=level != "error")
+                    )
+                )
                 return
 
         # Regular message output
-        output_data: dict[str, Any] = {
-            "type": "log",
-            "level": level,
-            "message": message,
-            "timestamp": self._get_timestamp(),
-        }
+        output_data: dict[str, Any] = build_json_payload(
+            "log",
+            {
+                "level": level,
+                "message": message,
+                "timestamp": self._get_timestamp(),
+            },
+            success=level != "error",
+        )
         if data:
             output_data["data"] = data
 
@@ -89,6 +97,7 @@ class OutputFormatter:
 
         return {
             "source": "odoo",
+            "type": "log",
             "level": level,
             "timestamp": timestamp,
             "process_id": process_id,
@@ -191,23 +200,27 @@ class OutputFormatter:
             if self._is_odoo_log_line(message):
                 parsed_log = self._parse_odoo_log_line(message)
                 if parsed_log:
-                    result1: dict[str, Any] = {
-                        "type": "result",
-                        "status": "success",
-                        "result": data,
-                        "timestamp": self._get_timestamp(),
-                        **parsed_log,
-                    }
+                    result1 = build_json_payload(
+                        "result",
+                        {
+                            "result": data,
+                            "timestamp": self._get_timestamp(),
+                            **parsed_log,
+                        },
+                        success=True,
+                    )
                     print(json.dumps(result1))
                     return
 
-            result2: dict[str, Any] = {
-                "type": "result",
-                "status": "success",
-                "message": message,
-                "result": data,
-                "timestamp": self._get_timestamp(),
-            }
+            result2 = build_json_payload(
+                "result",
+                {
+                    "message": message,
+                    "result": data,
+                    "timestamp": self._get_timestamp(),
+                },
+                success=True,
+            )
             print(json.dumps(result2))
         else:
             self.output(message, "success")
@@ -222,23 +235,29 @@ class OutputFormatter:
             if self._is_odoo_log_line(error_msg):
                 parsed_log = self._parse_odoo_log_line(error_msg)
                 if parsed_log:
-                    result3: dict[str, Any] = {
-                        "type": "error",
-                        "status": "error",
-                        "error_code": error_code,
-                        "timestamp": self._get_timestamp(),
-                        **parsed_log,
-                    }
+                    result3 = build_json_payload(
+                        "error",
+                        {
+                            "error": parsed_log.get("message", error_msg),
+                            "error_code": error_code,
+                            "timestamp": self._get_timestamp(),
+                            **parsed_log,
+                        },
+                        success=False,
+                    )
                     print(json.dumps(result3))
                     sys.exit(error_code)
 
-            result4: dict[str, Any] = {
-                "type": "error",
-                "status": "error",
-                "message": error_msg,
-                "error_code": error_code,
-                "timestamp": self._get_timestamp(),
-            }
+            result4 = build_json_payload(
+                "error",
+                {
+                    "message": error_msg,
+                    "error": error_msg,
+                    "error_code": error_code,
+                    "timestamp": self._get_timestamp(),
+                },
+                success=False,
+            )
             print(json.dumps(result4))
         else:
             self.output(error_msg, "error")

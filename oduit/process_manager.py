@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from . import output
 from .base_process_manager import BaseProcessManager
 from .output import print_error, print_info, print_warning
+from .utils import build_json_payload
 
 if TYPE_CHECKING:
     from .builders import CommandOperation
@@ -323,24 +324,35 @@ class ProcessManager(BaseProcessManager):
         if output._formatter._is_odoo_log_line(line):
             parsed_log = output._formatter._parse_odoo_log_line(line)
             if parsed_log:
-                print(json.dumps(parsed_log))
+                print(json.dumps(build_json_payload("log", parsed_log, success=True)))
                 return
 
         # Try to parse as coverage report line
         if output._formatter._is_coverage_report_line(line):
             parsed_coverage = output._formatter._parse_coverage_report_line(line)
             if parsed_coverage:
-                print(json.dumps(parsed_coverage))
+                print(
+                    json.dumps(
+                        build_json_payload(
+                            parsed_coverage.get("type", "file_coverage"),
+                            parsed_coverage,
+                            success=True,
+                        )
+                    )
+                )
                 return
 
         # For non-matching lines (like other process output), output as structured data
-        output_data = {
-            "type": "log",
-            "source": "process",
-            "level": "info",
-            "message": line.strip(),
-            "timestamp": datetime.now().isoformat(),
-        }
+        output_data = build_json_payload(
+            "log",
+            {
+                "source": "process",
+                "level": "info",
+                "message": line.strip(),
+                "timestamp": datetime.now().isoformat(),
+            },
+            success=True,
+        )
         print(json.dumps(output_data))
 
     def _stream_output_and_maybe_abort(

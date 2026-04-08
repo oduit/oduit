@@ -634,8 +634,8 @@ class OdooOperations:
                 exists_operation, verbose=self.verbose
             )
 
-            # grep -qw returns 0 if match found (exists), 1 if not found
-            exists = exists_result.get("return_code", 1) == 0
+            stdout = exists_result.get("stdout", "") if exists_result else ""
+            exists = stdout.strip() == "1"
             check_success = (
                 exists_result.get("success", False) if exists_result else False
             )
@@ -658,6 +658,14 @@ class OdooOperations:
                         "stderr": exists_result.get("stderr", ""),
                     }
                 )
+                if exists_result.get("error"):
+                    final_result["error"] = exists_result["error"]
+                elif not check_success:
+                    output = (
+                        exists_result.get("stderr") or exists_result.get("stdout") or ""
+                    ).strip()
+                    if output:
+                        final_result["error"] = output
 
         except ConfigError as e:
             final_result = {

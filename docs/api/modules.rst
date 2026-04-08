@@ -39,6 +39,24 @@ OdooOperations
    :show-inheritance:
    :no-index:
 
+OdooQuery
+~~~~~~~~~
+
+.. autoclass:: oduit.OdooQuery
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
+
+OdooCodeExecutor
+~~~~~~~~~~~~~~~~
+
+.. autoclass:: oduit.OdooCodeExecutor
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
+
 ModuleManager
 ~~~~~~~~~~~~~
 

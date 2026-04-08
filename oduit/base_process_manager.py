@@ -312,6 +312,5 @@ class ProcessManagerFactory:
             return ProcessManager(**kwargs)
         else:
             raise ValueError(
-                f"Unknown manager type: {manager_type}. "
-                f"Valid types: 'system', 'demo', 'embedded'"
+                f"Unknown manager type: {manager_type}. Valid types: 'system', 'demo'"
             )

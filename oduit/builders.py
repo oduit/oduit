@@ -11,6 +11,7 @@ Provides proper separation of concerns and fluent interfaces.
 
 import logging
 import os
+import shlex
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -875,6 +876,44 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         self._set_command("postgres")
         self._set_flag("c", prefix="-")
 
+    def _append_raw_tokens(self, tokens: list[str]) -> None:
+        """Append raw command tokens in the provided order."""
+        for token in tokens:
+            self._set_command(str(token))
+
+    def _get_psql_connection_tokens(self, db_user: str | None = None) -> list[str]:
+        """Build psql connection arguments from the active configuration."""
+        if db_user is None:
+            db_user = self.config.get_optional("db_user")
+
+        tokens: list[str] = []
+
+        if db_host := self.config.get_optional("db_host"):
+            tokens.extend(["-h", str(db_host)])
+        if db_port := self.config.get_optional("db_port"):
+            tokens.extend(["-p", str(db_port)])
+        if db_user:
+            tokens.extend(["-U", str(db_user)])
+
+        return tokens
+
+    def _with_password_env(self, tokens: list[str]) -> list[str]:
+        """Prefix commands with PGPASSWORD when configured."""
+        if db_password := self.config.get_optional("db_password"):
+            return ["env", f"PGPASSWORD={db_password}", *tokens]
+        return tokens
+
+    @staticmethod
+    def _shell_join(tokens: list[str]) -> str:
+        """Render tokens into a shell-safe command string."""
+        return " ".join(shlex.quote(str(token)) for token in tokens)
+
+    @staticmethod
+    def _sql_literal(value: str) -> str:
+        """Escape a string for use as a SQL literal."""
+        escaped = value.replace("'", "''")
+        return f"'{escaped}'"
+
     def drop_command(self) -> "DatabaseCommandBuilder":
         """Build database drop command"""
         self.config.validate_keys(["db_name"], "database drop command")
@@ -937,16 +976,21 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         if db_user is None:
             db_user = self.config.get_optional("db_user")
 
+        connection_tokens = self._get_psql_connection_tokens(db_user)
+
         if self.with_sudo:
-            if db_user:
-                self._set_command(f'psql -l -U "{db_user}"')
-            else:
-                self._set_command("psql -l")
+            tokens = self._with_password_env(["psql", "-l", *connection_tokens])
+            self._set_command(self._shell_join(tokens))
         else:
-            self._set_command("psql")
+            tokens = self._with_password_env(["psql"])
+            self._append_raw_tokens(tokens)
             self._set_flag("l", prefix="-")
+            if db_host := self.config.get_optional("db_host"):
+                self._set_parameter("h", str(db_host), prefix="-", sep=" ")
+            if db_port := self.config.get_optional("db_port"):
+                self._set_parameter("p", str(db_port), prefix="-", sep=" ")
             if db_user:
-                self._set_parameter("U", db_user, prefix="-", sep=" ")
+                self._set_parameter("U", str(db_user), prefix="-", sep=" ")
         return self
 
     def exists_db_command(self, db_user: str | None = None) -> "DatabaseCommandBuilder":
@@ -954,25 +998,16 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         self.config.validate_keys(["db_name"], "database exists command")
         db_name = self.config.get_required("db_name")
 
-        if db_user is None:
-            db_user = self.config.get_optional("db_user")
+        query = (
+            f"SELECT 1 FROM pg_database WHERE datname = {self._sql_literal(db_name)};"
+        )
+        connection_tokens = self._get_psql_connection_tokens(db_user)
+        tokens = ["psql", "-d", "postgres", "-tAc", query, *connection_tokens]
 
         if self.with_sudo:
-            if db_user:
-                self._set_command(
-                    f'psql -lqt -U "{db_user}" | cut -d \\| -f 1 | grep -qw "{db_name}"'
-                )
-            else:
-                self._set_command(f'psql -lqt | cut -d \\| -f 1 | grep -qw "{db_name}"')
+            self._set_command(self._shell_join(self._with_password_env(tokens)))
         else:
-            self._set_command("sh")
-            self._set_flag("c", prefix="-")
-            if db_user:
-                self._set_command(
-                    f'psql -lqt -U "{db_user}" | cut -d \\| -f 1 | grep -qw "{db_name}"'
-                )
-            else:
-                self._set_command(f'psql -lqt | cut -d \\| -f 1 | grep -qw "{db_name}"')
+            self._append_raw_tokens(self._with_password_env(tokens))
         return self
 
     def reset(self) -> None:
@@ -1008,7 +1043,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                 elif "psql -l" in command_value:
                     operation_type = "list_db"
                     break
-                elif "grep -qw" in command_value:
+                elif "from pg_database" in command_value or "grep -qw" in command_value:
                     operation_type = "exists_db"
                     break
             elif part.get("type") == "flag" and part.get("key") == "l":

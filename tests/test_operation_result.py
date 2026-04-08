@@ -91,6 +91,8 @@ class TestOperationResult(unittest.TestCase):
         json_output = output_result_to_json(builder.finalize())
 
         # Check core fields are present
+        self.assertEqual(json_output["schema_version"], "1")
+        self.assertEqual(json_output["type"], "result")
         self.assertEqual(json_output["operation"], "install")
         self.assertEqual(json_output["module"], "my_module")
         self.assertTrue(json_output["success"])
@@ -140,6 +142,8 @@ class TestOperationResult(unittest.TestCase):
         json_output = output_result_to_json(
             builder.finalize(), include_null_values=True
         )
+        self.assertEqual(json_output["schema_version"], "1")
+        self.assertEqual(json_output["type"], "result")
         # Null values should be present
         self.assertIn("database", json_output)
         self.assertIsNone(json_output["database"])

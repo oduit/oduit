@@ -161,7 +161,7 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
             "-",
             "postgres",
             "-c",
-            'psql -l -U "test_user"',
+            "psql -l -U test_user",
         ]
         self.assertEqual(result, expected)
 
@@ -181,7 +181,67 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
             "-",
             "postgres",
             "-c",
-            'psql -l -U "custom_user"',
+            "psql -l -U custom_user",
+        ]
+        self.assertEqual(result, expected)
+
+    def test_build_exists_db_command_without_sudo_uses_sql_probe(self):
+        """Test the exists_db_command method without sudo."""
+        env_config = {
+            "db_name": "test_db",
+            "db_user": "test_user",
+            "db_host": "localhost",
+            "db_port": 5432,
+            "db_password": "secret",
+        }
+
+        config_provider = ConfigProvider(env_config)
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        result = builder.exists_db_command().build()
+
+        expected = [
+            "env",
+            "PGPASSWORD=secret",
+            "psql",
+            "-d",
+            "postgres",
+            "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = 'test_db';",
+            "-h",
+            "localhost",
+            "-p",
+            "5432",
+            "-U",
+            "test_user",
+        ]
+        self.assertEqual(result, expected)
+
+    def test_build_exists_db_command_with_sudo_uses_sql_probe(self):
+        """Test the exists_db_command method with sudo."""
+        env_config = {
+            "db_name": "test_db",
+            "db_user": "test_user",
+            "db_host": "localhost",
+            "db_port": 5432,
+            "db_password": "secret",
+        }
+
+        config_provider = ConfigProvider(env_config)
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=True)
+        result = builder.exists_db_command().build()
+
+        expected = [
+            "sudo",
+            "-S",
+            "su",
+            "-",
+            "postgres",
+            "-c",
+            (
+                "env PGPASSWORD=secret psql -d postgres -tAc "
+                "'SELECT 1 FROM pg_database WHERE datname = "
+                "'\"'\"'test_db'\"'\"';' -h localhost -p 5432 -U test_user"
+            ),
         ]
         self.assertEqual(result, expected)
 

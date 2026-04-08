@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import json
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -541,6 +542,146 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         self.assertIn("standalone_module", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_install_order_command(self, mock_config_loader_class, mock_module_manager):
+        """Test install-order command."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.side_effect = (
+            lambda module: f"/test/addons/{module}"
+        )
+        mock_manager_instance.get_install_order.return_value = [
+            "base",
+            "sale",
+            "my_module",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "install-order", "my_module,sale"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_install_order.assert_called_once_with(
+            "my_module", "sale"
+        )
+        self.assertIn("base", result.output)
+        self.assertIn("sale", result.output)
+        self.assertIn("my_module", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_install_order_json_with_select_dir(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test install-order JSON output with --select-dir."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_dirs.return_value = ["sale", "purchase"]
+        mock_manager_instance.get_install_order.return_value = [
+            "base",
+            "sale",
+            "purchase",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "--json", "install-order", "--select-dir", "myaddons"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["schema_version"], "1")
+        self.assertEqual(payload["type"], "result")
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["operation"], "install_order")
+        self.assertEqual(payload["source"], "select_dir")
+        self.assertEqual(payload["select_dir"], "myaddons")
+        self.assertEqual(payload["install_order"], ["base", "sale", "purchase"])
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_install_order_json_missing_module(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test install-order emits structured JSON on missing modules."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.side_effect = lambda module: None
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "--json", "install-order", "missing_module"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["schema_version"], "1")
+        self.assertEqual(payload["type"], "result")
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["operation"], "install_order")
+        self.assertIn("Modules not found", payload["error"])
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_impact_of_update_command(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test impact-of-update command."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.return_value = "/test/addons/sale"
+        mock_manager_instance.get_reverse_dependencies.return_value = [
+            "sale_stock",
+            "custom_sale",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "impact-of-update", "sale"])
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_reverse_dependencies.assert_called_once_with("sale")
+        self.assertIn("sale_stock", result.output)
+        self.assertIn("custom_sale", result.output)
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_impact_of_update_json_no_dependents(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test impact-of-update JSON output preserves empty impact lists."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.return_value = "/test/addons/base"
+        mock_manager_instance.get_reverse_dependencies.return_value = []
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "--json", "impact-of-update", "base"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["schema_version"], "1")
+        self.assertEqual(payload["type"], "result")
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["operation"], "impact_of_update")
+        self.assertEqual(payload["module"], "base")
+        self.assertEqual(payload["impacted_modules"], [])
+        self.assertEqual(payload["impact_count"], 0)
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -1112,6 +1253,83 @@ class TestCLICommands(unittest.TestCase):
         result = self.runner.invoke(app, ["--env", "dev", "--json", "install", "sale"])
 
         self.assertEqual(result.exit_code, 0)
+
+    @patch("oduit.cli_typer.OdooOperations")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_install_command_json_schema(self, mock_config_loader_class, mock_odoo_ops):
+        """Test install JSON output includes stable schema fields."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.install_module.return_value = {
+            "success": True,
+            "operation": "install",
+            "return_code": 0,
+            "command": ["python3", "odoo-bin", "-i", "sale"],
+            "stdout": "installed",
+            "module": "sale",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "--json", "install", "sale"])
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["schema_version"], "1")
+        self.assertEqual(payload["type"], "result")
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["operation"], "install")
+        self.assertEqual(payload["return_code"], 0)
+        self.assertNotIn("command", payload)
+        self.assertNotIn("stdout", payload)
+
+    @patch("oduit.cli_typer.OdooOperations")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_version_command_json_schema(self, mock_config_loader_class, mock_odoo_ops):
+        """Test version JSON output includes stable schema fields."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.get_odoo_version.return_value = {
+            "success": True,
+            "operation": "get_odoo_version",
+            "version": "17.0",
+            "return_code": 0,
+            "command": ["python3", "odoo-bin", "--version"],
+            "stdout": "Odoo 17.0",
+            "stderr": "",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "--json", "version"])
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["schema_version"], "1")
+        self.assertEqual(payload["type"], "result")
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["operation"], "get_odoo_version")
+        self.assertEqual(payload["version"], "17.0")
+
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_print_config_json_schema(self, mock_config_loader_class):
+        """Test print-config JSON output uses the shared schema envelope."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "--json", "print-config"])
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["schema_version"], "1")
+        self.assertEqual(payload["type"], "result")
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["operation"], "print_config")
+        self.assertEqual(payload["environment"], "dev")
+        self.assertEqual(payload["config"], self.mock_config)
 
 
 class TestInitCommandHelpers(unittest.TestCase):

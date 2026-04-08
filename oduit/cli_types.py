@@ -89,6 +89,8 @@ class GlobalConfig:
     env_config: dict[str, Any] | None = None
     env_name: str | None = None
     odoo_series: OdooSeries | None = None
+    config_source: str | None = None
+    config_path: str | None = None
 
 
 @dataclass

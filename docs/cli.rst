@@ -512,7 +512,7 @@ addons (e.g., all categories, licenses, authors in use).
 **Output:**
 
 - Text mode: One value per line (or separated by custom separator)
-- JSON mode: Array of unique values
+- JSON mode: Versioned payload containing ``field`` and ``values``
 
 list-depends
 ^^^^^^^^^^^^
@@ -612,36 +612,97 @@ The command will:
 list-codepends
 ^^^^^^^^^^^^^^
 
-List codependencies for a specified module (modules that this module depends on).
+List reverse dependencies for a specified module.
 
 .. code-block:: bash
 
    oduit --env dev list-codepends MODULE
 
-This command lists all modules that the specified module directly depends on,
-as listed in its manifest's 'depends' field. This is useful for understanding
-what modules must be installed before this module.
+This command lists the addons that depend on the specified module. It is useful
+for understanding which addons may be affected when a dependency changes.
 
 **Examples:**
 
 .. code-block:: bash
 
-   # Find what base depends on
+   # Find which addons depend on base
    oduit --env dev list-codepends base
 
-   # Find what sale depends on
+   # Find which addons depend on sale
    oduit --env dev list-codepends sale
 
-   # Find codependencies for custom module
+   # Find reverse dependencies for a custom module
    oduit --env dev list-codepends my_custom_module
 
 **Output:**
 
 The command will:
 
-- List all modules that the specified module depends on
-- Return "No codependencies" if the module has no dependencies
+- List all modules that depend on the specified module
+- Return a no-impact message if no module depends on it
 - Return an error if the module is not found
+
+install-order
+^^^^^^^^^^^^^
+
+Return the dependency-resolved install or update order for one or more addons.
+
+.. code-block:: bash
+
+   oduit --env dev install-order [MODULES] [OPTIONS]
+
+You can either provide comma-separated module names directly or use
+``--select-dir`` to compute the order for all addons in one directory.
+
+**Options:**
+
+- ``--separator TEXT``: Separator for output (e.g., ",")
+- ``--select-dir TEXT``: Get install order for all modules in a specific directory
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Compute install order for two addons
+   oduit --env dev install-order sale,purchase
+
+   # Output as a comma-separated list
+   oduit --env dev install-order sale,purchase --separator ","
+
+   # Compute install order for all addons in one directory
+   oduit --env dev install-order --select-dir myaddons
+
+   # Output as JSON
+   oduit --env dev --json install-order sale,purchase
+
+impact-of-update
+^^^^^^^^^^^^^^^^
+
+Show which addons depend on a module and would likely be affected by updating it.
+
+.. code-block:: bash
+
+   oduit --env dev impact-of-update MODULE [OPTIONS]
+
+This command uses reverse dependency analysis to show the likely blast radius
+of a module update.
+
+**Options:**
+
+- ``--separator TEXT``: Separator for output (e.g., ",")
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Show addons impacted by updating sale
+   oduit --env dev impact-of-update sale
+
+   # Output as a comma-separated list
+   oduit --env dev impact-of-update sale --separator ","
+
+   # Output as JSON
+   oduit --env dev --json impact-of-update sale
 
 export-lang
 ^^^^^^^^^^^
@@ -713,13 +774,37 @@ Example output:
 .. code-block:: json
 
    {
-     "success": true,
-     "operation_type": "install",
-     "modules_installed": ["sale"],
-     "modules_loaded": 42,
-     "without_demo": false,
-     "verbose": false
+      "schema_version": "1",
+      "type": "result",
+      "success": true,
+      "operation": "install",
+      "return_code": 0,
+      "modules_installed": ["sale"],
+      "modules_loaded": 42,
+      "without_demo": false,
+      "verbose": false
    }
+
+JSON Contract
+^^^^^^^^^^^^^
+
+JSON output is versioned for automation use.
+
+Guaranteed keys for result payloads:
+
+* ``schema_version``: current schema version string
+* ``type``: payload family such as ``result`` or ``doctor_report``
+* ``success``: overall success flag
+
+Common keys when they apply:
+
+* ``operation``
+* ``command``
+* ``return_code``
+* ``stdout`` / ``stderr``
+* ``error`` / ``error_type``
+
+Operation-specific fields are preserved alongside those keys.
 
 Common Workflows
 ----------------

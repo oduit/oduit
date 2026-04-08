@@ -1,17 +1,11 @@
 OdooOperations
 ==============
 
-The OdooOperations class provides high-level operations for managing Odoo instances.
+``OdooOperations`` provides the high-level command-oriented API for running
+Odoo, installing or updating addons, running tests, and handling database
+operations.
 
 .. automodule:: oduit.odoo_operations
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Class Reference
----------------
-
-.. autoclass:: oduit.OdooOperations
    :members:
    :undoc-members:
    :show-inheritance:
@@ -19,49 +13,28 @@ Class Reference
 Usage Examples
 --------------
 
-Module Management
-~~~~~~~~~~~~~~~~~
-
 .. code-block:: python
 
-   from oduit import OdooOperations, ConfigLoader
+   from oduit import ConfigLoader, OdooOperations
 
    loader = ConfigLoader()
-   config = loader.load_config('dev')
-   ops = OdooOperations(config)
+   config = loader.load_config("dev")
+   ops = OdooOperations(config, verbose=True)
 
-   # Install modules
-   result = ops.install_modules(['sale', 'purchase'])
-   if result['success']:
-       print(f"Modules installed in {result['duration']} seconds")
+   install_result = ops.install_module("sale")
+   update_result = ops.update_module("sale")
+   test_result = ops.run_tests(module="sale")
+   version_result = ops.get_odoo_version(suppress_output=True)
+   db_result = ops.db_exists(suppress_output=True)
 
-   # Update modules
-   result = ops.update_modules(['sale'])
+Key Methods
+-----------
 
-   # Uninstall modules
-   result = ops.uninstall_modules(['purchase'])
-
-Database Operations
-~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Create database
-   result = ops.create_database('new_db')
-
-   # Drop database
-   result = ops.drop_database('old_db')
-
-   # Backup database
-   result = ops.backup_database('backup_file.sql')
-
-Testing Operations
-~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Run tests for modules
-   result = ops.run_tests(['my_module'])
-
-   # Run all tests
-   result = ops.run_all_tests()
+- ``run_odoo()``: start the Odoo server
+- ``run_shell()``: start an Odoo shell or handle piped shell input
+- ``install_module()`` and ``update_module()``: addon lifecycle operations
+- ``run_tests()``: run test selections with parsed failure output
+- ``create_db()``, ``drop_db()``, ``list_db()``, ``db_exists()``: database helpers
+- ``create_addon()`` and ``export_module_language()``: addon development helpers
+- ``get_odoo_version()``: detect the Odoo version from ``odoo-bin``
+- ``execute_python_code()``: execute Python through the Odoo shell interface

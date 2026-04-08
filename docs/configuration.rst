@@ -1,207 +1,100 @@
 Configuration
 =============
 
-oduit uses YAML or TOML configuration files to manage Odoo instances and operations.
+oduit supports several config shapes for compatibility, but the preferred user
+facing format is sectioned TOML.
 
-Configuration Structure
------------------------
+Recommended Format
+------------------
 
-oduit supports two configuration formats:
+Local or environment configs should look like this:
 
-1. **Flat Format** (Legacy) - All keys at the root level
-2. **Sectioned Format** (New) - Keys grouped into ``binaries`` and ``odoo_params`` sections
+.. code-block:: toml
 
-**Flat Format Example:**
+   [binaries]
+   python_bin = "./venv/bin/python"
+   odoo_bin = "./odoo/odoo-bin"
+   coverage_bin = "./venv/bin/coverage"
 
-.. code-block:: yaml
+   [odoo_params]
+   addons_path = "./addons,./enterprise"
+   db_name = "project_dev"
+   db_user = "odoo"
+   db_host = "localhost"
+   http_port = 8069
 
-   python_bin: "/usr/bin/python3"
-   odoo_bin: "/path/to/odoo-bin"
-   coverage_bin: "/usr/bin/coverage"
-   config_file: "/path/to/odoo.conf"
-   addons_path: "/path/to/addons,/path/to/enterprise"
-   db_name: "my_database"
-   db_host: "localhost"
-   db_port: 5432
-   db_user: "odoo"
-   db_password: "password"
-   without_demo: false
-   log_level: "info"
+Supported Locations
+-------------------
 
-**Sectioned Format Example:**
+* local project config: ``.oduit.toml``
+* named environment config: ``~/.config/oduit/<env>.toml``
+* compatibility support: ``~/.config/oduit/<env>.yaml``
 
-.. code-block:: yaml
+Compatibility Notes
+-------------------
 
-   binaries:
-     python_bin: "/usr/bin/python3"
-     odoo_bin: "/path/to/odoo-bin"
-     coverage_bin: "/usr/bin/coverage"
+oduit still accepts:
 
-   odoo_params:
-     config_file: "/path/to/odoo.conf"
-     addons_path: "/path/to/addons,/path/to/enterprise"
-     db_name: "my_database"
-     db_host: "localhost"
-     db_port: 5432
-     db_user: "odoo"
-     db_password: "password"
-     without_demo: false
-     log_level: "info"
+* flat config files with keys at the root level
+* YAML environment files
 
-Configuration Options
----------------------
+Those shapes are compatibility support, not the preferred format for new docs
+or new projects.
 
-**Binaries Section:**
+Important Keys
+--------------
 
-* ``python_bin`` - Path to Python executable (default: "python3")
-* ``odoo_bin`` - Path to Odoo executable (required)
-* ``coverage_bin`` - Path to coverage executable for test coverage
+Binary keys:
 
-**Odoo Parameters Section:**
+* ``python_bin``
+* ``odoo_bin``
+* ``coverage_bin``
 
-**Required Options:**
+Common Odoo keys:
 
-* ``db_name`` - Database name to use
+* ``addons_path``
+* ``db_name``
+* ``db_host``
+* ``db_port``
+* ``db_user``
+* ``db_password``
+* ``config_file``
+* ``without_demo``
+* ``log_level``
+* ``http_port``
+* ``workers``
 
-**Optional Options:**
-
-* ``config_file`` - Path to Odoo configuration file
-* ``addons_path`` - Comma-separated list of addon directories
-* ``db_host`` - Database host (default: "localhost")
-* ``db_port`` - Database port (default: 5432)
-* ``db_user`` - Database username (default: "odoo")
-* ``db_password`` - Database password
-* ``without_demo`` - Skip demo data installation (default: false)
-* ``log_level`` - Log level ("debug", "info", "warn", "error")
-* ``xmlrpc_port`` - XML-RPC port (default: 8069)
-* ``http_port`` - HTTP port
-* ``workers`` - Number of worker processes
-* ``limit_time_cpu`` - CPU time limit per request
-* ``limit_time_real`` - Real time limit per request
-
-Environment-Specific Configurations
-------------------------------------
-
-You can create different configurations for different environments using YAML or TOML format:
-
-**Development (dev.yaml):**
-
-.. code-block:: yaml
-
-   python_bin: "/usr/bin/python3"
-   odoo_bin: "/opt/odoo-dev/odoo-bin"
-   db_name: "odoo_dev"
-   db_user: "dev_user"
-   addons_path: "/opt/odoo-dev/addons,/opt/custom-addons"
-   log_level: "debug"
-   xmlrpc_port: 8069
-
-**Production (prod.yaml):**
-
-.. code-block:: yaml
-
-   binaries:
-     python_bin: "/usr/bin/python3"
-     odoo_bin: "/opt/odoo/odoo-bin"
-
-   odoo_params:
-     db_name: "odoo_prod"
-     db_user: "odoo_prod"
-     db_password: "secure_password"
-     db_host: "prod-db.example.com"
-     addons_path: "/opt/odoo/addons,/opt/enterprise"
-     xmlrpc_port: 8069
-     workers: 8
-     log_level: "warn"
-
-Loading Configurations
-----------------------
-
-Load configuration in your Python code using environment names:
+Python Usage
+------------
 
 .. code-block:: python
 
-   from oduit.config_loader import ConfigLoader
+   from oduit import ConfigLoader
 
    loader = ConfigLoader()
+   dev_config = loader.load_config("dev")
 
-   # Load environment-specific config from ~/.config/oduit/
-   dev_config = loader.load_config('dev')       # Loads dev.yaml or dev.toml
-   prod_config = loader.load_config('prod')     # Loads prod.yaml or prod.toml
-
-   # Load local config from current directory
    if loader.has_local_config():
-       local_config = loader.load_local_config()  # Loads .oduit.toml
+       local_config = loader.load_local_config()
 
-Configuration files are loaded from:
-
-1. ``.oduit.toml`` in current directory (if exists)
-2. ``~/.config/oduit/<env_name>.(yaml|toml)``
-
-**Available Environments:**
-
-.. code-block:: python
-
-   from oduit.config_loader import ConfigLoader
-
-   loader = ConfigLoader()
    envs = loader.get_available_environments()
-   print(f"Available environments: {envs}")
 
-Configuration Validation
--------------------------
+Import Existing Odoo Configuration
+----------------------------------
 
-The configuration loader validates the configuration structure and required fields.
-If validation fails, a ``ConfigError`` will be raised with details about missing or invalid options.
+If you already have an ``odoo.conf`` file, import or convert it with the CLI:
 
-.. code-block:: python
+.. code-block:: bash
 
-   from oduit.exceptions import ConfigError
-   from oduit.config_loader import ConfigLoader
+   oduit init dev --from-conf /path/to/odoo.conf
 
-   loader = ConfigLoader()
-   try:
-       config = loader.load_config('my_env')
-   except ConfigError as e:
-       print(f"Configuration error: {e}")
+Diagnostics
+-----------
 
-Advanced Configuration
-----------------------
+Use ``doctor`` to validate that your config, binaries, addons paths, version,
+and database settings all line up:
 
-**Custom Module Paths:**
+.. code-block:: bash
 
-.. code-block:: yaml
-
-   addons_path: "/opt/odoo/addons,/opt/enterprise/addons,/opt/custom/addons"
-
-**Database Configuration:**
-
-.. code-block:: yaml
-
-   db_name: "my_odoo_db"
-   db_user: "odoo_user"
-   db_password: "secure_password"
-   db_host: "database.example.com"
-   db_port: 5432
-
-**Server Configuration:**
-
-.. code-block:: yaml
-
-   xmlrpc_port: 8069
-   http_port: 8080
-   workers: 4
-   limit_time_cpu: 60
-   limit_time_real: 120
-
-**Demo Mode Configuration:**
-
-For testing without a real Odoo installation:
-
-.. code-block:: python
-
-   from oduit.config_loader import ConfigLoader
-
-   loader = ConfigLoader()
-   demo_config = loader.load_demo_config()
-   # Returns configuration with demo_mode=True flag
+   oduit doctor
+   oduit --env dev doctor

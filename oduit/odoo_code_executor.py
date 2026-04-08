@@ -20,6 +20,7 @@ import signal
 import sys
 import threading
 import traceback
+from ast import Expr
 from typing import Any
 
 from .config_provider import ConfigProvider
@@ -92,10 +93,20 @@ class OdooCodeExecutor:
                 ),
             }
 
+        return self._execute_generated_code(
+            code,
+            database=database,
+            commit=commit,
+            timeout=timeout,
+        )
+
+    def _prepare_execution(
+        self, database: str | None = None
+    ) -> tuple[str | None, dict]:
+        """Configure Odoo runtime and resolve the target database."""
         try:
             from odoo.tools import config
 
-            # Configure Odoo directly without command line parsing
             config_dict = {
                 "db_host": self.config_provider.get_optional("db_host", "localhost"),
                 "db_port": self.config_provider.get_optional("db_port", 5432),
@@ -108,15 +119,13 @@ class OdooCodeExecutor:
                 "http_enable": False,
             }
 
-            # Update Odoo config directly
             for key, value in config_dict.items():
                 if value is not None:
                     config[key] = value
 
-            # Determine database
             db_name = database or config.get("db_name")
             if not db_name:
-                return {
+                return None, {
                     "success": False,
                     "error": (
                         "No database specified. Use database parameter or set "
@@ -124,21 +133,34 @@ class OdooCodeExecutor:
                     ),
                 }
 
-            # Execute code with database connection
-            return self._execute_with_database(code, db_name, commit, timeout)
+            return str(db_name), {}
 
         except ImportError as e:
             error_msg = f"Odoo not available for code execution: {e}"
             print_error(error_msg)
-            return {"success": False, "error": error_msg}
+            return None, {"success": False, "error": error_msg}
         except Exception as e:
             error_msg = f"Failed to initialize Odoo for code execution: {e}"
             print_error(error_msg)
-            return {
+            return None, {
                 "success": False,
                 "error": error_msg,
                 "traceback": traceback.format_exc(),
             }
+
+    def _execute_generated_code(
+        self,
+        code: str,
+        database: str | None = None,
+        commit: bool = False,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Execute internally generated trusted code without the unsafe opt-in."""
+        db_name, error = self._prepare_execution(database)
+        if db_name is None:
+            return error
+
+        return self._execute_with_database(code, db_name, commit, timeout)
 
     def _execute_with_database(
         self, code: str, db_name: str, commit: bool, timeout: float
@@ -148,7 +170,7 @@ class OdooCodeExecutor:
             import odoo
 
             # Set up threading context
-            threading.current_thread().dbname = db_name  # type: ignore[attr-defined]
+            threading.current_thread().dbname = db_name
 
             # Get registry and create environment
             registry = odoo.registry(db_name)
@@ -282,7 +304,12 @@ class OdooCodeExecutor:
                         return result
                     else:
                         # Only one statement and it's an expression
-                        expr_code = ast.unparse(tree.body[0].value)  # type: ignore[attr-defined]
+                        expr_stmt = tree.body[0]
+                        if not isinstance(expr_stmt, Expr):
+                            raise TypeError(
+                                "Expected final AST node to be an expression"
+                            )
+                        expr_code = ast.unparse(expr_stmt.value)
                         value = eval(
                             compile(expr_code, "<odoo-executor>", "eval"), context
                         )
@@ -386,53 +413,17 @@ class OdooCodeExecutor:
                 ),
             }
 
-        try:
-            from odoo.tools import config
+        db_name, error = self._prepare_execution(database)
+        if db_name is None:
+            return error
 
-            # Configure Odoo directly without command line parsing
-            config_dict = {
-                "db_host": self.config_provider.get_optional("db_host", "localhost"),
-                "db_port": self.config_provider.get_optional("db_port", 5432),
-                "db_user": self.config_provider.get_optional("db_user"),
-                "db_password": self.config_provider.get_optional("db_password"),
-                "addons_path": self.config_provider.get_optional("addons_path"),
-                "data_dir": self.config_provider.get_optional("data_dir"),
-                "db_name": self.config_provider.get_optional("db_name"),
-                "list_db": False,
-                "http_enable": False,
-            }
-
-            # Update Odoo config directly
-            for key, value in config_dict.items():
-                if value is not None:
-                    config[key] = value
-
-            # Determine database
-            db_name = database or config.get("db_name")
-            if not db_name:
-                return {
-                    "success": False,
-                    "error": (
-                        "No database specified. Use database parameter or set "
-                        "db_name in config."
-                    ),
-                }
-
-            return self._execute_multiple_with_database(
-                code_blocks,
-                db_name,
-                commit,
-                stop_on_error,
-                timeout,
-            )
-
-        except Exception as e:
-            error_msg = f"Failed to initialize Odoo for multiple code execution: {e}"
-            return {
-                "success": False,
-                "error": error_msg,
-                "traceback": traceback.format_exc(),
-            }
+        return self._execute_multiple_with_database(
+            code_blocks,
+            db_name,
+            commit,
+            stop_on_error,
+            timeout,
+        )
 
     def _execute_multiple_with_database(
         self,
@@ -447,7 +438,7 @@ class OdooCodeExecutor:
             import odoo
 
             # Set up threading context
-            threading.current_thread().dbname = db_name  # type: ignore[attr-defined]
+            threading.current_thread().dbname = db_name
 
             # Get registry and create environment
             registry = odoo.registry(db_name)

@@ -3,6 +3,10 @@ OdooCodeExecutor
 
 The OdooCodeExecutor class provides a way to execute trusted Python code within an Odoo environment and capture results directly as Python objects, without printing to console. It's perfect for programmatic use cases where you want to query data, perform operations, and get results back.
 
+For common read-only data access, prefer ``OdooQuery``. ``OdooCodeExecutor`` is
+the lower-level escape hatch for trusted arbitrary code and still requires
+``allow_unsafe=True``.
+
 .. automodule:: oduit.odoo_code_executor
    :members:
    :undoc-members:

@@ -1,40 +1,29 @@
 Welcome to oduit's documentation!
-=========================================
+=================================
 
-**oduit** is a Python package for managing Odoo instances through a YAML configuration system.
-It helps start odoo-bin, run tests, and install/update addons with support for multiple environments.
+**oduit** is an Odoo CLI and Python utility layer focused on two things:
 
-Features
---------
+* running common Odoo workflows with structured results
+* understanding addons through manifest, dependency, and series introspection
 
-* Start Odoo instances with custom configurations
-* Run tests and manage test databases
-* Install and update Odoo addons
-* Support for multiple environments
-* YAML-based configuration management
-* Demo mode support for testing scenarios
+Highlights
+----------
+
+* ``oduit doctor`` for setup diagnostics
+* structured JSON output for automation and CI
+* addon intelligence commands such as ``list-addons``, ``list-depends``,
+  ``install-order``, and ``impact-of-update``
+* Python APIs for operations, addon analysis, and safe read-only queries
 
 Quick Start
 -----------
 
-.. code-block:: python
+.. code-block:: bash
 
-   from oduit import ConfigLoader, OdooOperations
-
-   # Load configuration from environment file
-   loader = ConfigLoader()
-   env_config = loader.load_config('development')
-
-   # Create operations manager
-   ops = OdooOperations(env_config, verbose=True)
-
-   # Start Odoo instance (runs until manually stopped)
-   ops.run_odoo()
-
-   # Install a module
-   result = ops.install_module(module='sale')
-   if result['success']:
-       print("Module installed successfully!")
+   oduit --env dev doctor
+   oduit --env dev version
+   oduit --env dev list-addons
+   oduit --env dev install-order sale,purchase
 
 Installation
 ------------
@@ -57,20 +46,6 @@ Contents
    api
    examples
    changelog
-
-API Reference
-=============
-
-.. toctree::
-   :maxdepth: 2
-   :caption: API Documentation:
-
-   api/modules
-   api/process_manager
-   api/config_loader
-   api/odoo_operations
-   api/builders
-   api/utils
 
 Indices and tables
 ==================

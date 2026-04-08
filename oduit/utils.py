@@ -7,12 +7,37 @@
 import re
 from typing import Any
 
+JSON_SCHEMA_VERSION = "1"
+
+
+def build_json_payload(
+    payload_type: str,
+    data: dict[str, Any] | None = None,
+    success: bool | None = None,
+    include_null_values: bool = False,
+) -> dict[str, Any]:
+    """Build a versioned JSON payload envelope."""
+    payload: dict[str, Any] = {}
+    if data:
+        payload.update(data)
+
+    payload["schema_version"] = JSON_SCHEMA_VERSION
+    payload["type"] = payload_type
+    if success is not None:
+        payload["success"] = success
+
+    if not include_null_values:
+        payload = {k: v for k, v in payload.items() if v is not None}
+
+    return payload
+
 
 def output_result_to_json(
     output: dict[str, Any],
     additional_fields: dict[str, Any] | None = None,
     exclude_fields: list[str] | None = None,
     include_null_values: bool = False,
+    result_type: str = "result",
 ) -> dict[str, Any]:
     """Generate JSON output for the operation result
 
@@ -25,6 +50,8 @@ def output_result_to_json(
         Dictionary suitable for JSON output
     """
     output = output.copy()
+    payload_type = str(output.pop("type", result_type))
+
     # Add additional fields if provided
     if additional_fields:
         output.update(additional_fields)
@@ -35,8 +62,12 @@ def output_result_to_json(
             output.pop(field, None)
 
     # Remove null values if requested (default behavior)
-    if not include_null_values:
-        output = {k: v for k, v in output.items() if v is not None}
+    output = build_json_payload(
+        payload_type=payload_type,
+        data=output,
+        success=output.get("success", False),
+        include_null_values=include_null_values,
+    )
 
     # Remove empty lists/dicts unless they're meaningful for the operation
     meaningful_empty_fields = {
@@ -44,6 +75,9 @@ def output_result_to_json(
         "unmet_dependencies",
         "failed_modules",
         "addons",
+        "install_order",
+        "impacted_modules",
+        "values",
     }
     output = {
         k: v for k, v in output.items() if v != [] or k in meaningful_empty_fields
