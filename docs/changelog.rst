@@ -1,6 +1,47 @@
 Changelog
 =========
 
+0.3.0
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add allow_unsafe=True is required to execute code
+
+- Several small improvements
+
+- Add doctor and other usefull cli commands, rewrite documentation
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- Fix broken unit test
+
+- Unit test and mpy
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add changelog
+
+- Update README
+
+
+
+Miscellaneous
+~~~~~~~~~~~~~~~~~~~~~
+
+- Fix mypy oduit
+
+- Fix mypy and pre-commit
+
+
 0.2.2
 ----------
 
