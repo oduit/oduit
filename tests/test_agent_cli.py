@@ -315,6 +315,12 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
                     "test_name": "TestSale.test_flow",
                     "file": "/tmp/test_sale.py",
                     "line": 42,
+                    "function_name": "test_flow",
+                    "source_line": "self.assertEqual(total, expected_total)",
+                    "broken_line_count": 2,
+                    "failure_excerpt": (
+                        "/tmp/test_sale.py:42: self.assertEqual(total, expected_total)"
+                    ),
                     "error_message": "AssertionError: expected value",
                 }
             ],
@@ -348,4 +354,61 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
     assert payload["error_tests"] == 1
     assert payload["failure_details"]
     assert payload["traceback_summary"]
+    assert payload["traceback_summary"][0]["source_line"] is not None
+    assert payload["traceback_summary"][0]["broken_line_count"] >= 1
+    assert payload["traceback_summary"][0]["failure_excerpt"]
     assert payload["suggested_next_steps"]
+
+
+def test_agent_test_summary_module_uses_fast_test_tags_semantics(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.run_tests.return_value = {
+            "success": True,
+            "operation": "test",
+            "return_code": 0,
+            "total_tests": 5,
+            "passed_tests": 5,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "failures": [],
+        }
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "test-summary",
+                "--module",
+                "x_sale",
+            ],
+        )
+
+    assert result.exit_code == 0
+    ops.run_tests.assert_called_once_with(
+        module="x_sale",
+        stop_on_error=False,
+        install=None,
+        update=None,
+        coverage=None,
+        test_file=None,
+        test_tags=None,
+        compact=False,
+        suppress_output=True,
+        log_level=None,
+    )
+    payload = json.loads(result.output)
+    assert payload["selected_modules"] == ["x_sale"]
+    assert payload["selection"].get("install") is None

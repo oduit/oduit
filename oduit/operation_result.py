@@ -16,6 +16,13 @@ if TYPE_CHECKING:
 class OperationResult:
     """Builder class for creating standardized operation results"""
 
+    ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+
+    @classmethod
+    def _clean_test_log_line(cls, line: str) -> str:
+        """Strip ANSI escape sequences from one test log line."""
+        return cls.ANSI_ESCAPE_PATTERN.sub("", line)
+
     # Specific failure patterns for different operations
     FAILURE_PATTERNS = {
         "install": [
@@ -455,6 +462,101 @@ class OperationResult:
 
         return install_info
 
+    def _parse_test_failure(self, lines: list[str], start_index: int) -> dict[str, Any]:
+        """Parse one traceback block starting at a FAIL header."""
+        line = self._clean_test_log_line(lines[start_index])
+        fail_match = re.search(r"FAIL:\s+(.+)", line)
+        if fail_match is None:
+            return {}
+
+        failure_info: dict[str, Any] = {
+            "test_name": fail_match.group(1),
+            "traceback": [],
+            "file": None,
+            "line": None,
+            "function_name": None,
+            "source_line": None,
+            "source_lines": [],
+            "locations": [],
+            "broken_line_count": 0,
+            "failure_excerpt": None,
+            "error_message": None,
+        }
+        expect_source_line = False
+        j = start_index + 1
+
+        while j < len(lines):
+            raw_next_line = lines[j]
+            next_line = self._clean_test_log_line(raw_next_line).strip()
+            if (
+                not next_line
+                or "Starting" in lines[j]
+                or ("INFO" in next_line and "ERROR" not in next_line)
+            ):
+                break
+
+            clean_line = re.sub(
+                r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+\d+\s+",
+                "",
+                next_line,
+            )
+            failure_info["traceback"].append(clean_line)
+
+            file_match = re.search(
+                r'File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+(.+))?',
+                clean_line,
+            )
+            if file_match and not file_match.group(1).endswith("odoo-bin"):
+                location = {
+                    "file": file_match.group(1),
+                    "line": int(file_match.group(2)),
+                    "function": file_match.group(3),
+                }
+                failure_info["locations"].append(location)
+                if failure_info["file"] is None:
+                    failure_info["file"] = location["file"]
+                    failure_info["line"] = location["line"]
+                    failure_info["function_name"] = location["function"]
+                expect_source_line = True
+                j += 1
+                continue
+
+            is_error_line = any(
+                error_type in clean_line
+                for error_type in [
+                    "AssertionError",
+                    "ValueError",
+                    "TypeError",
+                    "Error:",
+                ]
+            )
+            if (
+                expect_source_line
+                and clean_line not in ("Traceback (most recent call last):",)
+                and not is_error_line
+            ):
+                failure_info["source_lines"].append(clean_line)
+                if failure_info["source_line"] is None:
+                    failure_info["source_line"] = clean_line
+                expect_source_line = False
+
+            if is_error_line:
+                failure_info["error_message"] = clean_line
+                expect_source_line = False
+
+            j += 1
+
+        failure_info["broken_line_count"] = len(failure_info["locations"]) + len(
+            failure_info["source_lines"]
+        )
+        if failure_info["file"] and failure_info["line"] is not None:
+            excerpt = f"{failure_info['file']}:{failure_info['line']}"
+            if failure_info["source_line"]:
+                excerpt = f"{excerpt}: {failure_info['source_line']}"
+            failure_info["failure_excerpt"] = excerpt
+
+        return failure_info
+
     def _parse_test_results(self, output: str) -> dict[str, Any]:
         """Parse Odoo test output to extract test statistics and error details"""
         test_info: dict[str, Any] = {
@@ -470,92 +572,67 @@ class OperationResult:
 
         lines = output.split("\n")
 
-        # Extract test statistics from lines like:
-        # "fastapi_connections: 11 tests 1.69s 90 queries"
-        # "1 failed, 0 error(s) of 7 tests when loading database"
-        for line in lines:
-            # Pattern for module test stats: "module_name: X tests Y.Ys Z queries"
-            module_stats_match = re.search(
-                r"(\w+):\s+(\d+)\s+tests\s+[\d.]+s\s+\d+\s+queries", line
-            )
-            if module_stats_match:
-                test_info["total_tests"] = int(module_stats_match.group(2))
+        authoritative_result_seen = False
 
-            # Pattern for failure summary: "X failed, Y error(s) of Z tests"
-            failure_match = re.search(
-                r"(\d+)\s+failed,\s+(\d+)\s+error\(s\)\s+of\s+(\d+)\s+tests", line
+        def _apply_summary(failed: int, errors: int, total: int) -> None:
+            test_info["failed_tests"] = failed
+            test_info["error_tests"] = errors
+            test_info["total_tests"] = total
+            test_info["passed_tests"] = max(total - failed - errors, 0)
+
+        # Extract test statistics from authoritative Odoo test loggers first.
+        # Fall back to legacy loading summaries only when no
+        # odoo.tests.result line exists.
+        for raw_line in lines:
+            line = self._clean_test_log_line(raw_line)
+            stats_match = re.search(
+                r"odoo\.tests\.stats:\s+[\w.]+:\s+(\d+)\s+tests\s+[\d.]+s\s+\d+\s+queries",
+                line,
             )
-            if failure_match:
-                test_info["failed_tests"] = int(failure_match.group(1))
-                test_info["error_tests"] = int(failure_match.group(2))
-                # Use the total from result summary, more accurate than module stats
-                test_info["total_tests"] = int(failure_match.group(3))
-                # Calculate passed tests
-                test_info["passed_tests"] = (
-                    test_info["total_tests"]
-                    - test_info["failed_tests"]
-                    - test_info["error_tests"]
+            if stats_match:
+                test_info["total_tests"] = int(stats_match.group(1))
+
+            legacy_stats_match = re.search(
+                r"odoo\.modules\.loading:\s+[\w.]+:\s+(\d+)\s+tests\s+[\d.]+s\s+\d+\s+queries",
+                line,
+            )
+            if legacy_stats_match and test_info["total_tests"] == 0:
+                test_info["total_tests"] = int(legacy_stats_match.group(1))
+
+            result_match = re.search(
+                r"odoo\.tests\.result:\s+(\d+)\s+failed,\s+(\d+)\s+error\(s\)\s+of\s+(\d+)\s+tests",
+                line,
+            )
+            if result_match:
+                _apply_summary(
+                    int(result_match.group(1)),
+                    int(result_match.group(2)),
+                    int(result_match.group(3)),
+                )
+                authoritative_result_seen = True
+                continue
+
+            if authoritative_result_seen:
+                continue
+
+            legacy_result_match = re.search(
+                r"odoo\.modules\.loading:\s+(\d+)\s+failed,\s+(\d+)\s+error\(s\)\s+of\s+(\d+)\s+tests",
+                line,
+            )
+            if legacy_result_match:
+                _apply_summary(
+                    int(legacy_result_match.group(1)),
+                    int(legacy_result_match.group(2)),
+                    int(legacy_result_match.group(3)),
                 )
 
         # Extract failure details - look for FAIL patterns
-        for i, line in enumerate(lines):
+        for i, raw_line in enumerate(lines):
+            line = self._clean_test_log_line(raw_line)
             # Look for failure headers like: "FAIL: FastAPIDemoCase.test_no_key"
             # or "ERROR ... FAIL: AdvancedTestCase.test_workflow"
-            fail_match = re.search(r"FAIL:\s+(.+)", line)
-            if fail_match:
-                test_name = fail_match.group(1)
-                failure_info: dict[str, Any] = {
-                    "test_name": test_name,
-                    "traceback": [],
-                    "file": None,
-                    "line": None,
-                    "error_message": None,
-                }
-
-                # Collect traceback lines starting from next line until we hit
-                # empty line or next test
-                j = i + 1
-                while j < len(lines):
-                    next_line = lines[j].strip()
-                    if (
-                        not next_line
-                        or "Starting" in lines[j]
-                        or ("INFO" in lines[j] and "ERROR" not in lines[j])
-                    ):
-                        break
-
-                    # Remove timestamp prefix if present
-                    # (e.g., "2025-09-04 10:58:52,787 12345 ")
-                    clean_line = re.sub(
-                        r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+\d+\s+",
-                        "",
-                        next_line,
-                    )
-                    failure_info["traceback"].append(clean_line)
-
-                    # Extract file and line number
-                    file_match = re.search(
-                        r'File\s+"([^"]+)",\s+line\s+(\d+)', clean_line
-                    )
-                    if file_match and not file_match.group(1).endswith("odoo-bin"):
-                        failure_info["file"] = file_match.group(1)
-                        failure_info["line"] = int(file_match.group(2))
-
-                    # Extract error message
-                    if any(
-                        error_type in clean_line
-                        for error_type in [
-                            "AssertionError",
-                            "ValueError",
-                            "TypeError",
-                            "Error:",
-                        ]
-                    ):
-                        failure_info["error_message"] = clean_line
-
-                    j += 1
-
-                test_info["failures"].append(failure_info)
+            if re.search(r"FAIL:\s+(.+)", line):
+                test_info["failures"].append(self._parse_test_failure(lines, i))
 
         return test_info
 

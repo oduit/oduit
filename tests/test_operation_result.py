@@ -431,7 +431,65 @@ class TestOperationResult(unittest.TestCase):
         self.assertEqual(result["failures"][0]["test_name"], "TestCase.test_method")
         self.assertEqual(result["failures"][0]["file"], "/path/to/test.py")
         self.assertEqual(result["failures"][0]["line"], 42)
+        self.assertEqual(result["failures"][0]["function_name"], "test_method")
+        self.assertIsNone(result["failures"][0]["source_line"])
+        self.assertEqual(result["failures"][0]["broken_line_count"], 1)
+        self.assertEqual(len(result["failures"][0]["locations"]), 1)
+        self.assertEqual(
+            result["failures"][0]["failure_excerpt"], "/path/to/test.py:42"
+        )
         self.assertIn("AssertionError", result["failures"][0]["error_message"])
+
+    def test_parse_test_results_tracks_broken_traceback_lines(self):
+        """Machine-readable failure payload should expose file and source lines."""
+        builder = OperationResult("test", module="dvo")
+        output = """
+2026-04-09 13:39:42,270 1413297 INFO odoo17 odoo.addons.dvo.tests.test_dvo: Starting TestDVO.test_find_dvo_id ...
+2026-04-09 13:39:42,280 1413297 INFO odoo17 odoo.addons.dvo.tests.test_dvo: ======================================================================
+2026-04-09 13:39:42,280 1413297 ERROR odoo17 odoo.addons.dvo.tests.test_dvo: FAIL: TestDVO.test_find_dvo_id
+Traceback (most recent call last):
+  File "/home/nahrstaedt/src/odoo17/odoo-17-addons/addons/dvo/tests/test_dvo.py", line 28, in test_find_dvo_id
+    self.assertEqual(self.dvo_set1_team1.zone_count, 2)
+AssertionError: 1 != 2
+2026-04-09 13:41:01,686 1414549 ERROR odoo17 odoo.tests.result: 1 failed, 0 error(s) of 37 tests when loading database 'odoo17'
+"""
+
+        result = builder._parse_test_results(output)
+
+        self.assertEqual(result["failed_tests"], 1)
+        self.assertEqual(result["error_tests"], 0)
+        self.assertEqual(result["total_tests"], 37)
+        self.assertEqual(len(result["failures"]), 1)
+        failure = result["failures"][0]
+        self.assertEqual(
+            failure["file"],
+            "/home/nahrstaedt/src/odoo17/odoo-17-addons/addons/dvo/tests/test_dvo.py",
+        )
+        self.assertEqual(failure["line"], 28)
+        self.assertEqual(failure["function_name"], "test_find_dvo_id")
+        self.assertEqual(
+            failure["source_line"],
+            "self.assertEqual(self.dvo_set1_team1.zone_count, 2)",
+        )
+        self.assertEqual(failure["broken_line_count"], 2)
+        self.assertEqual(
+            failure["locations"],
+            [
+                {
+                    "file": "/home/nahrstaedt/src/odoo17/odoo-17-addons/addons/dvo/tests/test_dvo.py",
+                    "line": 28,
+                    "function": "test_find_dvo_id",
+                }
+            ],
+        )
+        self.assertEqual(
+            failure["source_lines"],
+            ["self.assertEqual(self.dvo_set1_team1.zone_count, 2)"],
+        )
+        self.assertEqual(
+            failure["failure_excerpt"],
+            "/home/nahrstaedt/src/odoo17/odoo-17-addons/addons/dvo/tests/test_dvo.py:28: self.assertEqual(self.dvo_set1_team1.zone_count, 2)",
+        )
 
     def test_parse_test_results_with_errors(self):
         """Test parsing test output with errors"""
@@ -446,6 +504,37 @@ class TestOperationResult(unittest.TestCase):
         self.assertEqual(result["passed_tests"], 6)
         self.assertEqual(result["failed_tests"], 0)
         self.assertEqual(result["error_tests"], 2)
+
+    def test_parse_test_results_prefers_odoo_tests_result(self):
+        """Authoritative odoo.tests.result lines should override noisy warnings."""
+        builder = OperationResult("test", module="test_module")
+        output = """
+2024-01-01 10:00:00,000 1234 WARNING test_db some.noisy.logger: 0 failed, 4 error(s) of 99 tests
+2024-01-01 10:00:00,500 1234 INFO test_db odoo.tests.stats: test_module: 5 tests 1.2s 20 queries
+2024-01-01 10:00:01,000 1234 INFO test_db odoo.tests.result: 0 failed, 0 error(s) of 5 tests when loading database 'test_db'
+"""
+
+        result = builder._parse_test_results(output)
+
+        self.assertEqual(result["total_tests"], 5)
+        self.assertEqual(result["passed_tests"], 5)
+        self.assertEqual(result["failed_tests"], 0)
+        self.assertEqual(result["error_tests"], 0)
+
+    def test_parse_test_results_ignores_non_odoo_summary_warnings(self):
+        """Non-Odoo warning lines that look like summaries should not count."""
+        builder = OperationResult("test", module="test_module")
+        output = """
+2024-01-01 10:00:00,000 1234 WARNING test_db some.noisy.logger: 0 failed, 4 error(s) of 99 tests
+2024-01-01 10:00:01,000 1234 INFO test_db odoo.tests.stats: test_module: 5 tests 1.2s 20 queries
+"""
+
+        result = builder._parse_test_results(output)
+
+        self.assertEqual(result["total_tests"], 5)
+        self.assertEqual(result["passed_tests"], 0)
+        self.assertEqual(result["failed_tests"], 0)
+        self.assertEqual(result["error_tests"], 0)
 
     def test_check_for_failure_patterns_invalid_module_names(self):
         """Test failure pattern detection for invalid module names"""

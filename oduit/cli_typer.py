@@ -4622,13 +4622,19 @@ def agent_test_summary(
         log_level=log_level.value if log_level else None,
     )
 
-    selected_modules = [value for value in [module, install, update, coverage] if value]
+    selected_modules = list(
+        dict.fromkeys(value for value in [module, install, update, coverage] if value)
+    )
     failures = list(result.get("failures", []))
     traceback_summary = [
         {
             "test_name": failure.get("test_name"),
             "file": failure.get("file"),
             "line": failure.get("line"),
+            "function_name": failure.get("function_name"),
+            "source_line": failure.get("source_line"),
+            "broken_line_count": failure.get("broken_line_count", 0),
+            "failure_excerpt": failure.get("failure_excerpt"),
             "error_message": failure.get("error_message"),
         }
         for failure in failures
