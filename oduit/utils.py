@@ -5,9 +5,16 @@
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import re
+from datetime import datetime
 from typing import Any
 
-JSON_SCHEMA_VERSION = "1"
+from .schemas import (
+    COMMON_ENVELOPE_KEYS,
+    ResultEnvelope,
+    ResultMeta,
+    infer_read_only,
+    infer_safety_level,
+)
 
 
 def build_json_payload(
@@ -17,19 +24,50 @@ def build_json_payload(
     include_null_values: bool = False,
 ) -> dict[str, Any]:
     """Build a versioned JSON payload envelope."""
-    payload: dict[str, Any] = {}
-    if data:
-        payload.update(data)
+    payload_data = dict(data or {})
+    operation = payload_data.get("operation")
+    envelope_success = (
+        success if success is not None else bool(payload_data.get("success"))
+    )
+    warnings = list(payload_data.pop("warnings", []))
+    remediation = list(payload_data.pop("remediation", []))
+    errors = list(payload_data.pop("errors", []))
+    error = payload_data.get("error")
+    error_type = payload_data.get("error_type")
+    read_only = payload_data.get("read_only")
+    safety_level = payload_data.get("safety_level")
+    meta = ResultMeta(
+        timestamp=payload_data.get("timestamp") or datetime.now().isoformat(),
+        duration=payload_data.get("duration"),
+    )
 
-    payload["schema_version"] = JSON_SCHEMA_VERSION
-    payload["type"] = payload_type
-    if success is not None:
-        payload["success"] = success
+    command_data = {
+        key: value
+        for key, value in payload_data.items()
+        if key not in COMMON_ENVELOPE_KEYS and key not in {"timestamp", "duration"}
+    }
 
-    if not include_null_values:
-        payload = {k: v for k, v in payload.items() if v is not None}
+    if error and not errors:
+        errors = [{"message": error, "error_type": error_type}]
 
-    return payload
+    return ResultEnvelope(
+        payload_type=payload_type,
+        success=envelope_success,
+        operation=operation,
+        read_only=(
+            read_only
+            if isinstance(read_only, bool)
+            else infer_read_only(operation, payload_type)
+        ),
+        safety_level=safety_level or infer_safety_level(operation, payload_type),
+        warnings=warnings,
+        errors=errors,
+        remediation=remediation,
+        error=error,
+        error_type=error_type,
+        data=command_data,
+        meta=meta,
+    ).to_dict(include_null_values=include_null_values)
 
 
 def output_result_to_json(
@@ -71,6 +109,9 @@ def output_result_to_json(
 
     # Remove empty lists/dicts unless they're meaningful for the operation
     meaningful_empty_fields = {
+        "warnings",
+        "errors",
+        "remediation",
         "failures",
         "unmet_dependencies",
         "failed_modules",

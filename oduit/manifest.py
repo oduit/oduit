@@ -124,7 +124,9 @@ class Manifest:
         if not isinstance(depends, list):
             return []
 
-        return [dep for dep in depends if isinstance(dep, str)]
+        return [
+            dep for dep in depends if isinstance(dep, str) and dep != self.module_name
+        ]
 
     @property
     def installable(self) -> bool:

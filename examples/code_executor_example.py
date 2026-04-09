@@ -39,7 +39,10 @@ def main():
 
         # Example 1: Simple expression - get partner name
         print("1. Getting first partner name:")
-        result = executor.execute_code("env['res.partner'].search([],limit=1).name")
+        result = executor.execute_code(
+            "env['res.partner'].search([],limit=1).name",
+            allow_unsafe=True,
+        )
 
         if result["success"]:
             partner_name = result["value"]
@@ -64,7 +67,7 @@ company_count = len(env['res.partner'].search([('is_company', '=', True)]))
     'ratio': f"{customer_count}/{company_count}" if company_count > 0 else "N/A"
 }
 """
-        result = executor.execute_code(code)
+        result = executor.execute_code(code, allow_unsafe=True)
 
         if result["success"]:
             stats = result["value"]
@@ -91,7 +94,7 @@ partner = env['res.partner'].create({
     'email': partner.email
 }
 """
-        result = executor.execute_code(create_code, commit=False)
+        result = executor.execute_code(create_code, commit=False, allow_unsafe=True)
 
         if result["success"]:
             partner_data = result["value"]
@@ -111,7 +114,7 @@ partner = env['res.partner'].create({
             "result = {'count': len(partner_names), 'names': partner_names}; result",
         ]
 
-        result = executor.execute_multiple(code_blocks)
+        result = executor.execute_multiple(code_blocks, allow_unsafe=True)
 
         if result["success"]:
             print(
@@ -128,7 +131,10 @@ partner = env['res.partner'].create({
 
         # Example 5: Error handling
         print("5. Error handling example:")
-        result = executor.execute_code("nonexistent_variable + 42")
+        result = executor.execute_code(
+            "nonexistent_variable + 42",
+            allow_unsafe=True,
+        )
 
         if result["success"]:
             print(f"   Unexpected success: {result['value']}")
@@ -154,7 +160,7 @@ data = {
 }
 json.dumps(data, indent=2)
 """
-        result = executor.execute_code(datetime_code)
+        result = executor.execute_code(datetime_code, allow_unsafe=True)
 
         if result["success"]:
             json_output = result["value"]
@@ -169,7 +175,7 @@ json.dumps(data, indent=2)
         print("✓ Results are captured as Python objects, not printed output")
         print("✓ Supports both expressions and multi-line code blocks")
         print("✓ Proper error handling and transaction management")
-        print("✓ Perfect for programmatic Odoo operations")
+        print("✓ Use OdooQuery instead for common read-only inspection")
 
     except ImportError as e:
         print(f"Error: Odoo not available - {e}")

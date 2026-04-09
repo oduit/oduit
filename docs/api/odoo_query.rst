@@ -43,6 +43,9 @@ Supported Read Helpers
 - ``search_count(...)``: count matching records
 - ``get_model_fields(...)``: inspect field metadata via ``fields_get``
 
+If you prefer a single high-level entry point, the same read helpers are also
+available on ``OdooOperations`` and return typed dataclass wrappers.
+
 Validation Rules
 ----------------
 

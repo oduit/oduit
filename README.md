@@ -75,17 +75,25 @@ oduit --env dev version
 
 # Addon intelligence
 oduit --env dev list-addons
+oduit --env dev list-duplicates
 oduit --env dev print-manifest sale
 oduit --env dev list-manifest-values category
 oduit --env dev list-depends sale
 oduit --env dev install-order sale,purchase
 oduit --env dev impact-of-update sale
 
+# Agent-first inspection
+oduit --env dev agent context
+oduit --env dev agent inspect-addon sale
+oduit --env dev agent plan-update sale
+oduit --env dev agent query-model res.partner --fields name,email --limit 5
+
 # Operations
 oduit --env dev install sale
 oduit --env dev update sale
 oduit --env dev test --test-tags /sale
 oduit --env dev shell
+oduit --env dev --non-interactive create-db
 oduit --env dev create-addon my_custom_module
 oduit --env dev export-lang sale --language de_DE
 ```
@@ -94,11 +102,21 @@ oduit --env dev export-lang sale --language de_DE
 
 Commands run with `--json` emit versioned payloads for automation.
 
+The `oduit agent ...` command group always emits JSON and is the preferred
+surface for coding-agent inspection and planning workflows.
+
 Guaranteed keys for result payloads:
 
 - `schema_version`
 - `type`
 - `success`
+- `read_only`
+- `safety_level`
+- `warnings`
+- `errors`
+- `remediation`
+- `data`
+- `meta`
 
 Common keys when they apply:
 
@@ -112,10 +130,22 @@ Example:
 
 ```json
 {
-  "schema_version": "1",
+  "schema_version": "1.0",
   "type": "result",
   "success": true,
   "operation": "get_odoo_version",
+  "read_only": true,
+  "safety_level": "safe_read_only",
+  "warnings": [],
+  "errors": [],
+  "remediation": [],
+  "data": {
+    "version": "17.0",
+    "return_code": 0
+  },
+  "meta": {
+    "timestamp": "2026-04-09T12:00:00"
+  },
   "version": "17.0",
   "return_code": 0
 }
@@ -136,7 +166,21 @@ install_result = ops.install_module("sale")
 test_result = ops.run_tests(module="sale")
 version_result = ops.get_odoo_version(suppress_output=True)
 db_result = ops.db_exists(suppress_output=True)
+
+context = ops.get_environment_context(env_name="dev", config_source="env")
+addon = ops.inspect_addon("sale")
+plan = ops.plan_update("sale")
+partners = ops.query_model("res.partner", fields=["name", "email"], limit=5)
 ```
+
+The preferred Python surface is:
+
+- `ConfigLoader` for loading configuration
+- `OdooOperations` for high-level operations and typed planning/inspection
+- `OdooQuery` for direct structured read-only model access
+
+Use `execute_python_code()` and `OdooCodeExecutor` only for trusted arbitrary
+execution paths.
 
 ### Addon Intelligence
 

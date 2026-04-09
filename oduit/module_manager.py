@@ -33,6 +33,64 @@ class ModuleManager:
         self.addons_path = addons_path
         self._path_manager = AddonsPathManager(addons_path)
 
+    @staticmethod
+    def _extract_cycle_path(stack: list[str], repeated_module: str) -> list[str]:
+        """Return the ordered cycle path from a traversal stack."""
+        if repeated_module in stack:
+            start_index = stack.index(repeated_module)
+            return stack[start_index:] + [repeated_module]
+        return stack + [repeated_module]
+
+    @classmethod
+    def _format_cycle_error(cls, stack: list[str], repeated_module: str) -> str:
+        """Format a stable circular dependency error message."""
+        cycle_path = cls._extract_cycle_path(stack, repeated_module)
+        return f"Circular dependency detected: {' -> '.join(cycle_path)}"
+
+    @staticmethod
+    def parse_cycle_error(message: str) -> list[str]:
+        """Extract the module cycle path from an error message."""
+        prefix = "Circular dependency detected: "
+        if not message.startswith(prefix):
+            return []
+        return [item.strip() for item in message[len(prefix) :].split("->")]
+
+    def _find_cycle_in_graph(
+        self, graph: dict[str, list[str] | set[str]]
+    ) -> list[str] | None:
+        """Return the first detected cycle path in a dependency graph."""
+        visited: set[str] = set()
+        stack: list[str] = []
+        active: set[str] = set()
+
+        def _visit(module_name: str) -> list[str] | None:
+            if module_name in active:
+                return self._extract_cycle_path(stack, module_name)
+            if module_name in visited:
+                return None
+
+            visited.add(module_name)
+            active.add(module_name)
+            stack.append(module_name)
+
+            for dependency in sorted(graph.get(module_name, [])):
+                if dependency not in graph:
+                    continue
+                cycle = _visit(dependency)
+                if cycle:
+                    return cycle
+
+            stack.pop()
+            active.remove(module_name)
+            return None
+
+        for module_name in sorted(graph):
+            cycle = _visit(module_name)
+            if cycle:
+                return cycle
+
+        return None
+
     def find_module_dirs(self, filter_dir: str | None = None) -> list[str]:
         """Return all module directories with __manifest__.py in configured paths
 
@@ -194,20 +252,18 @@ class ModuleManager:
         """
         graph: dict[str, list[str]] = {}
         visited: set[str] = set()
-        visiting: set[str] = set()  # For circular dependency detection
+        visiting: set[str] = set()
+        stack: list[str] = []
 
         def _build_graph_recursive(mod_name: str) -> None:
             if mod_name in visiting:
-                # Circular dependency detected
-                cycle_path = list(visiting) + [mod_name]
-                raise ValueError(
-                    f"Circular dependency detected: {' -> '.join(cycle_path)}"
-                )
+                raise ValueError(self._format_cycle_error(stack, mod_name))
 
             if mod_name in visited:
                 return
 
             visiting.add(mod_name)
+            stack.append(mod_name)
 
             # Get codependencies for current module
             codependencies = self.get_module_codependencies(mod_name)
@@ -217,6 +273,7 @@ class ModuleManager:
             for dep in codependencies:
                 _build_graph_recursive(dep)
 
+            stack.pop()
             visiting.remove(mod_name)
             visited.add(mod_name)
 
@@ -240,17 +297,14 @@ class ModuleManager:
             ValueError: If circular dependency is detected
         """
         visited: set[str] = set()
-        visiting: set[str] = set()  # For circular dependency detection
+        visiting: set[str] = set()
+        stack: list[str] = []
 
         def _build_tree_recursive(
             mod_name: str, current_depth: int = 0
         ) -> dict[str, Any]:
             if mod_name in visiting:
-                # Circular dependency detected
-                cycle_path = list(visiting) + [mod_name]
-                raise ValueError(
-                    f"Circular dependency detected: {' -> '.join(cycle_path)}"
-                )
+                raise ValueError(self._format_cycle_error(stack, mod_name))
 
             if mod_name in visited:
                 # Already processed module, return empty to avoid infinite recursion
@@ -261,6 +315,7 @@ class ModuleManager:
                 return {}
 
             visiting.add(mod_name)
+            stack.append(mod_name)
 
             # Get codependencies for current module
             codependencies = self.get_module_codependencies(mod_name)
@@ -270,6 +325,7 @@ class ModuleManager:
             for dep in codependencies:
                 tree[dep] = _build_tree_recursive(dep, current_depth + 1)
 
+            stack.pop()
             visiting.remove(mod_name)
             visited.add(mod_name)
 
@@ -371,6 +427,9 @@ class ModuleManager:
 
         # If we haven't processed all nodes, there's a cycle
         if len(result) != len(all_graphs):
+            cycle = self._find_cycle_in_graph(all_graphs)
+            if cycle:
+                raise ValueError(f"Circular dependency detected: {' -> '.join(cycle)}")
             raise ValueError("Topological sort failed - circular dependency detected")
 
         return result
@@ -573,4 +632,9 @@ class ModuleManager:
             ts = TopologicalSorter(graph)
             return list(ts.static_order())
         except ValueError as e:
+            cycle = self._find_cycle_in_graph(graph)
+            if cycle:
+                raise ValueError(
+                    f"Circular dependency detected: {' -> '.join(cycle)}"
+                ) from e
             raise ValueError(f"Circular dependency detected: {e}") from e

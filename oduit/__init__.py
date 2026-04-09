@@ -27,6 +27,20 @@ from .manifest import (
 )
 from .manifest_collection import ManifestCollection
 from .addons_path_manager import AddonsPathManager
+from .api_models import (
+    AddonInspection,
+    AddonsPathStatus,
+    BinaryProbe,
+    DatabaseSummary,
+    EnvironmentContext,
+    EnvironmentSource,
+    ModelFieldsResult,
+    OdooVersionInfo,
+    QueryModelResult,
+    RecordReadResult,
+    SearchCountResult,
+    UpdatePlan,
+)
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
 from .odoo_embedded_manager import OdooEmbeddedManager
@@ -55,6 +69,18 @@ __all__ = [
     "ManifestNotFoundError",
     "ManifestCollection",
     "AddonsPathManager",
+    "EnvironmentSource",
+    "BinaryProbe",
+    "AddonsPathStatus",
+    "OdooVersionInfo",
+    "DatabaseSummary",
+    "EnvironmentContext",
+    "AddonInspection",
+    "UpdatePlan",
+    "QueryModelResult",
+    "RecordReadResult",
+    "SearchCountResult",
+    "ModelFieldsResult",
     "ModuleManager",
     "ConfigError",
     "OdooOperationError",

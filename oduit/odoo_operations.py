@@ -4,9 +4,30 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import os
+import shutil
 import sys
+from typing import Any
+
+from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
+from manifestoo_core.odoo_series import OdooSeries
 
 from . import output as _output_module
+from .addons_path_manager import AddonsPathManager
+from .api_models import (
+    AddonInspection,
+    AddonsPathStatus,
+    BinaryProbe,
+    DatabaseSummary,
+    EnvironmentContext,
+    EnvironmentSource,
+    ModelFieldsResult,
+    OdooVersionInfo,
+    QueryModelResult,
+    RecordReadResult,
+    SearchCountResult,
+    UpdatePlan,
+)
 from .builders import (
     ConfigProvider,
     DatabaseCommandBuilder,
@@ -24,9 +45,12 @@ from .exceptions import (
     ConfigError,
     DatabaseOperationError,
     ModuleInstallError,
+    ModuleNotFoundError,
     ModuleUpdateError,
     OdooOperationError,
 )
+from .module_manager import ModuleManager
+from .odoo_query import OdooQuery
 from .operation_result import OperationResult
 from .output import print_error, print_error_result, print_info
 from .process_manager import ProcessManager
@@ -69,6 +93,8 @@ class OdooOperations:
 
         self.result_builder = OperationResult()
         self.verbose = verbose
+        self.env_config = env_config
+        self._query_helper: OdooQuery | None = None
 
         self.config = ConfigProvider(env_config)
         if env_config.get("demo_mode", False):
@@ -1140,6 +1166,568 @@ class OdooOperations:
             )
 
         return final_result
+
+    def _get_query_helper(self) -> OdooQuery:
+        """Return the shared ``OdooQuery`` helper for this environment."""
+        if self._query_helper is None:
+            self._query_helper = OdooQuery(self.env_config)
+        return self._query_helper
+
+    @staticmethod
+    def _probe_binary(configured_value: Any, fallbacks: list[str]) -> BinaryProbe:
+        """Resolve a configured or auto-detected binary into a typed probe."""
+        configured_text = str(configured_value) if configured_value else None
+        if configured_text:
+            resolved_path = configured_text
+            auto_detected = False
+        else:
+            resolved_path = None
+            auto_detected = False
+            for candidate in fallbacks:
+                detected = shutil.which(candidate)
+                if detected:
+                    resolved_path = detected
+                    auto_detected = True
+                    break
+
+        exists = bool(resolved_path and os.path.exists(resolved_path))
+        executable = bool(resolved_path and os.access(resolved_path, os.X_OK))
+        return BinaryProbe(
+            value=configured_text,
+            resolved_path=resolved_path,
+            exists=exists,
+            executable=executable,
+            configured=configured_text is not None,
+            auto_detected=auto_detected,
+        )
+
+    @staticmethod
+    def _build_check(
+        name: str,
+        status: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+        remediation: str | None = None,
+    ) -> dict[str, Any]:
+        """Build a doctor-style check entry for programmatic context output."""
+        check: dict[str, Any] = {
+            "name": name,
+            "status": status,
+            "message": message,
+        }
+        if details:
+            check["details"] = details
+        if remediation:
+            check["remediation"] = remediation
+        return check
+
+    @staticmethod
+    def _get_addon_type(addon_name: str, odoo_series: OdooSeries | None) -> str:
+        """Classify an addon as core CE, core EE, or custom."""
+        if odoo_series:
+            if is_core_ce_addon(addon_name, odoo_series):
+                return "core_ce"
+            if is_core_ee_addon(addon_name, odoo_series):
+                return "core_ee"
+        return "custom"
+
+    def get_environment_context(
+        self,
+        env_name: str | None = None,
+        config_source: str | None = None,
+        config_path: str | None = None,
+        odoo_series: OdooSeries | None = None,
+    ) -> EnvironmentContext:
+        """Return a typed environment snapshot for planning and inspection.
+
+        Args:
+            env_name: Optional display name for the active environment.
+            config_source: Optional source description such as ``env`` or ``local``.
+            config_path: Optional path to the resolved configuration file.
+            odoo_series: Optional pre-detected Odoo series override.
+
+        Returns:
+            Typed environment context with resolved binaries, addon paths,
+            duplicate modules, and doctor-style summary data.
+        """
+        env_config = self.env_config
+        checks: list[dict[str, Any]] = []
+        remediation: list[str] = []
+        warnings: list[str] = []
+
+        python_info = self._probe_binary(
+            env_config.get("python_bin"), ["python3", "python"]
+        )
+        odoo_info = self._probe_binary(env_config.get("odoo_bin"), ["odoo", "odoo-bin"])
+        coverage_info = self._probe_binary(env_config.get("coverage_bin"), ["coverage"])
+
+        for name, probe, label in (
+            ("python_bin", python_info, "python_bin"),
+            ("odoo_bin", odoo_info, "odoo_bin"),
+            ("coverage_bin", coverage_info, "coverage_bin"),
+        ):
+            if probe.exists and probe.executable:
+                checks.append(
+                    self._build_check(
+                        name,
+                        "ok",
+                        f"{label} resolves correctly",
+                        details={"resolved_path": probe.resolved_path},
+                    )
+                )
+            else:
+                remediation_text = (
+                    f"Configure `{label}` so it points to an executable binary."
+                )
+                checks.append(
+                    self._build_check(
+                        name,
+                        "error" if name != "coverage_bin" else "warning",
+                        f"{label} could not be resolved",
+                        details={"configured_value": probe.value},
+                        remediation=remediation_text,
+                    )
+                )
+                if name != "coverage_bin":
+                    remediation.append(remediation_text)
+                    warnings.append(f"{label} could not be resolved")
+
+        addons_path = str(env_config.get("addons_path", ""))
+        path_manager = AddonsPathManager(addons_path) if addons_path else None
+        configured_paths = path_manager.get_configured_paths() if path_manager else []
+        base_paths = path_manager.get_base_addons_paths() if path_manager else []
+        all_paths = path_manager.get_all_paths() if path_manager else []
+        valid_paths: list[str] = []
+        invalid_paths: list[str] = []
+        for path in configured_paths:
+            absolute_path = os.path.abspath(path)
+            if os.path.isdir(absolute_path):
+                valid_paths.append(absolute_path)
+            else:
+                invalid_paths.append(path)
+
+        if invalid_paths:
+            remediation_text = (
+                "Fix `addons_path` so every configured path exists and is a directory."
+            )
+            checks.append(
+                self._build_check(
+                    "addons_path",
+                    "error",
+                    f"Configured addons paths are invalid: {', '.join(invalid_paths)}",
+                    details={"invalid_paths": invalid_paths},
+                    remediation=remediation_text,
+                )
+            )
+            remediation.append(remediation_text)
+            warnings.append("Configured addons paths contain invalid entries")
+        elif configured_paths:
+            checks.append(
+                self._build_check(
+                    "addons_path",
+                    "ok",
+                    f"Configured addons paths are valid ({len(valid_paths)} path(s))",
+                    details={"configured_paths": valid_paths},
+                )
+            )
+        else:
+            remediation_text = (
+                "Set `addons_path` before running addon inspection commands."
+            )
+            checks.append(
+                self._build_check(
+                    "addons_path",
+                    "error",
+                    "addons_path is not configured",
+                    remediation=remediation_text,
+                )
+            )
+            remediation.append(remediation_text)
+
+        duplicate_modules = (
+            path_manager.find_duplicate_module_names() if path_manager else {}
+        )
+        if duplicate_modules:
+            remediation_text = (
+                "Remove or reorder duplicate addon paths to avoid ambiguous "
+                "module resolution."
+            )
+            checks.append(
+                self._build_check(
+                    "duplicate_addons",
+                    "warning",
+                    "Duplicate addon names found: "
+                    f"{', '.join(sorted(duplicate_modules))}",
+                    details={"duplicates": duplicate_modules},
+                    remediation=remediation_text,
+                )
+            )
+            remediation.append(remediation_text)
+            warnings.append("Duplicate addon names found")
+
+        module_manager = (
+            ModuleManager(addons_path) if addons_path and not invalid_paths else None
+        )
+        available_module_count = 0
+        detected_series = odoo_series
+        if module_manager is not None:
+            modules = module_manager.find_modules(skip_invalid=True)
+            available_module_count = len(modules)
+            checks.append(
+                self._build_check(
+                    "addons_scan",
+                    "ok",
+                    f"Discovered {available_module_count} addon(s)",
+                    details={"module_count": available_module_count},
+                )
+            )
+            if detected_series is None:
+                detected_series = module_manager.detect_odoo_series()
+
+        version_result = self.get_odoo_version(suppress_output=True)
+        if version_result.get("success") and version_result.get("version"):
+            checks.append(
+                self._build_check(
+                    "odoo_version",
+                    "ok",
+                    f"Detected Odoo version {version_result['version']}",
+                    details={"version": version_result.get("version")},
+                )
+            )
+        else:
+            remediation_text = (
+                "Check `odoo_bin` and inspect the version command output."
+            )
+            checks.append(
+                self._build_check(
+                    "odoo_version",
+                    "error",
+                    "Failed to detect Odoo version",
+                    details={"error": version_result.get("error")},
+                    remediation=remediation_text,
+                )
+            )
+            remediation.append(remediation_text)
+
+        db_name = env_config.get("db_name")
+        db_user = env_config.get("db_user")
+        if db_name:
+            status = "ok" if db_user else "warning"
+            remediation_text = (
+                "Set `db_user` if the default PostgreSQL user is not correct."
+            )
+            checks.append(
+                self._build_check(
+                    "db_config",
+                    status,
+                    f"Database configuration is present for '{db_name}'",
+                    details={
+                        "db_name": db_name,
+                        "db_host": env_config.get("db_host") or "localhost",
+                        "db_user": db_user,
+                    },
+                    remediation=None if db_user else remediation_text,
+                )
+            )
+            if not db_user:
+                remediation.append(remediation_text)
+                warnings.append("db_user is not configured")
+        else:
+            checks.append(
+                self._build_check(
+                    "db_config",
+                    "warning",
+                    "db_name is not configured",
+                    remediation=(
+                        "Set `db_name` if this environment should target a database."
+                    ),
+                )
+            )
+
+        summary = {
+            "ok": sum(1 for check in checks if check["status"] == "ok"),
+            "warning": sum(1 for check in checks if check["status"] == "warning"),
+            "error": sum(1 for check in checks if check["status"] == "error"),
+        }
+
+        return EnvironmentContext(
+            environment=EnvironmentSource(
+                name=env_name,
+                source=config_source,
+                config_path=config_path,
+            ),
+            resolved_binaries={
+                "python_bin": python_info,
+                "odoo_bin": odoo_info,
+                "coverage_bin": coverage_info,
+            },
+            addons_paths=AddonsPathStatus(
+                configured=configured_paths,
+                base=base_paths,
+                all=all_paths,
+                valid=valid_paths,
+                invalid=invalid_paths,
+            ),
+            odoo=OdooVersionInfo(
+                version=version_result.get("version"),
+                series=detected_series.value if detected_series else None,
+            ),
+            database=DatabaseSummary(
+                db_name=db_name,
+                db_host=env_config.get("db_host") or "localhost",
+                db_user=db_user,
+            ),
+            duplicate_modules=duplicate_modules,
+            available_module_count=available_module_count,
+            invalid_addon_paths=invalid_paths,
+            missing_critical_config=[
+                key
+                for key in ("python_bin", "odoo_bin", "addons_path")
+                if not env_config.get(key)
+            ],
+            doctor_summary=summary,
+            doctor_checks=checks,
+            warnings=list(dict.fromkeys(warnings)),
+            remediation=list(dict.fromkeys(remediation)),
+        )
+
+    def inspect_addon(
+        self,
+        module_name: str,
+        odoo_series: OdooSeries | None = None,
+    ) -> AddonInspection:
+        """Return a typed inspection payload for one addon.
+
+        Raises:
+            ModuleNotFoundError: If the module cannot be found in ``addons_path``.
+        """
+        addons_path = self.config.get_optional("addons_path")
+        module_manager = ModuleManager(str(addons_path or ""))
+        detected_series = odoo_series or module_manager.detect_odoo_series()
+        manifest = module_manager.get_manifest(module_name)
+        if manifest is None:
+            raise ModuleNotFoundError(
+                f"Module '{module_name}' was not found in addons_path"
+            )
+
+        warnings: list[str] = []
+        remediation: list[str] = []
+        reverse_dependencies = module_manager.get_reverse_dependencies(module_name)
+        raw_data = manifest.get_raw_data()
+
+        try:
+            missing_dependencies = module_manager.find_missing_dependencies(module_name)
+        except ValueError as exc:
+            missing_dependencies = []
+            warnings.append(str(exc))
+
+        dependency_cycle: list[str] = []
+        try:
+            install_order = module_manager.get_install_order(module_name)
+        except ValueError as exc:
+            install_order = []
+            warnings.append(str(exc))
+            dependency_cycle = module_manager.parse_cycle_error(str(exc))
+            if dependency_cycle:
+                remediation.append(
+                    "Break the dependency cycle before attempting installation "
+                    "or update."
+                )
+
+        if missing_dependencies:
+            remediation.append(
+                "Resolve missing dependencies before attempting installation or update."
+            )
+
+        return AddonInspection(
+            module=module_name,
+            exists=True,
+            module_path=module_manager.find_module_path(module_name),
+            addon_type=self._get_addon_type(module_name, detected_series),
+            version_display=module_manager.get_module_version_display(
+                module_name, detected_series
+            ),
+            manifest=raw_data,
+            manifest_fields=sorted(raw_data.keys()),
+            direct_dependencies=manifest.codependencies,
+            reverse_dependencies=reverse_dependencies,
+            reverse_dependency_count=len(reverse_dependencies),
+            install_order_slice=install_order,
+            install_order_available=bool(install_order),
+            dependency_cycle=dependency_cycle,
+            missing_dependencies=missing_dependencies,
+            impacted_modules=reverse_dependencies,
+            series=detected_series.value if detected_series else None,
+            python_dependencies=manifest.python_dependencies,
+            binary_dependencies=manifest.binary_dependencies,
+            warnings=warnings,
+            remediation=list(dict.fromkeys(remediation)),
+        )
+
+    def plan_update(
+        self,
+        module_name: str,
+        odoo_series: OdooSeries | None = None,
+    ) -> UpdatePlan:
+        """Return a typed, read-only update plan for one addon."""
+        inspection = self.inspect_addon(module_name, odoo_series=odoo_series)
+        addons_path = self.config.get_required("addons_path")
+        duplicate_modules = AddonsPathManager(addons_path).find_duplicate_module_names()
+        duplicate_name_risk = module_name in duplicate_modules
+        reverse_dependency_count = inspection.reverse_dependency_count
+        missing_dependencies = list(inspection.missing_dependencies)
+        dependency_cycle = list(inspection.dependency_cycle)
+
+        risk_factors: list[str] = []
+        risk_score = 0
+        if reverse_dependency_count:
+            risk_score += min(reverse_dependency_count * 10, 40)
+            risk_factors.append(
+                f"{reverse_dependency_count} reverse dependencies would be affected"
+            )
+        if missing_dependencies:
+            risk_score += min(len(missing_dependencies) * 20, 30)
+            risk_factors.append("module has missing dependencies")
+        if duplicate_name_risk:
+            risk_score += 20
+            risk_factors.append("module name is duplicated across addons paths")
+        if dependency_cycle:
+            risk_score += 30
+            risk_factors.append("dependency graph contains a cycle")
+        if inspection.addon_type == "custom":
+            risk_score += 10
+            risk_factors.append(
+                "custom addon changes should be validated in the target DB"
+            )
+
+        risk_level = "low"
+        if risk_score >= 50:
+            risk_level = "high"
+        elif risk_score >= 20:
+            risk_level = "medium"
+
+        backup_advised = reverse_dependency_count > 0 or duplicate_name_risk
+        verification_steps = [
+            f"Run targeted tests for `{module_name}` before and after the update.",
+            f"Inspect reverse dependencies for `{module_name}` before "
+            "updating dependent addons.",
+        ]
+        if inspection.reverse_dependencies:
+            verification_steps.append(
+                "Retest at least one impacted reverse dependency after the update."
+            )
+
+        remediation = list(inspection.remediation)
+        if backup_advised:
+            remediation.append(
+                "Take a database backup before updating this module in a "
+                "shared environment."
+            )
+
+        return UpdatePlan(
+            module=module_name,
+            exists=True,
+            impact_set=list(inspection.reverse_dependencies),
+            impact_count=reverse_dependency_count,
+            missing_dependencies=missing_dependencies,
+            duplicate_name_risk=duplicate_name_risk,
+            duplicate_module_locations=duplicate_modules.get(module_name, []),
+            dependency_cycle=dependency_cycle,
+            cycle_risk=bool(dependency_cycle),
+            ordering_constraints=list(inspection.install_order_slice),
+            recommended_sequence=[
+                "Review dependency and duplicate-module warnings.",
+                *(
+                    ["Take a database backup."]
+                    if backup_advised
+                    else ["A dedicated backup is optional for this change."]
+                ),
+                f"Update `{module_name}`.",
+                "Run targeted validation and tests.",
+            ],
+            backup_advised=backup_advised,
+            risk_score=risk_score,
+            risk_level=risk_level,
+            risk_factors=risk_factors,
+            verification_steps=verification_steps,
+            inspection=inspection,
+            warnings=list(dict.fromkeys(inspection.warnings)),
+            remediation=list(dict.fromkeys(remediation)),
+        )
+
+    def query_model(
+        self,
+        model: str,
+        domain: list[Any] | tuple[Any, ...] | None = None,
+        fields: list[str] | tuple[str, ...] | None = None,
+        limit: int = 80,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> QueryModelResult:
+        """Delegate typed read-only model queries to ``OdooQuery``."""
+        return QueryModelResult.from_dict(
+            self._get_query_helper().query_model(
+                model,
+                domain=domain,
+                fields=fields,
+                limit=limit,
+                database=database,
+                timeout=timeout,
+            )
+        )
+
+    def read_record(
+        self,
+        model: str,
+        record_id: int,
+        fields: list[str] | tuple[str, ...] | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> RecordReadResult:
+        """Delegate typed single-record reads to ``OdooQuery``."""
+        return RecordReadResult.from_dict(
+            self._get_query_helper().read_record(
+                model,
+                record_id,
+                fields=fields,
+                database=database,
+                timeout=timeout,
+            )
+        )
+
+    def search_count(
+        self,
+        model: str,
+        domain: list[Any] | tuple[Any, ...] | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> SearchCountResult:
+        """Delegate typed count queries to ``OdooQuery``."""
+        return SearchCountResult.from_dict(
+            self._get_query_helper().search_count(
+                model,
+                domain=domain,
+                database=database,
+                timeout=timeout,
+            )
+        )
+
+    def get_model_fields(
+        self,
+        model: str,
+        attributes: list[str] | tuple[str, ...] | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> ModelFieldsResult:
+        """Delegate typed field metadata queries to ``OdooQuery``."""
+        return ModelFieldsResult.from_dict(
+            self._get_query_helper().get_model_fields(
+                model,
+                attributes=attributes,
+                database=database,
+                timeout=timeout,
+            )
+        )
 
     def execute_python_code(
         self,

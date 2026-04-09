@@ -150,7 +150,10 @@ def test_sort_modules_topological_circular_dependency(tmp_path):
     manager = ModuleManager(str(addon_dir))
     modules = ["module_a", "module_b"]
 
-    with pytest.raises(ValueError, match="Circular dependency"):
+    with pytest.raises(
+        ValueError,
+        match="Circular dependency detected: module_a -> module_b -> module_a",
+    ):
         manager.sort_modules(modules, SortingChoice.TOPOLOGICAL)
 
 

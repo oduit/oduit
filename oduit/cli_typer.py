@@ -10,7 +10,8 @@ import functools
 import json
 import os
 import shutil
-from typing import Any
+from dataclasses import replace
+from typing import Any, NoReturn
 
 import click
 import typer
@@ -27,11 +28,13 @@ from .cli_types import (
     ShellInterface,
 )
 from .config_loader import ConfigLoader
+from .exceptions import ModuleNotFoundError as OduitModuleNotFoundError
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
 from .output import configure_output, print_error, print_info, print_warning
+from .schemas import CONTROLLED_MUTATION, SAFE_READ_ONLY
 from .utils import (
-    JSON_SCHEMA_VERSION,
+    build_json_payload,
     format_dependency_tree,
     output_result_to_json,
     validate_addon_name,
@@ -237,6 +240,7 @@ def _print_command_error_result(
     message: str,
     error_type: str = "CommandError",
     details: dict[str, Any] | None = None,
+    remediation: list[str] | None = None,
 ) -> None:
     """Print a command error in text or JSON mode."""
     if global_config.format == OutputFormat.JSON:
@@ -247,11 +251,44 @@ def _print_command_error_result(
                 "error": message,
                 "error_type": error_type,
             },
-            additional_fields=details,
+            additional_fields={
+                **(details or {}),
+                "remediation": remediation or [],
+            },
         )
         print(json.dumps(payload))
     else:
         print_error(message)
+
+
+def _dependency_error_details(
+    module_manager: ModuleManager, message: str
+) -> dict[str, Any]:
+    """Build structured details for dependency-related CLI failures."""
+    cycle_path = module_manager.parse_cycle_error(message)
+    if not cycle_path:
+        return {}
+    return {
+        "cycle_path": cycle_path,
+        "cycle_length": len(cycle_path) - 1,
+    }
+
+
+def _confirmation_required_error(
+    global_config: GlobalConfig,
+    operation: str,
+    message: str,
+    remediation: list[str],
+) -> None:
+    """Fail fast when non-interactive mode forbids prompting."""
+    _print_command_error_result(
+        global_config,
+        operation,
+        message,
+        error_type="ConfirmationRequired",
+        remediation=remediation,
+    )
+    raise typer.Exit(1) from None
 
 
 def _build_doctor_report(global_config: GlobalConfig) -> dict[str, Any]:
@@ -624,19 +661,48 @@ def _build_doctor_report(global_config: GlobalConfig) -> dict[str, Any]:
         "error": sum(1 for check in checks if check["status"] == "error"),
     }
 
-    return {
-        "schema_version": JSON_SCHEMA_VERSION,
-        "type": "doctor_report",
-        "success": summary["error"] == 0,
-        "source": {
-            "kind": global_config.config_source,
-            "env_name": global_config.env_name,
-            "config_path": global_config.config_path,
+    warning_messages = [
+        check["message"] for check in checks if check.get("status") == "warning"
+    ]
+    error_checks = [check for check in checks if check.get("status") == "error"]
+    error_message = None
+    error_type = None
+    if error_checks:
+        error_message = (
+            f"Doctor found {len(error_checks)} failing check(s): "
+            + ", ".join(check["name"] for check in error_checks)
+        )
+        error_type = "DoctorCheckError"
+
+    return build_json_payload(
+        "doctor_report",
+        {
+            "operation": "doctor",
+            "success": summary["error"] == 0,
+            "source": {
+                "kind": global_config.config_source,
+                "env_name": global_config.env_name,
+                "config_path": global_config.config_path,
+            },
+            "checks": checks,
+            "summary": summary,
+            "next_steps": next_steps,
+            "warnings": warning_messages,
+            "errors": [
+                {
+                    "check": check["name"],
+                    "message": check["message"],
+                }
+                for check in error_checks
+            ],
+            "remediation": next_steps,
+            "error": error_message,
+            "error_type": error_type,
+            "read_only": True,
+            "safety_level": "safe_read_only",
         },
-        "checks": checks,
-        "summary": summary,
-        "next_steps": next_steps,
-    }
+        success=summary["error"] == 0,
+    )
 
 
 def _print_doctor_report(report: dict[str, Any]) -> None:
@@ -684,6 +750,7 @@ def _print_doctor_report(report: dict[str, Any]) -> None:
 def create_global_config(
     env: str | None = None,
     json: bool = False,
+    non_interactive: bool = False,
     verbose: bool = False,
     no_http: bool = False,
     odoo_series: OdooSeries | None = None,
@@ -732,6 +799,7 @@ def create_global_config(
 
     return GlobalConfig(
         env=env,
+        non_interactive=non_interactive,
         format=format,
         verbose=verbose,
         no_http=no_http,
@@ -781,6 +849,227 @@ Examples:
     """,
     no_args_is_help=False,  # Allow no args for interactive mode
 )
+agent_app = typer.Typer(help="Agent-first structured inspection and planning commands")
+app.add_typer(agent_app, name="agent")
+
+
+def _agent_emit_payload(payload: dict[str, Any]) -> None:
+    """Print a structured agent payload."""
+    print(json.dumps(payload))
+
+
+def _agent_fail(
+    operation: str,
+    result_type: str,
+    message: str,
+    error_type: str = "CommandError",
+    details: dict[str, Any] | None = None,
+    remediation: list[str] | None = None,
+    read_only: bool = True,
+    safety_level: str = SAFE_READ_ONLY,
+) -> NoReturn:
+    """Emit a structured agent error payload and exit."""
+    payload = output_result_to_json(
+        {
+            "success": False,
+            "operation": operation,
+            "error": message,
+            "error_type": error_type,
+        },
+        additional_fields={
+            **(details or {}),
+            "remediation": remediation or [],
+            "read_only": read_only,
+            "safety_level": safety_level,
+        },
+        result_type=result_type,
+    )
+    _agent_emit_payload(payload)
+    raise typer.Exit(1) from None
+
+
+def _agent_payload(
+    operation: str,
+    result_type: str,
+    data: dict[str, Any],
+    *,
+    success: bool = True,
+    warnings: list[str] | None = None,
+    errors: list[dict[str, Any]] | None = None,
+    remediation: list[str] | None = None,
+    read_only: bool = True,
+    safety_level: str = SAFE_READ_ONLY,
+    error: str | None = None,
+    error_type: str | None = None,
+    include_null_values: bool = False,
+    exclude_fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a structured agent payload using the shared JSON envelope."""
+    return output_result_to_json(
+        {
+            "success": success,
+            "operation": operation,
+            "error": error,
+            "error_type": error_type,
+            **data,
+        },
+        additional_fields={
+            "warnings": warnings or [],
+            "errors": errors or [],
+            "remediation": remediation or [],
+            "read_only": read_only,
+            "safety_level": safety_level,
+        },
+        exclude_fields=exclude_fields,
+        include_null_values=include_null_values,
+        result_type=result_type,
+    )
+
+
+def _resolve_agent_global_config(
+    ctx: typer.Context,
+    operation: str,
+    result_type: str,
+) -> GlobalConfig:
+    """Resolve configuration for agent commands without emitting text output."""
+    if ctx.obj is None:
+        _agent_fail(
+            operation,
+            result_type,
+            "No global configuration found",
+            remediation=[
+                "Pass `--env <name>` or run the command from a directory "
+                "with `.oduit.toml`.",
+            ],
+        )
+
+    if isinstance(ctx.obj, GlobalConfig):
+        return replace(
+            ctx.obj,
+            format=OutputFormat.JSON,
+            verbose=False,
+            non_interactive=True,
+        )
+
+    options = dict(ctx.obj)
+    env = options.get("env")
+    no_http = bool(options.get("no_http", False))
+    odoo_series = options.get("odoo_series")
+    config_loader = ConfigLoader()
+
+    env_config = None
+    env_name = None
+    try:
+        if env is None:
+            if not config_loader.has_local_config():
+                _agent_fail(
+                    operation,
+                    result_type,
+                    "No environment specified and no .oduit.toml found in "
+                    "current directory",
+                    error_type="ConfigError",
+                    remediation=[
+                        "Pass `--env <name>` to select a named environment.",
+                        "Or create a local `.oduit.toml` file in the current "
+                        "directory.",
+                    ],
+                )
+            env_config = config_loader.load_local_config()
+            env_name = "local"
+        else:
+            env_name = str(env).strip()
+            env_config = config_loader.load_config(env_name)
+    except (FileNotFoundError, ImportError, ValueError) as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            remediation=[
+                "Verify the requested environment exists and the config file is valid.",
+            ],
+        )
+    except Exception as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            f"Error loading environment '{env_name or 'local'}': {exc}",
+            error_type="ConfigError",
+            remediation=[
+                "Check the environment configuration and try again.",
+            ],
+        )
+
+    config_source, config_path = _resolve_config_source(config_loader, env, env_config)
+    return GlobalConfig(
+        env=env,
+        non_interactive=True,
+        format=OutputFormat.JSON,
+        verbose=False,
+        no_http=no_http,
+        env_config=env_config,
+        env_name=env_name,
+        odoo_series=odoo_series,
+        config_source=config_source,
+        config_path=config_path,
+    )
+
+
+def _parse_csv_items(raw_value: str | None) -> list[str] | None:
+    """Parse a comma-separated CLI option into a list of strings."""
+    if raw_value is None:
+        return None
+    items = [item.strip() for item in raw_value.split(",") if item.strip()]
+    return items or None
+
+
+def _parse_json_list_option(
+    raw_value: str | None,
+    option_name: str,
+    operation: str,
+    result_type: str,
+) -> list[Any]:
+    """Parse a JSON-encoded list option or emit a structured error."""
+    if raw_value is None:
+        return []
+
+    parsed: Any = None
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            f"{option_name} must be valid JSON: {exc.msg}",
+            details={option_name: raw_value},
+            remediation=[
+                f"Pass `{option_name}` as a JSON array, for example "
+                f'\'["name", "=", "Acme"]\'.',
+            ],
+        )
+
+    if not isinstance(parsed, list):
+        _agent_fail(
+            operation,
+            result_type,
+            f"{option_name} must decode to a JSON array",
+            details={option_name: raw_value},
+            remediation=[
+                f"Pass `{option_name}` as a JSON array value.",
+            ],
+        )
+
+    return parsed
+
+
+def _get_agent_addon_type(addon_name: str, odoo_series: OdooSeries | None) -> str:
+    """Return a machine-oriented addon classification."""
+    addon_type = _get_addon_type(addon_name, odoo_series)
+    if addon_type == "Odoo CE (Community)":
+        return "core_ce"
+    if addon_type == "Odoo EE (Enterprise)":
+        return "core_ee"
+    return "custom"
 
 
 @app.callback(invoke_without_command=True)
@@ -801,6 +1090,11 @@ def main(
         "-j",
         help="Output in JSON format",
     ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Fail instead of prompting for confirmation",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -820,6 +1114,7 @@ def main(
     ctx.obj = {
         "env": env,
         "json": json,
+        "non_interactive": non_interactive,
         "verbose": verbose,
         "no_http": no_http,
         "odoo_series": odoo_series,
@@ -845,11 +1140,13 @@ def main(
             print("  print-manifest NAME   Print addon manifest information")
             print("  list-depends MODULES   List direct dependencies for installation")
             print("  install-order MODULES Dependency-resolved install order")
-            print("  list-codepends MODULE  List codependencies of a module")
+            print("  list-codepends MODULE  List reverse dependencies of a module")
             print("  impact-of-update MODULE  Addons affected by an update")
             print("  list-missing MODULES   Find missing dependencies")
+            print("  list-duplicates     List duplicate addon names")
             print("  export-lang MODULE Export language translations")
             print("  print-config       Print environment configuration")
+            print("  agent ...          Structured agent-first inspection commands")
             print("")
             print("Examples:")
             print("  oduit run                         # Run with local .oduit.toml")
@@ -869,9 +1166,10 @@ def main(
             )
             print(
                 "  create-addon, list-addons, print-manifest, list-depends, "
-                "install-order, list-codepends, impact-of-update, list-missing"
+                "install-order, list-codepends, impact-of-update, list-missing, "
+                "list-duplicates"
             )
-            print("  export-lang, print-config")
+            print("  export-lang, print-config, agent")
             print("")
             print("Examples:")
             print("  oduit --env dev run               # Run Odoo server")
@@ -1335,6 +1633,7 @@ def create_db(
         raise typer.Exit(1) from None
 
     db_name = global_config.env_config.get("db_name", "Unknown")
+    effective_non_interactive = non_interactive or global_config.non_interactive
 
     odoo_operations = OdooOperations(
         global_config.env_config, verbose=global_config.verbose
@@ -1352,8 +1651,19 @@ def create_db(
     # Handle existing database
     if db_exists:
         if drop:
-            confirmation = "y"
-            if not non_interactive:
+            confirmation = ""
+            if effective_non_interactive:
+                _confirmation_required_error(
+                    global_config,
+                    "create_db",
+                    f"Database '{db_name}' already exists and dropping it "
+                    "requires confirmation.",
+                    remediation=[
+                        "Re-run without `--non-interactive` to confirm the drop.",
+                        "Or remove `--drop` if the existing database should be kept.",
+                    ],
+                )
+            else:
                 print_warning(f"Database '{db_name}' already exists.")
                 message = "Do you want to drop it before creating?"
                 confirmation = input(f"{message} (y/N): ").strip().lower()
@@ -1378,8 +1688,18 @@ def create_db(
             raise typer.Exit(1) from None
 
     # Create database
-    confirmation = "y"
-    if not non_interactive and not db_exists:
+    confirmation = ""
+    if not db_exists:
+        if effective_non_interactive:
+            _confirmation_required_error(
+                global_config,
+                "create_db",
+                f"Creating database '{db_name}' requires confirmation in "
+                "non-interactive mode.",
+                remediation=[
+                    "Re-run without `--non-interactive` to confirm database creation.",
+                ],
+            )
         print_warning(f"This will create a new database named '{db_name}'.")
         message = "Are you sure you want to create a new database?"
         confirmation = input(f"{message} (y/N): ").strip().lower()
@@ -2218,6 +2538,67 @@ def list_manifest_values(
             print(value)
 
 
+@app.command("list-duplicates")
+def list_duplicates(ctx: typer.Context) -> None:
+    """List duplicate addon names across configured addon paths."""
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            global_config = create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as e:
+            print_error(f"Failed to create global config: {e}")
+            raise typer.Exit(1) from None
+    else:
+        global_config = ctx.obj
+
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+
+    addons_path = global_config.env_config.get("addons_path")
+    if not addons_path:
+        _print_command_error_result(
+            global_config,
+            "list_duplicates",
+            "addons_path is not configured",
+            error_type="ConfigError",
+            remediation=[
+                "Set `addons_path` before running duplicate-module analysis.",
+            ],
+        )
+        raise typer.Exit(1) from None
+
+    path_manager = AddonsPathManager(str(addons_path))
+    duplicate_modules = path_manager.find_duplicate_module_names()
+
+    if global_config.format == OutputFormat.JSON:
+        payload = output_result_to_json(
+            {
+                "success": True,
+                "operation": "list_duplicates",
+                "duplicate_modules": duplicate_modules,
+                "duplicate_count": len(duplicate_modules),
+            },
+            result_type="duplicate_modules",
+        )
+        print(json.dumps(payload))
+        return
+
+    if not duplicate_modules:
+        print_info("No duplicate addon names found")
+        return
+
+    for module_name in sorted(duplicate_modules):
+        print(f"{module_name}:")
+        for location in duplicate_modules[module_name]:
+            print(f"  - {location}")
+
+
 def _print_dependency_tree(
     module_list: list[str],
     module_manager: ModuleManager,
@@ -2392,17 +2773,17 @@ def list_depends(
 @app.command("list-codepends")
 def list_codepends(
     ctx: typer.Context,
-    module: str = typer.Argument(help="Module to check codependencies for"),
+    module: str = typer.Argument(help="Module to inspect reverse dependencies for"),
     separator: str | None = typer.Option(
         None,
         "--separator",
         help="Separator for output (e.g., ',' for 'a,b,c')",
     ),
 ) -> None:
-    """List codependencies for a module.
+    """List reverse dependencies for a module.
 
-    Codependencies are modules that depend on the specified module, meaning
-    changes to the specified module may impact those modules.
+    The output includes the selected module itself plus any modules that
+    directly or indirectly depend on it.
     """
     if ctx.obj is None:
         print_error("No global configuration found")
@@ -2425,10 +2806,10 @@ def list_codepends(
 
     module_manager = ModuleManager(global_config.env_config["addons_path"])
 
-    codependencies = module_manager.get_reverse_dependencies(module)
+    reverse_dependencies = module_manager.get_reverse_dependencies(module)
 
     # Include the selected module itself in the output
-    all_codeps = sorted(codependencies + [module])
+    all_codeps = sorted(reverse_dependencies + [module])
 
     if separator:
         if all_codeps:
@@ -2437,7 +2818,7 @@ def list_codepends(
         for dep in all_codeps:
             print(f"{dep}")
     else:
-        print_info(f"Module '{module}' has no codependencies")
+        print_info(f"Module '{module}' has no reverse dependencies")
 
 
 @app.command("install-order")
@@ -2531,12 +2912,25 @@ def install_order(
     try:
         ordered_modules = module_manager.get_install_order(*module_list)
     except ValueError as e:
+        cycle_details = _dependency_error_details(module_manager, str(e))
         _print_command_error_result(
             global_config,
             "install_order",
             f"Failed to compute install order: {e}",
-            error_type="DependencyError",
-            details={"modules": module_list, "select_dir": select_dir},
+            error_type=("DependencyCycleError" if cycle_details else "DependencyError"),
+            details={
+                "modules": module_list,
+                "select_dir": select_dir,
+                **cycle_details,
+            },
+            remediation=(
+                [
+                    "Resolve the dependency cycle and retry the install-order "
+                    "analysis.",
+                ]
+                if cycle_details
+                else []
+            ),
         )
         raise typer.Exit(1) from None
 
@@ -3025,6 +3419,698 @@ def get_odoo_version_cmd(
         else:
             print_error("Failed to detect Odoo version")
             raise typer.Exit(1)
+
+
+def _build_environment_context_data(global_config: GlobalConfig) -> dict[str, Any]:
+    """Build a one-shot environment snapshot for agent workflows."""
+    env_config = global_config.env_config or {}
+    doctor_report = _build_doctor_report(global_config)
+    addons_path = str(env_config.get("addons_path", ""))
+    path_manager = AddonsPathManager(addons_path) if addons_path else None
+    configured_paths = path_manager.get_configured_paths() if path_manager else []
+    base_paths = path_manager.get_base_addons_paths() if path_manager else []
+    all_paths = path_manager.get_all_paths() if path_manager else []
+    valid_paths: list[str] = []
+    invalid_paths: list[str] = []
+    for path in configured_paths:
+        absolute_path = os.path.abspath(path)
+        if os.path.isdir(absolute_path):
+            valid_paths.append(absolute_path)
+        else:
+            invalid_paths.append(path)
+
+    duplicate_modules = (
+        path_manager.find_duplicate_module_names() if path_manager else {}
+    )
+    module_manager = (
+        ModuleManager(addons_path) if addons_path and not invalid_paths else None
+    )
+    available_module_count = 0
+    detected_series = None
+    if module_manager is not None:
+        available_module_count = len(module_manager.find_modules(skip_invalid=True))
+        detected_series = (
+            global_config.odoo_series or module_manager.detect_odoo_series()
+        )
+
+    python_info = _probe_binary(env_config.get("python_bin"), ["python3", "python"])
+    odoo_info = _probe_binary(env_config.get("odoo_bin"), ["odoo", "odoo-bin"])
+    coverage_info = _probe_binary(env_config.get("coverage_bin"), ["coverage"])
+
+    version_result = OdooOperations(env_config, verbose=False).get_odoo_version(
+        suppress_output=True
+    )
+
+    missing_critical_config = [
+        key
+        for key in ("python_bin", "odoo_bin", "addons_path")
+        if not env_config.get(key)
+    ]
+
+    return {
+        "environment": {
+            "name": global_config.env_name,
+            "source": global_config.config_source,
+            "config_path": global_config.config_path,
+        },
+        "resolved_binaries": {
+            "python_bin": python_info,
+            "odoo_bin": odoo_info,
+            "coverage_bin": coverage_info,
+        },
+        "addons_paths": {
+            "configured": configured_paths,
+            "base": base_paths,
+            "all": all_paths,
+            "valid": valid_paths,
+            "invalid": invalid_paths,
+        },
+        "odoo": {
+            "version": version_result.get("version"),
+            "series": detected_series.value if detected_series else None,
+        },
+        "database": {
+            "db_name": env_config.get("db_name"),
+            "db_host": env_config.get("db_host") or "localhost",
+            "db_user": env_config.get("db_user"),
+        },
+        "duplicate_modules": duplicate_modules,
+        "available_module_count": available_module_count,
+        "invalid_addon_paths": invalid_paths,
+        "missing_critical_config": missing_critical_config,
+        "doctor_summary": doctor_report.get("summary", {}),
+        "doctor_checks": doctor_report.get("checks", []),
+    }
+
+
+def _build_addon_inspection_data(
+    module_manager: ModuleManager,
+    module_name: str,
+    odoo_series: OdooSeries | None,
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Aggregate addon inspection data for a single module."""
+    manifest = module_manager.get_manifest(module_name)
+    if manifest is None:
+        raise ValueError(f"Module '{module_name}' was not found in addons_path")
+
+    warnings: list[str] = []
+    remediation: list[str] = []
+    module_path = module_manager.find_module_path(module_name)
+    reverse_dependencies = module_manager.get_reverse_dependencies(module_name)
+
+    try:
+        missing_dependencies = module_manager.find_missing_dependencies(module_name)
+    except ValueError as exc:
+        missing_dependencies = []
+        warnings.append(str(exc))
+
+    dependency_cycle: list[str] = []
+    try:
+        install_order = module_manager.get_install_order(module_name)
+    except ValueError as exc:
+        install_order = []
+        warnings.append(str(exc))
+        dependency_cycle = module_manager.parse_cycle_error(str(exc))
+        if dependency_cycle:
+            remediation.append(
+                "Break the dependency cycle before attempting installation or update."
+            )
+
+    if missing_dependencies:
+        remediation.append(
+            "Resolve missing dependencies before attempting installation or update."
+        )
+
+    raw_data = manifest.get_raw_data()
+    inspection = {
+        "module": module_name,
+        "exists": True,
+        "module_path": module_path,
+        "addon_type": _get_agent_addon_type(module_name, odoo_series),
+        "version_display": module_manager.get_module_version_display(
+            module_name, odoo_series
+        ),
+        "manifest": raw_data,
+        "manifest_fields": sorted(raw_data.keys()),
+        "direct_dependencies": manifest.codependencies,
+        "reverse_dependencies": reverse_dependencies,
+        "reverse_dependency_count": len(reverse_dependencies),
+        "install_order_slice": install_order,
+        "install_order_available": bool(install_order),
+        "dependency_cycle": dependency_cycle,
+        "missing_dependencies": missing_dependencies,
+        "impacted_modules": reverse_dependencies,
+        "series": odoo_series.value if odoo_series else None,
+        "python_dependencies": manifest.python_dependencies,
+        "binary_dependencies": manifest.binary_dependencies,
+    }
+    return inspection, warnings, remediation
+
+
+def _build_update_plan_data(
+    global_config: GlobalConfig,
+    module_name: str,
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Build a read-only update plan for a module."""
+    env_config = global_config.env_config or {}
+    module_manager = ModuleManager(str(env_config.get("addons_path", "")))
+    detected_series = global_config.odoo_series or module_manager.detect_odoo_series()
+    inspection, warnings, remediation = _build_addon_inspection_data(
+        module_manager,
+        module_name,
+        detected_series,
+    )
+
+    duplicate_modules = AddonsPathManager(
+        env_config["addons_path"]
+    ).find_duplicate_module_names()
+    duplicate_name_risk = module_name in duplicate_modules
+    reverse_dependency_count = int(inspection["reverse_dependency_count"])
+    missing_dependencies = list(inspection["missing_dependencies"])
+    dependency_cycle = list(inspection.get("dependency_cycle", []))
+
+    risk_factors: list[str] = []
+    risk_score = 0
+    if reverse_dependency_count:
+        risk_score += min(reverse_dependency_count * 10, 40)
+        risk_factors.append(
+            f"{reverse_dependency_count} reverse dependencies would be affected"
+        )
+    if missing_dependencies:
+        risk_score += min(len(missing_dependencies) * 20, 30)
+        risk_factors.append("module has missing dependencies")
+    if duplicate_name_risk:
+        risk_score += 20
+        risk_factors.append("module name is duplicated across addons paths")
+    if dependency_cycle:
+        risk_score += 30
+        risk_factors.append("dependency graph contains a cycle")
+    if inspection["addon_type"] == "custom":
+        risk_score += 10
+        risk_factors.append("custom addon changes should be validated in the target DB")
+
+    risk_level = "low"
+    if risk_score >= 50:
+        risk_level = "high"
+    elif risk_score >= 20:
+        risk_level = "medium"
+
+    backup_advised = reverse_dependency_count > 0 or duplicate_name_risk
+    verification_steps = [
+        f"Run `oduit agent test-summary --module {module_name} "
+        f"--test-tags /{module_name}`.",
+        f"Inspect reverse dependencies for `{module_name}` before "
+        "updating dependent addons.",
+    ]
+    if inspection["reverse_dependencies"]:
+        verification_steps.append(
+            "Retest at least one impacted reverse dependency after the update."
+        )
+    if backup_advised:
+        remediation.append(
+            "Take a database backup before updating this module in a shared "
+            "environment."
+        )
+
+    plan_data = {
+        "module": module_name,
+        "exists": True,
+        "impact_set": inspection["reverse_dependencies"],
+        "impact_count": reverse_dependency_count,
+        "missing_dependencies": missing_dependencies,
+        "duplicate_name_risk": duplicate_name_risk,
+        "duplicate_module_locations": duplicate_modules.get(module_name, []),
+        "dependency_cycle": dependency_cycle,
+        "cycle_risk": bool(dependency_cycle),
+        "ordering_constraints": inspection["install_order_slice"],
+        "recommended_sequence": [
+            "Review dependency and duplicate-module warnings.",
+            *(
+                ["Take a database backup."]
+                if backup_advised
+                else ["A dedicated backup is optional for this change."]
+            ),
+            f"Update `{module_name}`.",
+            "Run targeted validation and tests.",
+        ],
+        "backup_advised": backup_advised,
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "risk_factors": risk_factors,
+        "verification_steps": verification_steps,
+        "inspection": inspection,
+    }
+    return plan_data, warnings, remediation
+
+
+@agent_app.command("context")
+def agent_context(ctx: typer.Context) -> None:
+    """Return a structured environment snapshot for automation."""
+    operation = "agent_context"
+    result_type = "environment_context"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(
+            operation,
+            result_type,
+            "No environment configuration available",
+            error_type="ConfigError",
+        )
+    assert global_config.env_config is not None
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    context = ops.get_environment_context(
+        env_name=global_config.env_name,
+        config_source=global_config.config_source,
+        config_path=global_config.config_path,
+        odoo_series=global_config.odoo_series,
+    )
+    payload = _agent_payload(
+        operation,
+        result_type,
+        context.to_dict(),
+        warnings=list(context.warnings),
+        remediation=list(context.remediation),
+        read_only=True,
+        safety_level=SAFE_READ_ONLY,
+    )
+    _agent_emit_payload(payload)
+
+
+@agent_app.command("inspect-addon")
+def agent_inspect_addon(
+    ctx: typer.Context,
+    module: str = typer.Argument(help="Addon to inspect"),
+) -> None:
+    """Return a one-shot addon inspection payload."""
+    operation = "inspect_addon"
+    result_type = "addon_inspection"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    try:
+        inspection = ops.inspect_addon(
+            module,
+            odoo_series=global_config.odoo_series,
+        )
+    except OduitModuleNotFoundError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ModuleNotFoundError",
+            details={"module": module},
+            remediation=[
+                "Verify that the module exists in the configured addons paths.",
+                "Run `oduit agent context` to inspect the resolved addons paths.",
+            ],
+        )
+
+    payload = _agent_payload(
+        operation,
+        result_type,
+        inspection.to_dict(),
+        warnings=list(inspection.warnings),
+        remediation=list(inspection.remediation),
+        read_only=True,
+        safety_level=SAFE_READ_ONLY,
+    )
+    _agent_emit_payload(payload)
+
+
+@agent_app.command("plan-update")
+def agent_plan_update(
+    ctx: typer.Context,
+    module: str = typer.Argument(help="Addon to plan an update for"),
+) -> None:
+    """Return a structured, read-only update plan for a module."""
+    operation = "plan_update"
+    result_type = "update_plan"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    try:
+        plan = ops.plan_update(
+            module,
+            odoo_series=global_config.odoo_series,
+        )
+    except OduitModuleNotFoundError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ModuleNotFoundError",
+            details={"module": module},
+            remediation=[
+                "Verify that the module exists before planning the update.",
+                "Run `oduit agent inspect-addon <module>` to inspect discovery state.",
+            ],
+        )
+
+    payload = _agent_payload(
+        operation,
+        result_type,
+        plan.to_dict(),
+        warnings=list(plan.warnings),
+        remediation=list(plan.remediation),
+        read_only=True,
+        safety_level=SAFE_READ_ONLY,
+    )
+    _agent_emit_payload(payload)
+
+
+@agent_app.command("test-summary")
+def agent_test_summary(
+    ctx: typer.Context,
+    module: str | None = typer.Option(None, "--module", help="Module under test"),
+    install: str | None = typer.Option(
+        None,
+        "--install",
+        help="Install a module before running tests",
+    ),
+    update: str | None = typer.Option(
+        None,
+        "--update",
+        help="Update a module before running tests",
+    ),
+    coverage: str | None = typer.Option(
+        None,
+        "--coverage",
+        help="Generate coverage for a module",
+    ),
+    test_file: str | None = typer.Option(
+        None, "--test-file", help="Specific test file"
+    ),
+    test_tags: str | None = typer.Option(None, "--test-tags", help="Test tags filter"),
+    stop_on_error: bool = typer.Option(False, "--stop-on-error"),
+    compact: bool = typer.Option(False, "--compact"),
+    log_level: LogLevel | None = LOG_LEVEL_OPTION,
+) -> None:
+    """Run tests and emit a normalized summary payload."""
+    operation = "test_summary"
+    result_type = "test_summary"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    result = ops.run_tests(
+        module=module,
+        stop_on_error=stop_on_error,
+        install=install,
+        update=update,
+        coverage=coverage,
+        test_file=test_file,
+        test_tags=test_tags,
+        compact=compact,
+        suppress_output=True,
+        log_level=log_level.value if log_level else None,
+    )
+
+    selected_modules = [value for value in [module, install, update, coverage] if value]
+    failures = list(result.get("failures", []))
+    traceback_summary = [
+        {
+            "test_name": failure.get("test_name"),
+            "file": failure.get("file"),
+            "line": failure.get("line"),
+            "error_message": failure.get("error_message"),
+        }
+        for failure in failures
+    ]
+    suggested_next_steps: list[str] = []
+    if failures:
+        suggested_next_steps.append(
+            "Inspect the first failure traceback and reproduce it locally."
+        )
+    if selected_modules:
+        suggested_next_steps.append(
+            f"Retest the selected module set: {', '.join(selected_modules)}."
+        )
+    if coverage:
+        suggested_next_steps.append(
+            "Review the generated coverage report to identify untested files."
+        )
+
+    payload = _agent_payload(
+        operation,
+        result_type,
+        {
+            "selected_modules": selected_modules,
+            "selection": {
+                "module": module,
+                "install": install,
+                "update": update,
+                "coverage": coverage,
+                "test_file": test_file,
+                "test_tags": test_tags,
+            },
+            "total_tests": result.get("total_tests", 0),
+            "passed_tests": result.get("passed_tests", 0),
+            "failed_tests": result.get("failed_tests", 0),
+            "error_tests": result.get("error_tests", 0),
+            "failure_details": failures,
+            "traceback_summary": traceback_summary,
+            "coverage_summary": {
+                "requested": bool(coverage),
+                "module": coverage,
+                "available": bool(coverage),
+            },
+            "per_file_coverage": result.get("per_file_coverage", []),
+            "suggested_next_steps": suggested_next_steps,
+            "return_code": result.get("return_code"),
+            "command": result.get("command"),
+        },
+        success=result.get("success", False),
+        warnings=(
+            ["Per-file coverage entries are not currently normalized by run_tests()."]
+            if coverage
+            else []
+        ),
+        remediation=suggested_next_steps,
+        read_only=False,
+        safety_level=CONTROLLED_MUTATION,
+        error=result.get("error"),
+        error_type=result.get("error_type"),
+    )
+    _agent_emit_payload(payload)
+    if not result.get("success", False):
+        raise typer.Exit(1)
+
+
+@agent_app.command("query-model")
+def agent_query_model(
+    ctx: typer.Context,
+    model: str = typer.Argument(help="Model to query"),
+    domain_json: str | None = typer.Option(
+        None, "--domain-json", help="JSON array domain"
+    ),
+    fields: str | None = typer.Option(
+        None, "--fields", help="Comma-separated field names"
+    ),
+    limit: int = typer.Option(80, "--limit", help="Record limit"),
+    database: str | None = typer.Option(
+        None, "--database", help="Override database name"
+    ),
+    timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
+) -> None:
+    """Run a structured read-only model query."""
+    operation = "query_model"
+    result_type = "query_result"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    result = ops.query_model(
+        model,
+        domain=_parse_json_list_option(
+            domain_json, "domain_json", operation, result_type
+        ),
+        fields=_parse_csv_items(fields),
+        limit=limit,
+        database=database,
+        timeout=timeout,
+    )
+    payload = _agent_payload(
+        operation,
+        result_type,
+        result.to_dict(),
+        success=result.success,
+        remediation=(
+            [
+                "Review the validation error and retry the query with "
+                "literal-safe inputs."
+            ]
+            if not result.success
+            else []
+        ),
+        read_only=True,
+        safety_level=SAFE_READ_ONLY,
+        error=result.error,
+        error_type=result.error_type,
+    )
+    _agent_emit_payload(payload)
+    if not result.success:
+        raise typer.Exit(1)
+
+
+@agent_app.command("read-record")
+def agent_read_record(
+    ctx: typer.Context,
+    model: str = typer.Argument(help="Model to inspect"),
+    record_id: int = typer.Argument(help="Record id to read"),
+    fields: str | None = typer.Option(
+        None, "--fields", help="Comma-separated field names"
+    ),
+    database: str | None = typer.Option(
+        None, "--database", help="Override database name"
+    ),
+    timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
+) -> None:
+    """Read a single record by id via OdooQuery."""
+    operation = "read_record"
+    result_type = "record_result"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    result = ops.read_record(
+        model,
+        record_id,
+        fields=_parse_csv_items(fields),
+        database=database,
+        timeout=timeout,
+    )
+    payload = _agent_payload(
+        operation,
+        result_type,
+        result.to_dict(),
+        success=result.success,
+        remediation=(
+            ["Verify the record id and field names, then retry the read operation."]
+            if not result.success
+            else []
+        ),
+        read_only=True,
+        safety_level=SAFE_READ_ONLY,
+        error=result.error,
+        error_type=result.error_type,
+    )
+    _agent_emit_payload(payload)
+    if not result.success:
+        raise typer.Exit(1)
+
+
+@agent_app.command("search-count")
+def agent_search_count(
+    ctx: typer.Context,
+    model: str = typer.Argument(help="Model to count records for"),
+    domain_json: str | None = typer.Option(
+        None, "--domain-json", help="JSON array domain"
+    ),
+    database: str | None = typer.Option(
+        None, "--database", help="Override database name"
+    ),
+    timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
+) -> None:
+    """Count records matching a domain via OdooQuery."""
+    operation = "search_count"
+    result_type = "count_result"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    result = ops.search_count(
+        model,
+        domain=_parse_json_list_option(
+            domain_json, "domain_json", operation, result_type
+        ),
+        database=database,
+        timeout=timeout,
+    )
+    payload = _agent_payload(
+        operation,
+        result_type,
+        result.to_dict(),
+        success=result.success,
+        remediation=(
+            ["Verify the model name and domain syntax, then retry the search count."]
+            if not result.success
+            else []
+        ),
+        read_only=True,
+        safety_level=SAFE_READ_ONLY,
+        error=result.error,
+        error_type=result.error_type,
+    )
+    _agent_emit_payload(payload)
+    if not result.success:
+        raise typer.Exit(1)
+
+
+@agent_app.command("get-model-fields")
+def agent_get_model_fields(
+    ctx: typer.Context,
+    model: str = typer.Argument(help="Model to inspect"),
+    attributes: str | None = typer.Option(
+        None,
+        "--attributes",
+        help="Comma-separated field attributes",
+    ),
+    database: str | None = typer.Option(
+        None, "--database", help="Override database name"
+    ),
+    timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
+) -> None:
+    """Inspect model field metadata via OdooQuery."""
+    operation = "get_model_fields"
+    result_type = "model_fields"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    result = ops.get_model_fields(
+        model,
+        attributes=_parse_csv_items(attributes),
+        database=database,
+        timeout=timeout,
+    )
+    payload = _agent_payload(
+        operation,
+        result_type,
+        result.to_dict(),
+        success=result.success,
+        remediation=(
+            [
+                "Verify the model name and requested attributes, then retry "
+                "the inspection."
+            ]
+            if not result.success
+            else []
+        ),
+        read_only=True,
+        safety_level=SAFE_READ_ONLY,
+        error=result.error,
+        error_type=result.error_type,
+    )
+    _agent_emit_payload(payload)
+    if not result.success:
+        raise typer.Exit(1)
 
 
 def cli_main() -> None:

@@ -1,7 +1,13 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DOC_FILES = [ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.rst"))]
+DOC_FILES = [
+    ROOT / "README.md",
+    ROOT / "examples" / "README.md",
+    ROOT / "examples" / "code_executor_example.py",
+    ROOT / "examples" / "module_manifest_example.py",
+    *sorted((ROOT / "docs").rglob("*.rst")),
+]
 
 
 def _read_docs() -> dict[Path, str]:
@@ -67,7 +73,11 @@ def test_docs_do_not_show_run_command_timeout_signature() -> None:
 
 
 def test_raw_executor_examples_keep_allow_unsafe_opt_in() -> None:
-    targets = [ROOT / "README.md", ROOT / "docs/api/odoo_code_executor.rst"]
+    targets = [
+        ROOT / "README.md",
+        ROOT / "docs/api/odoo_code_executor.rst",
+        ROOT / "examples" / "code_executor_example.py",
+    ]
     failures: list[str] = []
 
     for path in targets:

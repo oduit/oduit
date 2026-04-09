@@ -368,9 +368,16 @@ class TestDoctorCommand:
 
         assert result.exit_code == 0
         payload = json.loads(result.output)
-        assert payload["schema_version"] == "1"
+        assert payload["schema_version"] == "1.0"
         assert payload["type"] == "doctor_report"
         assert payload["success"] is True
+        assert payload["read_only"] is True
+        assert payload["safety_level"] == "safe_read_only"
+        assert "warnings" in payload
+        assert "errors" in payload
+        assert "remediation" in payload
+        assert "data" in payload
+        assert "meta" in payload
         assert payload["source"]["kind"] == "env"
         assert isinstance(payload["checks"], list)
         assert payload["summary"]["ok"] >= 1

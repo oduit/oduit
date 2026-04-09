@@ -9,6 +9,9 @@ Use it when updating README, CLI docs, and API examples.
 - `Manifest`, `ManifestError`, `InvalidManifestError`, `ManifestNotFoundError`
 - `ManifestCollection`
 - `AddonsPathManager`
+- `EnvironmentSource`, `BinaryProbe`, `AddonsPathStatus`, `OdooVersionInfo`
+- `DatabaseSummary`, `EnvironmentContext`, `AddonInspection`, `UpdatePlan`
+- `QueryModelResult`, `RecordReadResult`, `SearchCountResult`, `ModelFieldsResult`
 - `ModuleManager`
 - `ConfigError`
 - `OdooOperationError`, `ModuleOperationError`, `ModuleUpdateError`, `ModuleInstallError`
@@ -45,9 +48,21 @@ Use it when updating README, CLI docs, and API examples.
 - `list-codepends`
 - `impact-of-update`
 - `list-missing`
+- `list-duplicates`
 - `init`
 - `export-lang`
 - `version`
+
+## `oduit agent` subcommands in `oduit.cli_typer`
+
+- `context`
+- `inspect-addon`
+- `plan-update`
+- `test-summary`
+- `query-model`
+- `read-record`
+- `search-count`
+- `get-model-fields`
 
 ## `OdooOperations` methods
 
@@ -63,6 +78,13 @@ Use it when updating README, CLI docs, and API examples.
 - `list_db()`
 - `create_addon()`
 - `get_odoo_version()`
+- `get_environment_context()`
+- `inspect_addon()`
+- `plan_update()`
+- `query_model()`
+- `read_record()`
+- `search_count()`
+- `get_model_fields()`
 - `execute_python_code()`
 
 ## `ModuleManager` methods
@@ -113,6 +135,11 @@ Use it when updating README, CLI docs, and API examples.
 
 Note:
 
+- `list-codepends` is the shipped CLI name, but its behavior is reverse-dependency
+  analysis and includes the selected module itself in the output.
+- `get_module_codependencies()` is a compatibility name for direct manifest
+  dependencies. Prefer the more explicit terms `direct dependencies` and
+  `reverse dependencies` in user-facing docs.
 - Arbitrary code execution still requires `allow_unsafe=True`.
 
 ## `OdooQuery` methods

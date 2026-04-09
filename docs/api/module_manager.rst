@@ -29,9 +29,12 @@ Key Methods
 
 - ``find_module_dirs()`` and ``find_modules()``: discover addons from ``addons_path``
 - ``find_module_path()`` and ``get_manifest()``: inspect one addon
-- ``get_module_codependencies()`` and ``get_direct_dependencies()``: dependency lookups
+- ``get_module_codependencies()``: direct manifest ``depends`` entries; maintained
+  for compatibility with older naming
+- ``get_direct_dependencies()``: direct external dependencies for one or more
+  target addons
 - ``get_dependency_tree()`` and ``get_formatted_dependency_tree()``: dependency trees
 - ``get_install_order()``: dependency-resolved installation order
-- ``get_reverse_dependencies()``: update impact analysis
+- ``get_reverse_dependencies()``: reverse-dependency and update impact analysis
 - ``find_missing_dependencies()``: missing addon detection
 - ``detect_odoo_series()``: infer Odoo series from addon versions

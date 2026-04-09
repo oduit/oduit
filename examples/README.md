@@ -4,7 +4,9 @@ This directory contains example scripts demonstrating various features of oduit.
 
 ## Prerequisites
 
-Before running these example scripts, you need to create a `.oduit.toml` configuration file in the directory where you'll run the scripts. This file contains the necessary configuration for connecting to your Odoo instance.
+Before running these example scripts, create a `.oduit.toml` configuration file
+in the directory where you'll run them. New examples should prefer the current
+sectioned TOML format.
 
 ### Creating a .oduit.toml file
 
@@ -20,19 +22,20 @@ You can create a configuration file in one of two ways:
 
 2. **Creating a local `.oduit.toml` file manually**:
    Create a `.oduit.toml` file in the current directory with content like:
+
    ```toml
+   [binaries]
    python_bin = "/path/to/python"
    odoo_bin = "/path/to/odoo-bin"
    coverage_bin = "/path/to/coverage"
+
+   [odoo_params]
    db_name = "your_database_name"
    db_user = "odoo_user"
    db_password = "odoo_password"
    data_dir = "~/odoo_data"
    http_port = 8069
-   addons_path = [
-     "/path/to/odoo/addons",
-     "/path/to/custom/addons",
-   ]
+   addons_path = "/path/to/odoo/addons,/path/to/custom/addons"
    ```
 
 ## Example Scripts
@@ -49,8 +52,10 @@ You can create a configuration file in one of two ways:
 
 ### Code Execution
 
-- **`code_executor_example.py`** - Execute Python code in Odoo context
-- **`execute_python_example.py`** - Another code execution example
+- **`code_executor_example.py`** - Execute trusted arbitrary Python with
+  `allow_unsafe=True`
+- **`execute_python_example.py`** - Execute trusted Python through
+  `OdooOperations.execute_python_code()`
 - **`shell_command_example.py`** - Execute shell commands
 - **`simple_shell_example.py`** - Simple shell interaction
 
@@ -74,6 +79,9 @@ You can create a configuration file in one of two ways:
 - **`simple_yield_test.py`** - Simple yield testing
 
 ## Running the Examples
+
+For common read-only model inspection, prefer `OdooQuery` over arbitrary code
+execution examples.
 
 Once you have created a `.oduit.toml` file, you can run any example script:
 

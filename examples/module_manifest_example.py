@@ -42,14 +42,12 @@ def print_dependency_tree(tree: dict, indent: int = 0):
 def main():  # noqa: C901
     # Load configuration using ConfigLoader
     config_loader = ConfigLoader()
-    # Option 1: Load configuration from ~/.config/oduit/common-test.yaml
-    # Replace "common-test" with your environment name
     try:
         env_config = config_loader.load_local_config()
         addons_path = env_config.get(
             "addons_path", "/opt/odoo/addons,/opt/custom/addons"
         )
-        print("Loaded configuration from common-test.yaml")
+        print("Loaded configuration from local .oduit.toml")
         print(f"Using addons_path: {addons_path}")
     except Exception as e:
         print(f"Could not load config: {e}")
@@ -75,16 +73,18 @@ def main():  # noqa: C901
         else:
             print(f"✗ Module {module_name} not found or has no manifest")
 
-        # Example 2: Get module codependencies
-        print(f"\nGetting codependencies for module: {module_name}")
+        # Example 2: Get direct manifest dependencies
+        print(f"\nGetting direct manifest dependencies for module: {module_name}")
         codependencies = module_manager.get_module_codependencies(module_name)
 
         if codependencies:
-            print(f"✓ Module {module_name} has {len(codependencies)} codependencies:")
+            print(
+                f"✓ Module {module_name} has {len(codependencies)} direct dependencies:"
+            )
             for dep in codependencies:
                 print(f"  - {dep}")
         else:
-            print(f"✓ Module {module_name} has no codependencies")
+            print(f"✓ Module {module_name} has no direct manifest dependencies")
 
         # Example 3: Build complete dependency graph
         print(f"\nBuilding dependency graph for module: {module_name}")
@@ -113,7 +113,7 @@ def main():  # noqa: C901
         # Example 5: Test with a common module that has dependencies
         common_modules = ["web", "sale", "account", "stock"]
 
-        print("\nChecking codependencies for common modules...")
+        print("\nChecking direct manifest dependencies for common modules...")
         for mod in common_modules:
             deps = module_manager.get_module_codependencies(mod)
             if deps:  # Only print if module exists and has dependencies
@@ -137,9 +137,9 @@ def main():  # noqa: C901
         except ValueError as e:
             print(f"✗ Could not build dependency graph for {complex_module}: {e}")
 
-        # Example 7: Get installation order for modules (NEW in Phase 2.5)
+        # Example 7: Get installation order for modules
         print("\n" + "=" * 60)
-        print("NEW FUNCTIONALITY - Phase 2.5 Features")
+        print("Installation Planning Features")
         print("=" * 60)
 
         test_modules = ["base", "web"]
@@ -154,7 +154,7 @@ def main():  # noqa: C901
 
             traceback.print_exc()
 
-        # Example 8: Find missing dependencies (NEW in Phase 2.5)
+        # Example 8: Find missing dependencies
         print(f"\nChecking for missing dependencies in module: {complex_module}")
         try:
             missing_deps = module_manager.find_missing_dependencies(complex_module)
@@ -166,7 +166,7 @@ def main():  # noqa: C901
         except ValueError as e:
             print(f"✗ Error checking dependencies: {e}")
 
-        # Example 9: Find reverse dependencies (NEW in Phase 2.5)
+        # Example 9: Find reverse dependencies
         base_module = "base"
         print(f"\nFinding modules that depend on: {base_module}")
         try:

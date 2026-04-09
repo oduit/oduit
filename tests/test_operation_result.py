@@ -91,9 +91,17 @@ class TestOperationResult(unittest.TestCase):
         json_output = output_result_to_json(builder.finalize())
 
         # Check core fields are present
-        self.assertEqual(json_output["schema_version"], "1")
+        self.assertEqual(json_output["schema_version"], "1.0")
         self.assertEqual(json_output["type"], "result")
         self.assertEqual(json_output["operation"], "install")
+        self.assertFalse(json_output["read_only"])
+        self.assertEqual(json_output["safety_level"], "controlled_mutation")
+        self.assertEqual(json_output["warnings"], [])
+        self.assertEqual(json_output["errors"], [])
+        self.assertEqual(json_output["remediation"], [])
+        self.assertIn("data", json_output)
+        self.assertIn("meta", json_output)
+        self.assertIn("timestamp", json_output["meta"])
         self.assertEqual(json_output["module"], "my_module")
         self.assertTrue(json_output["success"])
         self.assertEqual(json_output["return_code"], 0)
@@ -142,7 +150,7 @@ class TestOperationResult(unittest.TestCase):
         json_output = output_result_to_json(
             builder.finalize(), include_null_values=True
         )
-        self.assertEqual(json_output["schema_version"], "1")
+        self.assertEqual(json_output["schema_version"], "1.0")
         self.assertEqual(json_output["type"], "result")
         # Null values should be present
         self.assertIn("database", json_output)

@@ -1,7 +1,9 @@
 OdooCodeExecutor
 ================
 
-The OdooCodeExecutor class provides a way to execute trusted Python code within an Odoo environment and capture results directly as Python objects, without printing to console. It's perfect for programmatic use cases where you want to query data, perform operations, and get results back.
+The OdooCodeExecutor class provides a way to execute trusted Python code within
+an Odoo environment and capture results directly as Python objects, without
+printing to console.
 
 For common read-only data access, prefer ``OdooQuery``. ``OdooCodeExecutor`` is
 the lower-level escape hatch for trusted arbitrary code and still requires
@@ -236,9 +238,10 @@ Best Practices
 --------------
 
 1. **Always check the success flag** before using result values
-2. **Use explicit commit control** - only commit when necessary
-3. **Handle errors gracefully** with proper error checking
-4. **Keep code blocks focused** - break complex operations into smaller pieces
-5. **Test expressions first** before using in production code
-6. **Use timeouts** for long-running operations to prevent hanging
-7. **Pass ``allow_unsafe=True`` only for trusted, reviewed code snippets**
+2. **Prefer ``OdooQuery`` for common read-only access**
+3. **Use explicit commit control**; only commit when necessary
+4. **Handle errors gracefully** with proper error checking
+5. **Keep code blocks focused** and break complex operations into smaller pieces
+6. **Test expressions first** before using them in production code
+7. **Use timeouts** for long-running operations to prevent hanging
+8. **Pass ``allow_unsafe=True`` only for trusted, reviewed code snippets**

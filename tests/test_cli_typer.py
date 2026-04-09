@@ -100,6 +100,25 @@ class TestCLICommands(unittest.TestCase):
             "python_bin": "/usr/bin/python3",
         }
 
+    def assert_common_json_envelope(
+        self,
+        payload: dict,
+        *,
+        read_only: bool,
+        safety_level: str,
+    ) -> None:
+        self.assertEqual(payload["schema_version"], "1.0")
+        self.assertIn("type", payload)
+        self.assertIn("success", payload)
+        self.assertEqual(payload["read_only"], read_only)
+        self.assertEqual(payload["safety_level"], safety_level)
+        self.assertIn("warnings", payload)
+        self.assertIn("errors", payload)
+        self.assertIn("remediation", payload)
+        self.assertIn("data", payload)
+        self.assertIn("meta", payload)
+        self.assertIn("timestamp", payload["meta"])
+
     def test_main_no_args_shows_error(self):
         """Test main command with no arguments shows error."""
         # Mock sys.argv to simulate no arguments
@@ -335,6 +354,55 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.db_exists.assert_called_once()
         mock_ops_instance.create_db.assert_not_called()
         self.assertIn("cancelled", result.output)
+
+    @patch("oduit.cli_typer.OdooOperations")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_create_db_non_interactive_fails_fast(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test create-db fails fast in non-interactive mode."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "--non-interactive", "create-db"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        mock_ops_instance.create_db.assert_not_called()
+        self.assertIn("requires confirmation", result.output)
+
+    @patch("oduit.cli_typer.OdooOperations")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_create_db_non_interactive_json_fails_fast(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test create-db emits structured error in non-interactive JSON mode."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "--json", "--non-interactive", "create-db"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assert_common_json_envelope(
+            payload,
+            read_only=False,
+            safety_level="controlled_mutation",
+        )
+        self.assertEqual(payload["error_type"], "ConfirmationRequired")
+        self.assertIn("requires confirmation", payload["error"])
+        self.assertTrue(payload["remediation"])
 
     @patch("oduit.cli_typer.ConfigLoader")
     def test_print_config_command(self, mock_config_loader_class):
@@ -598,7 +666,11 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
-        self.assertEqual(payload["schema_version"], "1")
+        self.assert_common_json_envelope(
+            payload,
+            read_only=True,
+            safety_level="safe_read_only",
+        )
         self.assertEqual(payload["type"], "result")
         self.assertTrue(payload["success"])
         self.assertEqual(payload["operation"], "install_order")
@@ -625,11 +697,47 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 1)
         payload = json.loads(result.output)
-        self.assertEqual(payload["schema_version"], "1")
+        self.assert_common_json_envelope(
+            payload,
+            read_only=True,
+            safety_level="safe_read_only",
+        )
         self.assertEqual(payload["type"], "result")
         self.assertFalse(payload["success"])
         self.assertEqual(payload["operation"], "install_order")
         self.assertIn("Modules not found", payload["error"])
+
+    @patch("oduit.cli_typer.ModuleManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_install_order_json_cycle_details(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test install-order JSON output includes cycle details."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.return_value = "/test/addons/module_a"
+        mock_manager_instance.get_install_order.side_effect = ValueError(
+            "Circular dependency detected: module_a -> module_b -> module_a"
+        )
+        mock_manager_instance.parse_cycle_error.return_value = [
+            "module_a",
+            "module_b",
+            "module_a",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "--json", "install-order", "module_a"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["error_type"], "DependencyCycleError")
+        self.assertEqual(payload["cycle_path"], ["module_a", "module_b", "module_a"])
+        self.assertEqual(payload["cycle_length"], 2)
+        self.assertTrue(payload["remediation"])
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -675,7 +783,11 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
-        self.assertEqual(payload["schema_version"], "1")
+        self.assert_common_json_envelope(
+            payload,
+            read_only=True,
+            safety_level="safe_read_only",
+        )
         self.assertEqual(payload["type"], "result")
         self.assertTrue(payload["success"])
         self.assertEqual(payload["operation"], "impact_of_update")
@@ -707,6 +819,56 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         self.assertIn("crm,purchase,sale", result.output)
+
+    @patch("oduit.cli_typer.AddonsPathManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_duplicates_command(
+        self, mock_config_loader_class, mock_path_manager_class
+    ):
+        """Test list-duplicates command in text mode."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_path_manager = MagicMock()
+        mock_path_manager.find_duplicate_module_names.return_value = {
+            "sale": ["/a/sale", "/b/sale"]
+        }
+        mock_path_manager_class.return_value = mock_path_manager
+
+        result = self.runner.invoke(app, ["--env", "dev", "list-duplicates"])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("sale:", result.output)
+        self.assertIn("/a/sale", result.output)
+        self.assertIn("/b/sale", result.output)
+
+    @patch("oduit.cli_typer.AddonsPathManager")
+    @patch("oduit.cli_typer.ConfigLoader")
+    def test_list_duplicates_json_command(
+        self, mock_config_loader_class, mock_path_manager_class
+    ):
+        """Test list-duplicates command in JSON mode."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_path_manager = MagicMock()
+        mock_path_manager.find_duplicate_module_names.return_value = {
+            "sale": ["/a/sale", "/b/sale"]
+        }
+        mock_path_manager_class.return_value = mock_path_manager
+
+        result = self.runner.invoke(app, ["--env", "dev", "--json", "list-duplicates"])
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assert_common_json_envelope(
+            payload,
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        self.assertEqual(payload["type"], "duplicate_modules")
+        self.assertEqual(payload["duplicate_count"], 1)
+        self.assertEqual(payload["duplicate_modules"]["sale"], ["/a/sale", "/b/sale"])
 
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
@@ -1276,7 +1438,11 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
-        self.assertEqual(payload["schema_version"], "1")
+        self.assert_common_json_envelope(
+            payload,
+            read_only=False,
+            safety_level="controlled_mutation",
+        )
         self.assertEqual(payload["type"], "result")
         self.assertTrue(payload["success"])
         self.assertEqual(payload["operation"], "install")
@@ -1307,7 +1473,11 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
-        self.assertEqual(payload["schema_version"], "1")
+        self.assert_common_json_envelope(
+            payload,
+            read_only=True,
+            safety_level="safe_read_only",
+        )
         self.assertEqual(payload["type"], "result")
         self.assertTrue(payload["success"])
         self.assertEqual(payload["operation"], "get_odoo_version")
@@ -1324,7 +1494,11 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
-        self.assertEqual(payload["schema_version"], "1")
+        self.assert_common_json_envelope(
+            payload,
+            read_only=True,
+            safety_level="safe_read_only",
+        )
         self.assertEqual(payload["type"], "result")
         self.assertTrue(payload["success"])
         self.assertEqual(payload["operation"], "print_config")

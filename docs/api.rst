@@ -12,6 +12,7 @@ Core Modules
    api/process_manager
    api/config_loader
    api/odoo_operations
+   api/api_models
    api/odoo_code_executor
    api/odoo_query
    api/module_manager

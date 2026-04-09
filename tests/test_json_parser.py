@@ -14,6 +14,18 @@ from oduit.output import OutputFormatter, configure_output
 from oduit.process_manager import ProcessManager
 
 
+def _assert_common_json_envelope(test_case: unittest.TestCase, payload: dict) -> None:
+    test_case.assertEqual(payload["schema_version"], "1.0")
+    test_case.assertIn("read_only", payload)
+    test_case.assertIn("safety_level", payload)
+    test_case.assertIn("warnings", payload)
+    test_case.assertIn("errors", payload)
+    test_case.assertIn("remediation", payload)
+    test_case.assertIn("data", payload)
+    test_case.assertIn("meta", payload)
+    test_case.assertIn("timestamp", payload["meta"])
+
+
 class TestOutputFormatterJSONParsing(unittest.TestCase):
     """Test JSON parsing functionality in OutputFormatter."""
 
@@ -262,9 +274,11 @@ class TestProcessManagerJSONOutput(unittest.TestCase):
 
         self.assertIsNotNone(result)
         if result:
-            self.assertEqual(result["schema_version"], "1")
+            _assert_common_json_envelope(self, result)
             self.assertEqual(result["type"], "log")
             self.assertTrue(result["success"])
+            self.assertTrue(result["read_only"])
+            self.assertEqual(result["safety_level"], "safe_read_only")
             self.assertEqual(result["source"], "odoo")
             self.assertEqual(result["level"], "info")
             self.assertEqual(result["process_id"], 65551)
@@ -284,7 +298,7 @@ class TestProcessManagerJSONOutput(unittest.TestCase):
 
         self.assertIsNotNone(result)
         if result:
-            self.assertEqual(result["schema_version"], "1")
+            _assert_common_json_envelope(self, result)
             self.assertTrue(result["success"])
             self.assertEqual(result["source"], "coverage")
             self.assertEqual(result["type"], "file_coverage")
@@ -308,7 +322,7 @@ class TestProcessManagerJSONOutput(unittest.TestCase):
 
         self.assertIsNotNone(result)
         if result:
-            self.assertEqual(result["schema_version"], "1")
+            _assert_common_json_envelope(self, result)
             self.assertEqual(result["type"], "log")
             self.assertTrue(result["success"])
             self.assertEqual(result["source"], "process")
@@ -385,9 +399,10 @@ class TestIntegrationJSONParsing(unittest.TestCase):
                 result = json.loads(output)
 
                 # Should merge the result data with parsed Odoo log
-                self.assertEqual(result["schema_version"], "1")
+                _assert_common_json_envelope(self, result)
                 self.assertEqual(result["type"], "result")
                 self.assertTrue(result["success"])
+                self.assertTrue(result["read_only"])
                 self.assertEqual(result["result"], test_data)
                 self.assertEqual(result["source"], "odoo")
                 self.assertEqual(result["level"], "info")
@@ -420,9 +435,10 @@ class TestIntegrationJSONParsing(unittest.TestCase):
                 result = json.loads(output)
 
                 # Should merge the error info with parsed Odoo log
-                self.assertEqual(result["schema_version"], "1")
+                _assert_common_json_envelope(self, result)
                 self.assertEqual(result["type"], "error")
                 self.assertFalse(result["success"])
+                self.assertTrue(result["read_only"])
                 self.assertEqual(result["error_code"], 1)
                 self.assertEqual(result["error"], "Module loading failed")
                 self.assertEqual(result["source"], "odoo")

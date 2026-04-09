@@ -346,7 +346,19 @@ class TestModuleManager(unittest.TestCase):
             self.module_manager.build_dependency_graph("module_a")
 
         self.assertIn("Circular dependency detected", str(context.exception))
-        self.assertIn("module_a", str(context.exception))
+        self.assertEqual(
+            str(context.exception),
+            "Circular dependency detected: module_a -> module_b -> "
+            "module_c -> module_a",
+        )
+
+    def test_parse_cycle_error_extracts_modules(self):
+        """Test parsing a circular dependency error into a cycle path."""
+        result = self.module_manager.parse_cycle_error(
+            "Circular dependency detected: module_a -> module_b -> module_a"
+        )
+
+        self.assertEqual(result, ["module_a", "module_b", "module_a"])
 
     @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_build_dependency_graph_shared_dependency(self, mock_get_codependencies):

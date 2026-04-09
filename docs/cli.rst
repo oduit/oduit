@@ -100,6 +100,7 @@ Options:
 
 - ``--env, -e TEXT``: Environment to use (e.g., prod, test, dev)
 - ``--json``: Output in JSON format (default: text)
+- ``--non-interactive``: Fail instead of prompting for confirmation
 - ``--verbose, -v``: Show verbose output including configuration and command details
 - ``--no-http``: Add --no-http flag to all odoo-bin commands
 
@@ -303,7 +304,8 @@ Create a new database for Odoo.
 
 .. warning::
    This command will prompt for confirmation before creating the database
-   unless ``--non-interactive`` is specified.
+   unless you pass ``--non-interactive``. In non-interactive mode, the command
+   fails fast instead of auto-confirming.
 
 list-db
 ^^^^^^^
@@ -416,6 +418,18 @@ Valid filter fields: ``name``, ``version``, ``summary``, ``author``, ``website``
 
    # Exclude addons depending on sale
    oduit --env dev list-addons --exclude depends:sale
+
+list-duplicates
+^^^^^^^^^^^^^^^
+
+List duplicate addon names discovered in more than one addons path.
+
+.. code-block:: bash
+
+   oduit --env dev list-duplicates
+
+This is useful before automated updates, because duplicate module names make
+resolution order ambiguous.
 
    # Combine multiple filters
    oduit --env dev list-addons --exclude category:Theme --exclude category:Hidden
@@ -618,8 +632,9 @@ List reverse dependencies for a specified module.
 
    oduit --env dev list-codepends MODULE
 
-This command lists the addons that depend on the specified module. It is useful
-for understanding which addons may be affected when a dependency changes.
+This command lists the addons that depend on the specified module. The current
+implementation also includes the selected module itself in the output, which is
+useful when feeding the result into follow-up install or impact-analysis flows.
 
 **Examples:**
 
@@ -638,9 +653,10 @@ for understanding which addons may be affected when a dependency changes.
 
 The command will:
 
-- List all modules that depend on the specified module
-- Return a no-impact message if no module depends on it
-- Return an error if the module is not found
+- List the selected module together with all modules that depend on it
+- Return only the selected module if no reverse dependencies are found
+- Preserve the command name ``list-codepends`` for compatibility, even though
+  the behavior is reverse-dependency analysis
 
 install-order
 ^^^^^^^^^^^^^
@@ -672,8 +688,11 @@ You can either provide comma-separated module names directly or use
    # Compute install order for all addons in one directory
    oduit --env dev install-order --select-dir myaddons
 
-   # Output as JSON
-   oduit --env dev --json install-order sale,purchase
+    # Output as JSON
+    oduit --env dev --json install-order sale,purchase
+
+If dependency resolution fails because of a cycle, JSON output includes a
+structured ``cycle_path`` and remediation guidance.
 
 impact-of-update
 ^^^^^^^^^^^^^^^^
@@ -774,10 +793,25 @@ Example output:
 .. code-block:: json
 
    {
-      "schema_version": "1",
+      "schema_version": "1.0",
       "type": "result",
       "success": true,
       "operation": "install",
+      "read_only": false,
+      "safety_level": "controlled_mutation",
+      "warnings": [],
+      "errors": [],
+      "remediation": [],
+      "data": {
+         "return_code": 0,
+         "modules_installed": ["sale"],
+         "modules_loaded": 42,
+         "without_demo": false,
+         "verbose": false
+      },
+      "meta": {
+         "timestamp": "2026-04-09T12:00:00"
+      },
       "return_code": 0,
       "modules_installed": ["sale"],
       "modules_loaded": 42,
@@ -795,6 +829,13 @@ Guaranteed keys for result payloads:
 * ``schema_version``: current schema version string
 * ``type``: payload family such as ``result`` or ``doctor_report``
 * ``success``: overall success flag
+* ``read_only``: whether the command is inspection-only
+* ``safety_level``: ``safe_read_only``, ``controlled_mutation``, or
+  ``unsafe_arbitrary_execution``
+* ``warnings`` / ``errors`` / ``remediation``: normalized machine-readable
+  guidance lists
+* ``data``: command-specific payload content
+* ``meta``: shared metadata such as ``timestamp`` and optional ``duration``
 
 Common keys when they apply:
 
@@ -805,6 +846,66 @@ Common keys when they apply:
 * ``error`` / ``error_type``
 
 Operation-specific fields are preserved alongside those keys.
+
+Agent Commands
+--------------
+
+The ``oduit agent`` command group is the preferred automation surface for
+inspection and planning. These commands always emit structured JSON and do not
+require the global ``--json`` flag.
+
+context
+^^^^^^^
+
+Return a one-shot environment snapshot for agent workflows.
+
+.. code-block:: bash
+
+   oduit --env dev agent context
+
+inspect-addon
+^^^^^^^^^^^^^
+
+Inspect one addon with manifest, dependency, and impact data.
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-addon sale
+
+plan-update
+^^^^^^^^^^^
+
+Build a read-only update plan with impact and risk metadata.
+
+.. code-block:: bash
+
+   oduit --env dev agent plan-update sale
+
+test-summary
+^^^^^^^^^^^^
+
+Run tests and emit a normalized summary payload.
+
+.. code-block:: bash
+
+   oduit --env dev agent test-summary --module sale --test-tags /sale
+
+query-model
+^^^^^^^^^^^
+
+Run a structured read-only model query through ``OdooQuery``.
+
+.. code-block:: bash
+
+   oduit --env dev agent query-model res.partner --fields name,email --limit 5
+
+Other read helpers follow the same pattern:
+
+.. code-block:: bash
+
+   oduit --env dev agent read-record res.partner 7 --fields name,email
+   oduit --env dev agent search-count res.partner --domain-json '[["is_company", "=", true]]'
+   oduit --env dev agent get-model-fields res.partner --attributes string,type
 
 Common Workflows
 ----------------

@@ -13,7 +13,8 @@ Highlights
 * structured JSON output for automation and CI
 * addon intelligence commands such as ``list-addons``, ``list-depends``,
   ``install-order``, and ``impact-of-update``
-* Python APIs for operations, addon analysis, and safe read-only queries
+* Python APIs for operations, addon analysis, typed planning models, and safe
+  read-only queries
 
 Quick Start
 -----------
