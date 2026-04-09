@@ -6,7 +6,9 @@ Odoo, installing or updating addons, running tests, planning addon changes,
 and performing safe read-only inspection.
 
 For read-only data access inside Odoo models, prefer ``OdooQuery``. Use
-``execute_python_code()`` only for trusted shell-driven execution flows.
+``execute_python_code()`` only for trusted shell-driven execution flows, with
+either an explicit ``shell_interface=...`` argument or ``shell_interface`` set
+in the environment configuration.
 
 .. automodule:: oduit.odoo_operations
    :members:
@@ -51,7 +53,7 @@ Key Methods
 - ``query_model()``, ``read_record()``, ``search_count()``, ``get_model_fields()``:
   typed convenience wrappers around ``OdooQuery``
 - ``execute_python_code()``: execute arbitrary trusted Python through the Odoo
-  shell interface
+  shell interface, with an explicit or configured ``shell_interface``
 
 Preferred Public Python Surface
 -------------------------------
@@ -67,6 +69,7 @@ Safe vs Unsafe Paths
 - Prefer ``OdooOperations.get_environment_context()``, ``inspect_addon()``,
   ``plan_update()``, and the query delegation helpers for inspection and planning
 - Prefer ``OdooQuery`` for direct structured read-only model access
-- Use ``execute_python_code()`` only for trusted shell-driven snippets
+- Use ``execute_python_code()`` only for trusted shell-driven snippets and set
+  ``shell_interface`` explicitly or in configuration
 - Use ``OdooCodeExecutor`` only when you explicitly need arbitrary execution and
   understand the ``allow_unsafe=True`` contract

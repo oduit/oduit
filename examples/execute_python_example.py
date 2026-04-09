@@ -3,7 +3,8 @@
 Example script showing the new execute_python_code function in OdooOperations.
 
 This example demonstrates:
-1. Using the simplified execute_python_code method
+1. Using the simplified execute_python_code method with an explicit
+   shell_interface
 2. Executing single Python commands in Odoo environment
 3. Executing multiple Python commands
 4. Error handling with the new function
@@ -22,6 +23,7 @@ def main():
     odoo_ops_quiet = OdooOperations(env_config, verbose=False)
 
     print("=== New execute_python_code Examples ===\n")
+    print("Using shell_interface='python' for all execute_python_code() calls.\n")
 
     try:
         # Run examples
@@ -52,6 +54,7 @@ def run_simple_example(odoo_ops):
     result = odoo_ops.execute_python_code(
         python_code=python_code,
         capture_output=True,
+        shell_interface="python",
     )
 
     if result["success"]:
@@ -79,6 +82,7 @@ print('=== Done ===')
     result = odoo_ops.execute_python_code(
         python_code=env_info_code,
         capture_output=True,
+        shell_interface="python",
     )
 
     if result["success"]:
@@ -115,6 +119,7 @@ print('Total companies:', companies_total)
     result = odoo_ops.execute_python_code(
         python_code=query_code,
         capture_output=True,
+        shell_interface="python",
     )
 
     if result["success"]:
@@ -139,6 +144,7 @@ def run_error_handling_example(odoo_ops):
     result = odoo_ops.execute_python_code(
         python_code=error_code,
         capture_output=True,
+        shell_interface="python",
     )
 
     if result["success"]:
@@ -169,7 +175,11 @@ print(f'Individual contacts: {partner_count - company_count}')
 print('=== End Statistics ===')
 """
 
-    result = odoo_ops.execute_python_code(python_code=calc_code, capture_output=True)
+    result = odoo_ops.execute_python_code(
+        python_code=calc_code,
+        capture_output=True,
+        shell_interface="python",
+    )
 
     if result["success"]:
         print("   ✓ Statistics:")
@@ -194,6 +204,7 @@ def print_summary():
     """Print summary of the examples"""
     print("=== Summary ===")
     print("✓ execute_python_code() simplifies Odoo shell interaction")
+    print("✓ A shell_interface must be passed or configured")
     print("✓ No need to manually build commands or handle pipes")
     print("✓ Built-in error handling and result parsing")
     print("✓ Supports both simple and complex Python code execution")

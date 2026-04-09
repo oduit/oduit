@@ -9,6 +9,7 @@
 import functools
 import json
 import os
+import re
 import shutil
 from dataclasses import replace
 from typing import Any, NoReturn
@@ -924,6 +925,37 @@ def _agent_payload(
         include_null_values=include_null_values,
         result_type=result_type,
     )
+
+
+_ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _build_error_output_excerpt(
+    result: dict[str, Any], *, max_lines: int = 80, max_chars: int = 12000
+) -> list[str]:
+    """Return a bounded tail excerpt from captured process output."""
+    for stream_name in ("stderr", "stdout"):
+        stream_value = result.get(stream_name)
+        if not isinstance(stream_value, str) or not stream_value.strip():
+            continue
+
+        cleaned_lines = [
+            _ANSI_ESCAPE_PATTERN.sub("", line.rstrip())
+            for line in stream_value.splitlines()
+            if line.strip()
+        ]
+        if not cleaned_lines:
+            continue
+
+        excerpt_lines = cleaned_lines[-max_lines:]
+        excerpt_text = "\n".join(excerpt_lines)
+        if len(excerpt_text) > max_chars:
+            excerpt_text = excerpt_text[-max_chars:]
+            excerpt_lines = excerpt_text.splitlines()
+
+        return excerpt_lines
+
+    return []
 
 
 def _resolve_agent_global_config(
@@ -4626,6 +4658,9 @@ def agent_test_summary(
         dict.fromkeys(value for value in [module, install, update, coverage] if value)
     )
     failures = list(result.get("failures", []))
+    error_output_excerpt = (
+        _build_error_output_excerpt(result) if not result.get("success", False) else []
+    )
     traceback_summary = [
         {
             "test_name": failure.get("test_name"),
@@ -4671,6 +4706,7 @@ def agent_test_summary(
             "failed_tests": result.get("failed_tests", 0),
             "error_tests": result.get("error_tests", 0),
             "failure_details": failures,
+            "error_output_excerpt": error_output_excerpt,
             "traceback_summary": traceback_summary,
             "coverage_summary": {
                 "requested": bool(coverage),

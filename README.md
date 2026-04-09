@@ -187,8 +187,9 @@ The preferred Python surface is:
 - `OdooOperations` for high-level operations and typed planning/inspection
 - `OdooQuery` for direct structured read-only model access
 
-Use `execute_python_code()` and `OdooCodeExecutor` only for trusted arbitrary
-execution paths.
+Use `execute_python_code()` only for trusted shell-driven execution paths, with
+an explicit `shell_interface` argument or `shell_interface` configured in the
+environment. Use `OdooCodeExecutor` only for trusted arbitrary execution paths.
 
 ## Coding-Agent Workflow
 

@@ -324,6 +324,11 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
                     "error_message": "AssertionError: expected value",
                 }
             ],
+            "stdout": (
+                "Traceback (most recent call last):\n"
+                '  File "/tmp/test_sale.py", line 42, in test_flow\n'
+                "AssertionError: expected value\n"
+            ),
             "error": "Tests failed",
             "error_type": "TestFailure",
         }
@@ -357,7 +362,60 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
     assert payload["traceback_summary"][0]["source_line"] is not None
     assert payload["traceback_summary"][0]["broken_line_count"] >= 1
     assert payload["traceback_summary"][0]["failure_excerpt"]
+    assert payload["error_output_excerpt"]
+    assert "AssertionError: expected value" in payload["error_output_excerpt"]
     assert payload["suggested_next_steps"]
+
+
+def test_agent_test_summary_includes_error_output_excerpt_without_failures(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.run_tests.return_value = {
+            "success": False,
+            "operation": "test",
+            "return_code": 1,
+            "total_tests": 0,
+            "passed_tests": 0,
+            "failed_tests": 0,
+            "error_tests": 1,
+            "failures": [],
+            "stdout": (
+                "odoo.modules.loading: loading 1 modules...\n"
+                "Traceback (most recent call last):\n"
+                '  File "/tmp/odoo/addons/module.py", line 1, in <module>\n'
+                "ValueError: missing dependency\n"
+            ),
+            "error": "Tests failed",
+            "error_type": "TestFailure",
+        }
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "test-summary",
+                "--install",
+                "x_sale",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload.get("failure_details", []) == []
+    assert payload["error_output_excerpt"]
+    assert payload["error_output_excerpt"][-1] == "ValueError: missing dependency"
 
 
 def test_agent_test_summary_module_uses_fast_test_tags_semantics(

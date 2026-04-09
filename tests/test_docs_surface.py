@@ -5,6 +5,7 @@ DOC_FILES = [
     ROOT / "README.md",
     ROOT / "examples" / "README.md",
     ROOT / "examples" / "code_executor_example.py",
+    ROOT / "examples" / "execute_python_example.py",
     ROOT / "examples" / "module_manifest_example.py",
     *sorted((ROOT / "docs").rglob("*.rst")),
 ]
@@ -94,5 +95,25 @@ def test_raw_executor_examples_keep_allow_unsafe_opt_in() -> None:
                         f"{path.relative_to(ROOT)} missing allow_unsafe near {marker}"
                     )
                 start = index + len(marker)
+
+    assert not failures, "\n".join(failures)
+
+
+def test_execute_python_code_docs_note_shell_interface_requirement() -> None:
+    targets = [
+        ROOT / "README.md",
+        ROOT / "docs/api/odoo_operations.rst",
+        ROOT / "examples" / "README.md",
+        ROOT / "examples" / "execute_python_example.py",
+    ]
+    failures = []
+
+    for path in targets:
+        content = path.read_text()
+        if "execute_python_code" in content and "shell_interface" not in content:
+            failures.append(
+                f"{path.relative_to(ROOT)} missing shell_interface near "
+                "execute_python_code docs"
+            )
 
     assert not failures, "\n".join(failures)

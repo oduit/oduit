@@ -29,13 +29,14 @@ You can create a configuration file in one of two ways:
    odoo_bin = "/path/to/odoo-bin"
    coverage_bin = "/path/to/coverage"
 
-   [odoo_params]
-   db_name = "your_database_name"
-   db_user = "odoo_user"
-   db_password = "odoo_password"
-   data_dir = "~/odoo_data"
-   http_port = 8069
-   addons_path = "/path/to/odoo/addons,/path/to/custom/addons"
+    [odoo_params]
+    db_name = "your_database_name"
+    db_user = "odoo_user"
+    db_password = "odoo_password"
+    data_dir = "~/odoo_data"
+    http_port = 8069
+    shell_interface = "python"
+    addons_path = "/path/to/odoo/addons,/path/to/custom/addons"
    ```
 
 ## Example Scripts
@@ -55,7 +56,7 @@ You can create a configuration file in one of two ways:
 - **`code_executor_example.py`** - Execute trusted arbitrary Python with
   `allow_unsafe=True`
 - **`execute_python_example.py`** - Execute trusted Python through
-  `OdooOperations.execute_python_code()`
+  `OdooOperations.execute_python_code()` with an explicit `shell_interface`
 - **`shell_command_example.py`** - Execute shell commands
 - **`simple_shell_example.py`** - Simple shell interaction
 
