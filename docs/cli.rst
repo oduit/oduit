@@ -910,7 +910,7 @@ field and view extension metadata from the database.
 
 .. code-block:: bash
 
-   oduit --env dev agent find-model-extensions dvo.dvo --summary
+   oduit --env dev agent find-model-extensions crm.stage --summary
 
 get-model-views
 ^^^^^^^^^^^^^^^
@@ -920,8 +920,8 @@ the database.
 
 .. code-block:: bash
 
-   oduit --env dev agent get-model-views dvo.dvo --types form,tree
-   oduit --env dev agent get-model-views dvo.dvo --types form,tree --summary
+   oduit --env dev agent get-model-views crm.stage --types form,tree
+   oduit --env dev agent get-model-views crm.stage --types form,tree --summary
 
 locate-model
 ^^^^^^^^^^^^

@@ -217,9 +217,9 @@ oduit --env dev agent test-summary --allow-mutation --module my_partner --test-t
 For cross-addon inspection, the agent surface can also answer questions like:
 
 ```bash
-oduit --env dev agent list-addon-models dvo
-oduit --env dev agent find-model-extensions dvo.dvo --summary
-oduit --env dev agent get-model-views dvo.dvo --types form,tree
+oduit --env dev agent list-addon-models crm
+oduit --env dev agent find-model-extensions crm.stage --summary
+oduit --env dev agent get-model-views crm.stage --types form,tree
 ```
 
 ### Addon Intelligence
