@@ -86,6 +86,9 @@ oduit --env dev impact-of-update sale
 oduit --env dev agent context
 oduit --env dev agent inspect-addon sale
 oduit --env dev agent plan-update sale
+oduit --env dev agent list-addon-models my_partner
+oduit --env dev agent find-model-extensions res.partner --summary
+oduit --env dev agent get-model-views res.partner --types form,tree --summary
 oduit --env dev agent locate-model res.partner --module my_partner
 oduit --env dev agent locate-field res.partner email3 --module my_partner
 oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
@@ -179,6 +182,8 @@ context = ops.get_environment_context(env_name="dev", config_source="env")
 addon = ops.inspect_addon("sale")
 plan = ops.plan_update("sale")
 partners = ops.query_model("res.partner", fields=["name", "email"], limit=5)
+extensions = ops.find_model_extensions("res.partner")
+views = ops.get_model_views("res.partner", view_types=["form", "tree"])
 ```
 
 The preferred Python surface is:
@@ -200,12 +205,21 @@ reliable flow is:
 oduit --env dev agent context
 oduit --env dev agent inspect-addon my_partner
 oduit --env dev agent get-model-fields res.partner --attributes string,type,required
+oduit --env dev agent get-model-views res.partner --types form,tree --summary
 oduit --env dev agent locate-model res.partner --module my_partner
 oduit --env dev agent locate-field res.partner email3 --module my_partner
 oduit --env dev agent plan-update my_partner
 oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
 oduit --env dev agent update-module my_partner --allow-mutation
-oduit --env dev agent test-summary --module my_partner --test-tags /my_partner
+oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
+```
+
+For cross-addon inspection, the agent surface can also answer questions like:
+
+```bash
+oduit --env dev agent list-addon-models dvo
+oduit --env dev agent find-model-extensions dvo.dvo --summary
+oduit --env dev agent get-model-views dvo.dvo --types form,tree
 ```
 
 ### Addon Intelligence
