@@ -1,9 +1,15 @@
+import json
+import stat
 import sys
 import types
 import unittest
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from typer.testing import CliRunner
+
+from oduit.cli_typer import app
 from oduit.odoo_code_executor import OdooCodeExecutor
 from oduit.odoo_operations import OdooOperations
 from oduit.process_manager import ProcessManager
@@ -173,3 +179,112 @@ class TestSec3TrustedExecution(unittest.TestCase):
         self.assertFalse(result["success"])
         cursor.rollback.assert_called_once_with()
         cursor.commit.assert_not_called()
+
+
+class TestSec4AgentBoundaries(unittest.TestCase):
+    def _make_executable(self, path: Path) -> str:
+        path.write_text("#!/bin/sh\nexit 0\n")
+        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+        return str(path)
+
+    def _agent_config(self, tmp_path: Path, addons_path: str) -> dict[str, str]:
+        return {
+            "python_bin": self._make_executable(tmp_path / "python3"),
+            "odoo_bin": self._make_executable(tmp_path / "odoo-bin"),
+            "coverage_bin": self._make_executable(tmp_path / "coverage"),
+            "addons_path": addons_path,
+            "db_name": "test_db",
+            "db_host": "localhost",
+            "db_user": "odoo",
+        }
+
+    def _loader_with_config(self, config: dict[str, str], tmp_path: Path) -> MagicMock:
+        loader = MagicMock()
+        loader.load_config.return_value = config
+        loader.resolve_config_path.return_value = (str(tmp_path / "dev.toml"), "toml")
+        return loader
+
+    def _make_addon(
+        self,
+        addons_dir: Path,
+        module_name: str,
+        depends: list[str] | None = None,
+    ) -> Path:
+        module_dir = addons_dir / module_name
+        module_dir.mkdir(parents=True)
+        (module_dir / "__manifest__.py").write_text(
+            str(
+                {
+                    "name": module_name,
+                    "version": "17.0.1.0.0",
+                    "depends": depends or ["base"],
+                }
+            )
+        )
+        return module_dir
+
+    def test_agent_mutation_requires_allow_mutation(self) -> None:
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            tmp_path = Path.cwd()
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            self._make_addon(addons_dir, "sale")
+            config = self._agent_config(tmp_path, str(addons_dir))
+            loader = self._loader_with_config(config, tmp_path)
+
+            with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+                result = runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "update-module", "sale"],
+                )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["error_type"], "ConfirmationRequired")
+        self.assertFalse(payload["read_only"])
+        self.assertEqual(payload["safety_level"], "controlled_mutation")
+
+    def test_agent_locate_model_does_not_use_runtime_execution(self) -> None:
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            tmp_path = Path.cwd()
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            addon_dir = self._make_addon(addons_dir, "my_partner")
+            (addon_dir / "models").mkdir()
+            (addon_dir / "models" / "res_partner.py").write_text(
+                "from odoo import fields, models\n\n"
+                "class ResPartner(models.Model):\n"
+                "    _inherit = 'res.partner'\n"
+                "    email3 = fields.Char()\n"
+            )
+            config = self._agent_config(tmp_path, str(addons_dir))
+            loader = self._loader_with_config(config, tmp_path)
+
+            with (
+                patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+                patch.object(
+                    OdooOperations,
+                    "execute_python_code",
+                    side_effect=AssertionError("runtime execution should not be used"),
+                ),
+            ):
+                result = runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "locate-model",
+                        "res.partner",
+                        "--module",
+                        "my_partner",
+                    ],
+                )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["type"], "model_source_location")

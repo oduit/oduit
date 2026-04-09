@@ -86,6 +86,10 @@ oduit --env dev impact-of-update sale
 oduit --env dev agent context
 oduit --env dev agent inspect-addon sale
 oduit --env dev agent plan-update sale
+oduit --env dev agent locate-model res.partner --module my_partner
+oduit --env dev agent locate-field res.partner email3 --module my_partner
+oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
+oduit --env dev agent resolve-config
 oduit --env dev agent query-model res.partner --fields name,email --limit 5
 
 # Operations
@@ -104,6 +108,10 @@ Commands run with `--json` emit versioned payloads for automation.
 
 The `oduit agent ...` command group always emits JSON and is the preferred
 surface for coding-agent inspection and planning workflows.
+
+Within `schema_version = 1.x`, `data` is the canonical payload container and
+flattened command-specific fields remain part of the public compatibility
+contract.
 
 Guaranteed keys for result payloads:
 
@@ -181,6 +189,23 @@ The preferred Python surface is:
 
 Use `execute_python_code()` and `OdooCodeExecutor` only for trusted arbitrary
 execution paths.
+
+## Coding-Agent Workflow
+
+For a change like "add `email3` to `res.partner` in `my_partner`", the shortest
+reliable flow is:
+
+```bash
+oduit --env dev agent context
+oduit --env dev agent inspect-addon my_partner
+oduit --env dev agent get-model-fields res.partner --attributes string,type,required
+oduit --env dev agent locate-model res.partner --module my_partner
+oduit --env dev agent locate-field res.partner email3 --module my_partner
+oduit --env dev agent plan-update my_partner
+oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
+oduit --env dev agent update-module my_partner --allow-mutation
+oduit --env dev agent test-summary --module my_partner --test-tags /my_partner
+```
 
 ### Addon Intelligence
 

@@ -18,6 +18,14 @@ SAFE_READ_ONLY_OPERATIONS = {
     "list_db",
     "list_duplicates",
     "plan_update",
+    "locate_model",
+    "locate_field",
+    "list_addon_tests",
+    "agent_doctor",
+    "agent_list_addons",
+    "agent_dependency_graph",
+    "inspect_addons",
+    "resolve_config",
     "print_config",
     "print_manifest",
     "list_manifest_values",
@@ -36,6 +44,10 @@ SAFE_READ_ONLY_OPERATIONS = {
 CONTROLLED_MUTATION_OPERATIONS = {
     "install",
     "test_summary",
+    "install_module",
+    "update_module",
+    "create_agent_addon",
+    "export_lang_module",
     "update",
     "test",
     "create_db",
@@ -52,7 +64,20 @@ UNSAFE_OPERATIONS = {
     "execute_multiple",
 }
 
-SAFE_READ_ONLY_TYPES = {"doctor_report", "manifest", "manifest_values", "log"}
+SAFE_READ_ONLY_TYPES = {
+    "doctor_report",
+    "manifest",
+    "manifest_values",
+    "log",
+    "model_source_location",
+    "field_source_location",
+    "addon_test_inventory",
+    "addon_inventory",
+    "dependency_graph",
+    "config_resolution",
+    "duplicate_modules",
+    "batch_addon_inspection",
+}
 
 COMMON_ENVELOPE_KEYS = {
     "schema_version",

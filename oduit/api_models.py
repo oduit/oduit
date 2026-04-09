@@ -1,6 +1,7 @@
 """Typed public Python API models for high-level inspection workflows."""
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
+from dataclasses import field as dataclass_field
 from typing import Any
 
 
@@ -38,11 +39,11 @@ class BinaryProbe(DictModel):
 class AddonsPathStatus(DictModel):
     """Resolved addon path information."""
 
-    configured: list[str] = field(default_factory=list)
-    base: list[str] = field(default_factory=list)
-    all: list[str] = field(default_factory=list)
-    valid: list[str] = field(default_factory=list)
-    invalid: list[str] = field(default_factory=list)
+    configured: list[str] = dataclass_field(default_factory=list)
+    base: list[str] = dataclass_field(default_factory=list)
+    all: list[str] = dataclass_field(default_factory=list)
+    valid: list[str] = dataclass_field(default_factory=list)
+    invalid: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -71,14 +72,14 @@ class EnvironmentContext(DictModel):
     addons_paths: AddonsPathStatus
     odoo: OdooVersionInfo
     database: DatabaseSummary
-    duplicate_modules: dict[str, list[str]] = field(default_factory=dict)
+    duplicate_modules: dict[str, list[str]] = dataclass_field(default_factory=dict)
     available_module_count: int = 0
-    invalid_addon_paths: list[str] = field(default_factory=list)
-    missing_critical_config: list[str] = field(default_factory=list)
-    doctor_summary: dict[str, int] = field(default_factory=dict)
-    doctor_checks: list[dict[str, Any]] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    remediation: list[str] = field(default_factory=list)
+    invalid_addon_paths: list[str] = dataclass_field(default_factory=list)
+    missing_critical_config: list[str] = dataclass_field(default_factory=list)
+    doctor_summary: dict[str, int] = dataclass_field(default_factory=dict)
+    doctor_checks: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -92,19 +93,19 @@ class AddonInspection(DictModel):
     version_display: str
     manifest: dict[str, Any]
     manifest_fields: list[str]
-    direct_dependencies: list[str] = field(default_factory=list)
-    reverse_dependencies: list[str] = field(default_factory=list)
+    direct_dependencies: list[str] = dataclass_field(default_factory=list)
+    reverse_dependencies: list[str] = dataclass_field(default_factory=list)
     reverse_dependency_count: int = 0
-    install_order_slice: list[str] = field(default_factory=list)
+    install_order_slice: list[str] = dataclass_field(default_factory=list)
     install_order_available: bool = False
-    dependency_cycle: list[str] = field(default_factory=list)
-    missing_dependencies: list[str] = field(default_factory=list)
-    impacted_modules: list[str] = field(default_factory=list)
+    dependency_cycle: list[str] = dataclass_field(default_factory=list)
+    missing_dependencies: list[str] = dataclass_field(default_factory=list)
+    impacted_modules: list[str] = dataclass_field(default_factory=list)
     series: str | None = None
-    python_dependencies: list[str] = field(default_factory=list)
-    binary_dependencies: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    remediation: list[str] = field(default_factory=list)
+    python_dependencies: list[str] = dataclass_field(default_factory=list)
+    binary_dependencies: list[str] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -113,23 +114,23 @@ class UpdatePlan(DictModel):
 
     module: str
     exists: bool
-    impact_set: list[str] = field(default_factory=list)
+    impact_set: list[str] = dataclass_field(default_factory=list)
     impact_count: int = 0
-    missing_dependencies: list[str] = field(default_factory=list)
+    missing_dependencies: list[str] = dataclass_field(default_factory=list)
     duplicate_name_risk: bool = False
-    duplicate_module_locations: list[str] = field(default_factory=list)
-    dependency_cycle: list[str] = field(default_factory=list)
+    duplicate_module_locations: list[str] = dataclass_field(default_factory=list)
+    dependency_cycle: list[str] = dataclass_field(default_factory=list)
     cycle_risk: bool = False
-    ordering_constraints: list[str] = field(default_factory=list)
-    recommended_sequence: list[str] = field(default_factory=list)
+    ordering_constraints: list[str] = dataclass_field(default_factory=list)
+    recommended_sequence: list[str] = dataclass_field(default_factory=list)
     backup_advised: bool = False
     risk_score: int = 0
     risk_level: str = "low"
-    risk_factors: list[str] = field(default_factory=list)
-    verification_steps: list[str] = field(default_factory=list)
+    risk_factors: list[str] = dataclass_field(default_factory=list)
+    verification_steps: list[str] = dataclass_field(default_factory=list)
     inspection: AddonInspection | None = None
-    warnings: list[str] = field(default_factory=list)
-    remediation: list[str] = field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -139,12 +140,12 @@ class QueryModelResult(DictModel):
     success: bool
     operation: str
     model: str
-    domain: list[Any] = field(default_factory=list)
+    domain: list[Any] = dataclass_field(default_factory=list)
     fields: list[str] | None = None
     limit: int = 0
     count: int = 0
-    ids: list[int] = field(default_factory=list)
-    records: list[dict[str, Any]] = field(default_factory=list)
+    ids: list[int] = dataclass_field(default_factory=list)
+    records: list[dict[str, Any]] = dataclass_field(default_factory=list)
     database: str | None = None
     error: str | None = None
     error_type: str | None = None
@@ -207,7 +208,7 @@ class SearchCountResult(DictModel):
     success: bool
     operation: str
     model: str
-    domain: list[Any] = field(default_factory=list)
+    domain: list[Any] = dataclass_field(default_factory=list)
     count: int = 0
     database: str | None = None
     error: str | None = None
@@ -236,8 +237,8 @@ class ModelFieldsResult(DictModel):
     operation: str
     model: str
     attributes: list[str] | None = None
-    field_names: list[str] = field(default_factory=list)
-    field_definitions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    field_names: list[str] = dataclass_field(default_factory=list)
+    field_definitions: dict[str, dict[str, Any]] = dataclass_field(default_factory=dict)
     database: str | None = None
     error: str | None = None
     error_type: str | None = None
@@ -256,3 +257,83 @@ class ModelFieldsResult(DictModel):
             error=result.get("error"),
             error_type=result.get("error_type"),
         )
+
+
+@dataclass
+class ModelSourceCandidate(DictModel):
+    """Ranked model source candidate for static source localization."""
+
+    path: str
+    class_name: str
+    match_kind: str
+    declared_model: str
+    confidence: float
+    line_hint: int | None = None
+
+
+@dataclass
+class ModelSourceLocation(DictModel):
+    """Static source localization result for one addon/model pair."""
+
+    model: str
+    module: str
+    addon_root: str
+    candidates: list[ModelSourceCandidate] = dataclass_field(default_factory=list)
+    scanned_python_files: list[str] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class FieldSourceCandidate(DictModel):
+    """Ranked field source candidate for static source localization."""
+
+    path: str
+    class_name: str
+    field_name: str
+    match_kind: str
+    declared_model: str
+    confidence: float
+    line_hint: int | None = None
+
+
+@dataclass
+class FieldSourceLocation(DictModel):
+    """Static source localization result for one addon/model/field target."""
+
+    model: str
+    field: str
+    module: str
+    addon_root: str
+    exists: bool
+    candidates: list[FieldSourceCandidate] = dataclass_field(default_factory=list)
+    insertion_candidate: ModelSourceCandidate | None = None
+    related_files: list[str] = dataclass_field(default_factory=list)
+    scanned_python_files: list[str] = dataclass_field(default_factory=list)
+    rationale: str | None = None
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class AddonTestFile(DictModel):
+    """Ranked addon test file entry."""
+
+    path: str
+    test_type: str
+    references_model: bool = False
+    references_field: bool = False
+    confidence: float = 0.0
+
+
+@dataclass
+class AddonTestInventory(DictModel):
+    """Static addon test inventory for coding-agent test selection."""
+
+    module: str
+    addon_root: str
+    model: str | None = None
+    field: str | None = None
+    tests: list[AddonTestFile] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)

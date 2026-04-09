@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/result-envelope.schema.json",
+  "title": "oduit Result Envelope",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "type",
+    "success",
+    "read_only",
+    "safety_level",
+    "warnings",
+    "errors",
+    "remediation",
+    "data",
+    "meta"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "operation": {
+      "type": "string"
+    },
+    "read_only": {
+      "type": "boolean"
+    },
+    "safety_level": {
+      "type": "string",
+      "enum": [
+        "safe_read_only",
+        "controlled_mutation",
+        "unsafe_arbitrary_execution"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "remediation": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "error": {
+      "type": "string"
+    },
+    "error_type": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["timestamp"],
+      "properties": {
+        "timestamp": {
+          "type": "string"
+        },
+        "duration": {
+          "type": "number"
+        }
+      }
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "duration": {
+      "type": "number"
+    }
+  },
+  "additionalProperties": true
+}

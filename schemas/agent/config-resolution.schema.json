@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/config-resolution.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "environment",
+    "effective_config",
+    "missing_required_keys"
+  ],
+  "properties": {
+    "type": { "const": "config_resolution" },
+    "environment": { "type": "object" },
+    "effective_config": { "type": "object" },
+    "missing_required_keys": { "type": "array", "items": { "type": "string" } },
+    "resolved_binaries": { "type": "object" },
+    "addons_paths": { "type": "object" }
+  },
+  "additionalProperties": true
+}

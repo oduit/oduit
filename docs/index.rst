@@ -42,7 +42,9 @@ Contents
 
    installation
    quickstart
+   interfaces
    cli
+   agent_contract
    configuration
    api
    examples

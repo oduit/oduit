@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/addon-test-inventory.schema.json",
+  "type": "object",
+  "required": ["type", "module", "addon_root", "tests"],
+  "properties": {
+    "type": { "const": "addon_test_inventory" },
+    "module": { "type": "string" },
+    "addon_root": { "type": "string" },
+    "tests": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": true
+}

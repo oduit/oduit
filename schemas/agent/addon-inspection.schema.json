@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/addon-inspection.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "module",
+    "exists",
+    "module_path",
+    "addon_type",
+    "manifest"
+  ],
+  "properties": {
+    "type": { "const": "addon_inspection" },
+    "module": { "type": "string" },
+    "exists": { "type": "boolean" },
+    "module_path": { "type": "string" },
+    "addon_type": { "type": "string" },
+    "manifest": { "type": "object" },
+    "direct_dependencies": { "type": "array", "items": { "type": "string" } },
+    "reverse_dependencies": { "type": "array", "items": { "type": "string" } },
+    "missing_dependencies": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

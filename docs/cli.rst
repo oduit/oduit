@@ -854,6 +854,9 @@ The ``oduit agent`` command group is the preferred automation surface for
 inspection and planning. These commands always emit structured JSON and do not
 require the global ``--json`` flag.
 
+For ``1.x``, ``data`` is the canonical payload container and flattened
+command-specific fields remain part of the public compatibility contract.
+
 context
 ^^^^^^^
 
@@ -872,6 +875,15 @@ Inspect one addon with manifest, dependency, and impact data.
 
    oduit --env dev agent inspect-addon sale
 
+inspect-addons
+^^^^^^^^^^^^^^
+
+Inspect multiple addons in one call.
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-addons --modules sale,stock
+
 plan-update
 ^^^^^^^^^^^
 
@@ -881,6 +893,79 @@ Build a read-only update plan with impact and risk metadata.
 
    oduit --env dev agent plan-update sale
 
+locate-model
+^^^^^^^^^^^^
+
+Locate likely Python source files for a model extension inside one addon.
+
+.. code-block:: bash
+
+   oduit --env dev agent locate-model res.partner --module my_partner
+
+locate-field
+^^^^^^^^^^^^
+
+Locate an existing field definition or suggest the best insertion point.
+
+.. code-block:: bash
+
+   oduit --env dev agent locate-field res.partner email3 --module my_partner
+
+list-addon-tests
+^^^^^^^^^^^^^^^^
+
+Return likely test files for an addon, optionally ranked by model or field
+references.
+
+.. code-block:: bash
+
+   oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
+
+doctor
+^^^^^^
+
+Return doctor diagnostics through the standard agent envelope.
+
+.. code-block:: bash
+
+   oduit --env dev agent doctor
+
+list-addons
+^^^^^^^^^^^
+
+Return structured addon inventory with filters and duplicate indicators.
+
+.. code-block:: bash
+
+   oduit --env dev agent list-addons --exclude category:Theme
+
+dependency-graph
+^^^^^^^^^^^^^^^^
+
+Return dependency graph nodes, edges, cycles, and install order data.
+
+.. code-block:: bash
+
+   oduit --env dev agent dependency-graph --modules sale,stock
+
+resolve-config
+^^^^^^^^^^^^^^
+
+Return the resolved configuration with sensitive values redacted.
+
+.. code-block:: bash
+
+   oduit --env dev agent resolve-config
+
+list-duplicates
+^^^^^^^^^^^^^^^
+
+Return duplicate addon-name analysis through the standard envelope.
+
+.. code-block:: bash
+
+   oduit --env dev agent list-duplicates
+
 test-summary
 ^^^^^^^^^^^^
 
@@ -889,6 +974,16 @@ Run tests and emit a normalized summary payload.
 .. code-block:: bash
 
    oduit --env dev agent test-summary --module sale --test-tags /sale
+
+Controlled mutation commands require ``--allow-mutation`` and support
+``--dry-run`` planning where implemented.
+
+.. code-block:: bash
+
+   oduit --env dev agent install-module sale --dry-run
+   oduit --env dev agent update-module sale --allow-mutation
+   oduit --env dev agent create-addon my_module --allow-mutation
+   oduit --env dev agent export-lang sale --allow-mutation --language de_DE
 
 query-model
 ^^^^^^^^^^^

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/duplicate-modules.schema.json",
+  "type": "object",
+  "required": ["type", "duplicate_modules", "duplicate_count"],
+  "properties": {
+    "type": { "const": "duplicate_modules" },
+    "duplicate_modules": { "type": "object" },
+    "duplicate_count": { "type": "integer" }
+  },
+  "additionalProperties": true
+}

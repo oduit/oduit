@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
+from collections.abc import Collection, Mapping
 from graphlib import TopologicalSorter
 from typing import Any
 
@@ -56,7 +57,7 @@ class ModuleManager:
         return [item.strip() for item in message[len(prefix) :].split("->")]
 
     def _find_cycle_in_graph(
-        self, graph: dict[str, list[str] | set[str]]
+        self, graph: Mapping[str, Collection[str]]
     ) -> list[str] | None:
         """Return the first detected cycle path in a dependency graph."""
         visited: set[str] = set()

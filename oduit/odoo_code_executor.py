@@ -21,7 +21,7 @@ import sys
 import threading
 import traceback
 from ast import Expr
-from typing import Any
+from typing import Any, cast
 
 from .config_provider import ConfigProvider
 from .odoo_embedded_manager import OdooEmbeddedManager
@@ -170,7 +170,7 @@ class OdooCodeExecutor:
             import odoo
 
             # Set up threading context
-            threading.current_thread().dbname = db_name
+            cast(Any, threading.current_thread()).dbname = db_name
 
             # Get registry and create environment
             registry = odoo.registry(db_name)
@@ -438,7 +438,7 @@ class OdooCodeExecutor:
             import odoo
 
             # Set up threading context
-            threading.current_thread().dbname = db_name
+            cast(Any, threading.current_thread()).dbname = db_name
 
             # Get registry and create environment
             registry = odoo.registry(db_name)

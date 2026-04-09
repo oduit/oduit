@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/update-plan.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "module",
+    "impact_set",
+    "risk_score",
+    "risk_level",
+    "verification_steps"
+  ],
+  "properties": {
+    "type": { "const": "update_plan" },
+    "module": { "type": "string" },
+    "impact_set": { "type": "array", "items": { "type": "string" } },
+    "risk_score": { "type": "integer" },
+    "risk_level": { "type": "string" },
+    "verification_steps": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

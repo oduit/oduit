@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/model-source-location.schema.json",
+  "type": "object",
+  "required": ["type", "model", "module", "addon_root", "candidates"],
+  "properties": {
+    "type": { "const": "model_source_location" },
+    "model": { "type": "string" },
+    "module": { "type": "string" },
+    "addon_root": { "type": "string" },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "class_name",
+          "match_kind",
+          "declared_model",
+          "confidence"
+        ],
+        "properties": {
+          "path": { "type": "string" },
+          "class_name": { "type": "string" },
+          "match_kind": { "type": "string" },
+          "declared_model": { "type": "string" },
+          "confidence": { "type": "number" },
+          "line_hint": { "type": "integer" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

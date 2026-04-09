@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/addon-inventory.schema.json",
+  "type": "object",
+  "required": ["type", "addons", "total", "sorting"],
+  "properties": {
+    "type": { "const": "addon_inventory" },
+    "addons": { "type": "array", "items": { "type": "object" } },
+    "total": { "type": "integer" },
+    "sorting": { "type": "string" },
+    "duplicate_modules": { "type": "object" }
+  },
+  "additionalProperties": true
+}

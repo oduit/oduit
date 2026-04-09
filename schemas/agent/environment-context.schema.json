@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/environment-context.schema.json",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "type",
+    "success",
+    "read_only",
+    "safety_level",
+    "data",
+    "meta",
+    "environment",
+    "addons_paths",
+    "odoo",
+    "database",
+    "available_module_count"
+  ],
+  "properties": {
+    "type": { "const": "environment_context" },
+    "environment": { "type": "object" },
+    "addons_paths": { "type": "object" },
+    "odoo": { "type": "object" },
+    "database": { "type": "object" },
+    "available_module_count": { "type": "integer" },
+    "duplicate_modules": { "type": "object" }
+  },
+  "additionalProperties": true
+}

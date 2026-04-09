@@ -17,11 +17,14 @@ from .addons_path_manager import AddonsPathManager
 from .api_models import (
     AddonInspection,
     AddonsPathStatus,
+    AddonTestInventory,
     BinaryProbe,
     DatabaseSummary,
     EnvironmentContext,
     EnvironmentSource,
+    FieldSourceLocation,
     ModelFieldsResult,
+    ModelSourceLocation,
     OdooVersionInfo,
     QueryModelResult,
     RecordReadResult,
@@ -54,6 +57,7 @@ from .odoo_query import OdooQuery
 from .operation_result import OperationResult
 from .output import print_error, print_error_result, print_info
 from .process_manager import ProcessManager
+from .source_locator import list_addon_tests, locate_field_sources, locate_model_sources
 from .utils import validate_addon_name
 
 
@@ -1231,6 +1235,11 @@ class OdooOperations:
                 return "core_ee"
         return "custom"
 
+    def _get_module_manager(self) -> ModuleManager:
+        """Return a configured module manager for addon-aware operations."""
+        addons_path = self.config.get_required("addons_path")
+        return ModuleManager(addons_path)
+
     def get_environment_context(
         self,
         env_name: str | None = None,
@@ -1654,6 +1663,150 @@ class OdooOperations:
             warnings=list(dict.fromkeys(inspection.warnings)),
             remediation=list(dict.fromkeys(remediation)),
         )
+
+    def inspect_addons(
+        self,
+        module_names: list[str],
+        odoo_series: OdooSeries | None = None,
+    ) -> list[AddonInspection]:
+        """Return typed inspection payloads for multiple addons."""
+        return [
+            self.inspect_addon(module_name, odoo_series=odoo_series)
+            for module_name in module_names
+        ]
+
+    def locate_model(
+        self,
+        module_name: str,
+        model: str,
+    ) -> ModelSourceLocation:
+        """Return static source candidates for a model extension."""
+        module_manager = self._get_module_manager()
+        addon_root = module_manager.find_module_path(module_name)
+        if addon_root is None:
+            raise ModuleNotFoundError(
+                f"Module '{module_name}' was not found in addons_path"
+            )
+        return locate_model_sources(addon_root, module_name, model)
+
+    def locate_field(
+        self,
+        module_name: str,
+        model: str,
+        field_name: str,
+    ) -> FieldSourceLocation:
+        """Return static field source candidates inside one addon."""
+        module_manager = self._get_module_manager()
+        addon_root = module_manager.find_module_path(module_name)
+        if addon_root is None:
+            raise ModuleNotFoundError(
+                f"Module '{module_name}' was not found in addons_path"
+            )
+        return locate_field_sources(addon_root, module_name, model, field_name)
+
+    def list_addon_tests(
+        self,
+        module_name: str,
+        model: str | None = None,
+        field_name: str | None = None,
+    ) -> AddonTestInventory:
+        """Return likely addon test files for one addon."""
+        module_manager = self._get_module_manager()
+        addon_root = module_manager.find_module_path(module_name)
+        if addon_root is None:
+            raise ModuleNotFoundError(
+                f"Module '{module_name}' was not found in addons_path"
+            )
+        return list_addon_tests(
+            addon_root, module_name, model=model, field_name=field_name
+        )
+
+    def list_duplicates(self) -> dict[str, list[str]]:
+        """Return duplicate module names across configured addon paths."""
+        addons_path = self.config.get_required("addons_path")
+        return AddonsPathManager(addons_path).find_duplicate_module_names()
+
+    def list_addons_inventory(
+        self,
+        module_names: list[str],
+        odoo_series: OdooSeries | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return structured addon inventory records."""
+        module_manager = self._get_module_manager()
+        duplicates = self.list_duplicates()
+        detected_series = odoo_series or module_manager.detect_odoo_series()
+        inventory: list[dict[str, Any]] = []
+        for module_name in module_names:
+            manifest = module_manager.get_manifest(module_name)
+            if manifest is None:
+                continue
+            raw_data = manifest.get_raw_data()
+            inventory.append(
+                {
+                    "module": module_name,
+                    "module_path": module_manager.find_module_path(module_name),
+                    "addon_type": self._get_addon_type(module_name, detected_series),
+                    "version": manifest.version,
+                    "summary": manifest.summary,
+                    "author": manifest.author,
+                    "category": raw_data.get("category"),
+                    "license": manifest.license,
+                    "depends": list(manifest.codependencies),
+                    "python_dependencies": list(manifest.python_dependencies),
+                    "binary_dependencies": list(manifest.binary_dependencies),
+                    "duplicate_name": module_name in duplicates,
+                    "duplicate_locations": duplicates.get(module_name, []),
+                }
+            )
+        return inventory
+
+    def dependency_graph(self, module_names: list[str]) -> dict[str, Any]:
+        """Return dependency graph data for one or more addons."""
+        module_manager = self._get_module_manager()
+        graph: dict[str, set[str]] = {}
+        missing_dependencies: dict[str, list[str]] = {}
+        cycle: list[str] = []
+        warnings: list[str] = []
+
+        for module_name in module_names:
+            try:
+                subgraph = module_manager.build_dependency_graph(module_name)
+                for graph_module, dependencies in subgraph.items():
+                    graph.setdefault(graph_module, set()).update(dependencies)
+            except ValueError as exc:
+                warnings.append(str(exc))
+                parsed_cycle = module_manager.parse_cycle_error(str(exc))
+                if parsed_cycle:
+                    cycle = parsed_cycle
+            missing_dependencies[module_name] = (
+                module_manager.find_missing_dependencies(module_name)
+            )
+
+        nodes = sorted(graph)
+        edges = [
+            {"source": module_name, "target": dependency}
+            for module_name in sorted(graph)
+            for dependency in sorted(graph[module_name])
+        ]
+        install_order: list[str] = []
+        if not cycle:
+            try:
+                install_order = module_manager.sort_modules(nodes, "topological")
+            except ValueError as exc:
+                warnings.append(str(exc))
+                parsed_cycle = module_manager.parse_cycle_error(str(exc))
+                if parsed_cycle:
+                    cycle = parsed_cycle
+
+        return {
+            "modules": module_names,
+            "nodes": nodes,
+            "edges": edges,
+            "missing_dependencies": missing_dependencies,
+            "cycles": [cycle] if cycle else [],
+            "install_order": install_order,
+            "warnings": warnings,
+        }
 
     def query_model(
         self,

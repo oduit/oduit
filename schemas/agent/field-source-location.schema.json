@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/field-source-location.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "model",
+    "field",
+    "module",
+    "addon_root",
+    "exists",
+    "candidates"
+  ],
+  "properties": {
+    "type": { "const": "field_source_location" },
+    "model": { "type": "string" },
+    "field": { "type": "string" },
+    "module": { "type": "string" },
+    "addon_root": { "type": "string" },
+    "exists": { "type": "boolean" },
+    "candidates": { "type": "array", "items": { "type": "object" } },
+    "insertion_candidate": { "type": "object" },
+    "related_files": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}
