@@ -4120,6 +4120,11 @@ def agent_list_addon_models(
 def agent_find_model_extensions(
     ctx: typer.Context,
     model: str = typer.Argument(help="Model to inspect across addons"),
+    summary: bool = typer.Option(
+        False,
+        "--summary",
+        help="Omit bulky scanned file listings from the payload",
+    ),
     database: str | None = typer.Option(
         None, "--database", help="Override database name"
     ),
@@ -4152,9 +4157,21 @@ def agent_find_model_extensions(
     payload = _agent_payload(
         operation,
         result_type,
-        inventory.to_dict(),
+        {
+            **inventory.to_dict(),
+            "summary": summary,
+            "base_declaration_count": len(inventory.base_declarations),
+            "source_extension_count": len(inventory.source_extensions),
+            "source_view_extension_count": len(inventory.source_view_extensions),
+            "installed_field_count": len(inventory.installed_fields),
+            "installed_extension_field_count": len(
+                inventory.installed_extension_fields
+            ),
+            "installed_view_extension_count": len(inventory.installed_view_extensions),
+        },
         warnings=list(inventory.warnings),
         remediation=list(dict.fromkeys(remediation)),
+        exclude_fields=["scanned_python_files"] if summary else None,
     )
     _agent_emit_payload(payload)
 

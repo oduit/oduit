@@ -369,3 +369,59 @@ def test_agent_find_model_extensions_combines_source_and_runtime_metadata(
     )
     assert payload["installed_extension_fields"][0]["modules"] == "dvo_helpdesk"
     assert payload["installed_view_extensions"][0]["priority"] == 101
+
+
+def test_agent_find_model_extensions_summary_omits_scanned_files(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = _make_addon(addons_dir, "dvo")
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "dvo.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class DVO(models.Model):\n"
+        "    _name = 'dvo.dvo'\n"
+        "    name = fields.Char()\n"
+    )
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    def _query_side_effect(
+        self: object,
+        model: str,
+        domain: list[object] | None = None,
+        fields: list[str] | None = None,
+        limit: int = 80,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> MagicMock:
+        return MagicMock(success=True, records=[], error=None)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.odoo_operations.OdooOperations.query_model", new=_query_side_effect
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "find-model-extensions",
+                "dvo.dvo",
+                "--summary",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["summary"] is True
+    assert payload["base_declaration_count"] == 1
+    assert payload["source_extension_count"] == 0
+    assert "scanned_python_files" not in payload
