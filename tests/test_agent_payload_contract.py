@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
+from oduit.api_models import ModelViewInventory, ModelViewRecord
 from oduit.cli_typer import app
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -100,6 +101,7 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "addon-test-inventory.schema.json",
         SCHEMAS / "agent" / "addon-model-inventory.schema.json",
         SCHEMAS / "agent" / "model-extension-inventory.schema.json",
+        SCHEMAS / "agent" / "model-view-inventory.schema.json",
     ]
     for schema_path in expected:
         assert schema_path.exists(), schema_path
@@ -149,6 +151,24 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                 ),
                 MagicMock(success=True, records=[], error=None),
             ],
+        ),
+        patch(
+            "oduit.cli_typer.OdooOperations.get_model_views",
+            return_value=ModelViewInventory(
+                model="res.partner",
+                requested_types=["form"],
+                primary_views=[
+                    ModelViewRecord(
+                        id=7,
+                        name="res.partner.form",
+                        view_type="form",
+                        mode="primary",
+                        priority=16,
+                        arch_db="<form/>",
+                    )
+                ],
+                view_counts={"total": 1, "primary": 1, "extension": 0, "form": 1},
+            ),
         ),
     ):
         payloads = {
@@ -223,6 +243,20 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                         "agent",
                         "find-model-extensions",
                         "res.partner",
+                    ],
+                ).output
+            ),
+            "model-view-inventory.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "get-model-views",
+                        "res.partner",
+                        "--types",
+                        "form",
                     ],
                 ).output
             ),

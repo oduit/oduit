@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
+from oduit.api_models import ModelViewInventory, ModelViewRecord
 from oduit.cli_typer import app
 from oduit.odoo_operations import OdooOperations
 
@@ -225,6 +226,160 @@ def test_agent_query_model_invalid_domain_json_is_structured(tmp_path: Path) -> 
     assert payload["success"] is False
     assert payload["error_type"] == "CommandError"
     assert "must be valid JSON" in payload["error"]
+
+
+def test_agent_get_model_views_returns_primary_and_extension_views(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.get_model_views.return_value = ModelViewInventory(
+            model="dvo.dvo",
+            requested_types=["form", "tree"],
+            primary_views=[
+                ModelViewRecord(
+                    id=1501,
+                    name="DVO Form",
+                    view_type="form",
+                    mode="primary",
+                    priority=16,
+                    arch_db="<form/>",
+                )
+            ],
+            extension_views=[
+                ModelViewRecord(
+                    id=1508,
+                    name="dvo.dvo.view.dvo",
+                    view_type="form",
+                    mode="extension",
+                    priority=101,
+                    inherit_id=[1501, "DVO Form"],
+                    arch_db="<xpath/>",
+                )
+            ],
+            view_counts={"total": 2, "primary": 1, "extension": 1, "form": 2},
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "get-model-views",
+                "dvo.dvo",
+                "--types",
+                "form,tree",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "model_view_inventory"
+    assert payload["operation"] == "get_model_views"
+    assert payload["requested_types"] == ["form", "tree"]
+    assert payload["primary_views"][0]["name"] == "DVO Form"
+    assert payload["extension_views"][0]["inherit_id"] == [1501, "DVO Form"]
+    ops.get_model_views.assert_called_once_with(
+        "dvo.dvo",
+        view_types=["form", "tree"],
+        database=None,
+        timeout=30.0,
+        include_arch=True,
+    )
+
+
+def test_agent_get_model_views_summary_omits_arch_db(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.get_model_views.return_value = ModelViewInventory(
+            model="dvo.dvo",
+            primary_views=[
+                ModelViewRecord(
+                    id=1501,
+                    name="DVO Form",
+                    view_type="form",
+                    mode="primary",
+                    priority=16,
+                    arch_db="<form/>",
+                )
+            ],
+            view_counts={"total": 1, "primary": 1, "extension": 0, "form": 1},
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "get-model-views",
+                "dvo.dvo",
+                "--summary",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["summary"] is True
+    assert "arch_db" not in payload["primary_views"][0]
+    ops.get_model_views.assert_called_once_with(
+        "dvo.dvo",
+        view_types=None,
+        database=None,
+        timeout=30.0,
+        include_arch=False,
+    )
+
+
+def test_agent_get_model_views_query_failure_is_structured(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.get_model_views.return_value = ModelViewInventory(
+            model="dvo.dvo",
+            error="database unavailable",
+            error_type="QueryError",
+            warnings=["Failed to query model views: database unavailable"],
+            remediation=[
+                "Verify database access and model name, then retry the view query."
+            ],
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "get-model-views", "dvo.dvo"],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["type"] == "model_view_inventory"
+    assert payload["success"] is False
+    assert payload["error"] == "database unavailable"
+    assert payload["error_type"] == "QueryError"
 
 
 @pytest.mark.parametrize(

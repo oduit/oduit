@@ -1057,6 +1057,45 @@ def _parse_csv_items(raw_value: str | None) -> list[str] | None:
     return items or None
 
 
+def _parse_view_types(
+    raw_value: str | None, operation: str, result_type: str
+) -> list[str] | None:
+    """Parse and validate requested Odoo view types."""
+    values = _parse_csv_items(raw_value)
+    if values is None:
+        return None
+
+    valid_view_types = {"form", "tree", "kanban", "search", "calendar", "graph"}
+    invalid = [value for value in values if value not in valid_view_types]
+    if invalid:
+        _agent_fail(
+            operation,
+            result_type,
+            f"Unsupported view type(s): {', '.join(invalid)}",
+            error_type="ValidationError",
+            remediation=[
+                "Use supported view types only: form, tree, kanban, search, "
+                "calendar, graph.",
+            ],
+        )
+    return values
+
+
+def _strip_arch_from_model_views(data: dict[str, Any]) -> dict[str, Any]:
+    """Remove nested ``arch_db`` fields from model view payloads."""
+    result = dict(data)
+    for field_name in ("primary_views", "extension_views"):
+        views = result.get(field_name)
+        if not isinstance(views, list):
+            continue
+        result[field_name] = [
+            {key: value for key, value in view.items() if key != "arch_db"}
+            for view in views
+            if isinstance(view, dict)
+        ]
+    return result
+
+
 def _parse_json_list_option(
     raw_value: str | None,
     option_name: str,
@@ -4174,6 +4213,81 @@ def agent_find_model_extensions(
         exclude_fields=["scanned_python_files"] if summary else None,
     )
     _agent_emit_payload(payload)
+
+
+@agent_app.command("get-model-views")
+def agent_get_model_views(
+    ctx: typer.Context,
+    model: str = typer.Argument(help="Model whose DB views should be fetched"),
+    types: str | None = typer.Option(
+        None,
+        "--types",
+        help="Comma-separated view types, e.g. form,tree,kanban,search",
+    ),
+    summary: bool = typer.Option(
+        False,
+        "--summary",
+        help="Omit bulky arch_db values from the payload",
+    ),
+    database: str | None = typer.Option(
+        None, "--database", help="Override database name"
+    ),
+    timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
+) -> None:
+    """Fetch database-backed primary and extension views for a model."""
+    operation = "get_model_views"
+    result_type = "model_view_inventory"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    requested_types = _parse_view_types(types, operation, result_type)
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    inventory = ops.get_model_views(
+        model,
+        view_types=requested_types,
+        database=database,
+        timeout=timeout,
+        include_arch=not summary,
+    )
+    inventory_data = inventory.to_dict()
+    if summary:
+        inventory_data = _strip_arch_from_model_views(inventory_data)
+    remediation = list(inventory.remediation)
+    payload = _agent_payload(
+        operation,
+        result_type,
+        {
+            **inventory_data,
+            "summary": summary,
+        },
+        success=(
+            inventory.error is None
+            and bool(inventory.primary_views or inventory.extension_views)
+        ),
+        warnings=list(inventory.warnings),
+        remediation=remediation,
+        error=(
+            inventory.error
+            or (
+                f"No database views were found for model '{model}'"
+                if not inventory.primary_views and not inventory.extension_views
+                else None
+            )
+        ),
+        error_type=(
+            inventory.error_type
+            or (
+                "ModelViewNotFound"
+                if not inventory.primary_views and not inventory.extension_views
+                else None
+            )
+        ),
+    )
+    _agent_emit_payload(payload)
+    if inventory.error or not inventory.primary_views and not inventory.extension_views:
+        raise typer.Exit(1)
 
 
 @agent_app.command("doctor")

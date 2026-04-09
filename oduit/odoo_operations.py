@@ -29,6 +29,8 @@ from .api_models import (
     ModelExtensionInventory,
     ModelFieldsResult,
     ModelSourceLocation,
+    ModelViewInventory,
+    ModelViewRecord,
     OdooVersionInfo,
     QueryModelResult,
     RecordReadResult,
@@ -2017,6 +2019,143 @@ class OdooOperations:
                 database=database,
                 timeout=timeout,
             )
+        )
+
+    def get_model_views(
+        self,
+        model: str,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        include_arch: bool = True,
+    ) -> ModelViewInventory:
+        """Return primary and extension DB views for one model."""
+        fields = ["name", "type", "mode", "priority", "inherit_id", "key", "active"]
+        if include_arch:
+            fields.append("arch_db")
+
+        result = self.query_model(
+            "ir.ui.view",
+            domain=[["model", "=", model]],
+            fields=fields,
+            limit=500,
+            database=database,
+            timeout=timeout,
+        )
+        warnings: list[str] = []
+        remediation: list[str] = []
+        requested_types = list(view_types or [])
+
+        if not result.success:
+            return ModelViewInventory(
+                model=model,
+                requested_types=requested_types,
+                database=database,
+                error=result.error,
+                error_type=result.error_type,
+                warnings=(
+                    [f"Failed to query model views: {result.error}"]
+                    if result.error
+                    else warnings
+                ),
+                remediation=(
+                    [
+                        "Verify database access and model name, then retry the "
+                        "view query."
+                    ]
+                    if result.error
+                    else remediation
+                ),
+            )
+
+        normalized_types = {value for value in requested_types}
+        records: list[ModelViewRecord] = []
+        for record in result.records:
+            raw_type = record.get("type")
+            if not isinstance(raw_type, str):
+                continue
+            if normalized_types and raw_type not in normalized_types:
+                continue
+
+            raw_inherit_id = record.get("inherit_id")
+            inherit_id = (
+                list(raw_inherit_id) if isinstance(raw_inherit_id, list) else None
+            )
+            records.append(
+                ModelViewRecord(
+                    id=int(record.get("id", 0) or 0),
+                    name=str(record.get("name", "")),
+                    view_type=raw_type,
+                    mode=(
+                        str(record["mode"])
+                        if isinstance(record.get("mode"), str)
+                        else None
+                    ),
+                    priority=(
+                        int(record["priority"])
+                        if isinstance(record.get("priority"), int)
+                        and not isinstance(record.get("priority"), bool)
+                        else None
+                    ),
+                    inherit_id=inherit_id,
+                    key=(
+                        str(record["key"])
+                        if isinstance(record.get("key"), str)
+                        else None
+                    ),
+                    active=(
+                        bool(record["active"])
+                        if isinstance(record.get("active"), bool)
+                        else None
+                    ),
+                    arch_db=(
+                        str(record["arch_db"])
+                        if isinstance(record.get("arch_db"), str)
+                        else None
+                    ),
+                )
+            )
+
+        records.sort(
+            key=lambda item: (
+                item.view_type,
+                0 if item.mode == "primary" and not item.inherit_id else 1,
+                item.priority if item.priority is not None else 9999,
+                item.id,
+            )
+        )
+        primary_views = [
+            record
+            for record in records
+            if record.mode == "primary" and not record.inherit_id
+        ]
+        extension_views = [record for record in records if record not in primary_views]
+        view_counts = {
+            "total": len(records),
+            "primary": len(primary_views),
+            "extension": len(extension_views),
+        }
+        for view_type in sorted(
+            {record.view_type for record in records} | normalized_types
+        ):
+            view_counts[view_type] = sum(
+                1 for record in records if record.view_type == view_type
+            )
+
+        if not records:
+            remediation.append(
+                "No views were found for the model in the selected database."
+            )
+
+        return ModelViewInventory(
+            model=model,
+            requested_types=requested_types,
+            primary_views=primary_views,
+            extension_views=extension_views,
+            view_counts=view_counts,
+            database=database,
+            warnings=warnings,
+            remediation=remediation,
         )
 
     def execute_python_code(

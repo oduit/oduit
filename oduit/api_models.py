@@ -260,6 +260,37 @@ class ModelFieldsResult(DictModel):
 
 
 @dataclass
+class ModelViewRecord(DictModel):
+    """One database-backed view record for a model."""
+
+    id: int
+    name: str
+    view_type: str
+    mode: str | None = None
+    priority: int | None = None
+    inherit_id: list[Any] | None = None
+    key: str | None = None
+    active: bool | None = None
+    arch_db: str | None = None
+
+
+@dataclass
+class ModelViewInventory(DictModel):
+    """Database-backed view inventory for a model."""
+
+    model: str
+    requested_types: list[str] = dataclass_field(default_factory=list)
+    primary_views: list[ModelViewRecord] = dataclass_field(default_factory=list)
+    extension_views: list[ModelViewRecord] = dataclass_field(default_factory=list)
+    view_counts: dict[str, int] = dataclass_field(default_factory=dict)
+    database: str | None = None
+    error: str | None = None
+    error_type: str | None = None
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
 class ModelSourceCandidate(DictModel):
     """Ranked model source candidate for static source localization."""
 
