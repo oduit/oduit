@@ -148,6 +148,7 @@ def test_agent_workflow_for_partner_field_change(tmp_path: Path) -> None:
                     "dev",
                     "agent",
                     "test-summary",
+                    "--allow-mutation",
                     "--module",
                     "my_partner",
                     "--test-tags",

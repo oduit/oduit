@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/addon-model-inventory.schema.json",
+  "type": "object",
+  "required": ["type", "module", "addon_root", "models", "model_count"],
+  "properties": {
+    "type": { "const": "addon_model_inventory" },
+    "module": { "type": "string" },
+    "addon_root": { "type": "string" },
+    "model_count": { "type": "integer" },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["model", "relation_kind", "class_name", "path"],
+        "properties": {
+          "model": { "type": "string" },
+          "relation_kind": { "type": "string" },
+          "class_name": { "type": "string" },
+          "path": { "type": "string" },
+          "line_hint": { "type": "integer" },
+          "inherited_models": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "delegated_models": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "scanned_python_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

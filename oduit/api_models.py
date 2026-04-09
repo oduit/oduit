@@ -337,3 +337,29 @@ class AddonTestInventory(DictModel):
     tests: list[AddonTestFile] = dataclass_field(default_factory=list)
     warnings: list[str] = dataclass_field(default_factory=list)
     remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class AddonModelEntry(DictModel):
+    """One model declaration or extension discovered in addon source."""
+
+    model: str
+    relation_kind: str
+    class_name: str
+    path: str
+    line_hint: int | None = None
+    inherited_models: list[str] = dataclass_field(default_factory=list)
+    delegated_models: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class AddonModelInventory(DictModel):
+    """Static addon model inventory for coding-agent inspection workflows."""
+
+    module: str
+    addon_root: str
+    models: list[AddonModelEntry] = dataclass_field(default_factory=list)
+    model_count: int = 0
+    scanned_python_files: list[str] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)

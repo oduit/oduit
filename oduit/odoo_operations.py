@@ -16,6 +16,7 @@ from . import output as _output_module
 from .addons_path_manager import AddonsPathManager
 from .api_models import (
     AddonInspection,
+    AddonModelInventory,
     AddonsPathStatus,
     AddonTestInventory,
     BinaryProbe,
@@ -57,7 +58,12 @@ from .odoo_query import OdooQuery
 from .operation_result import OperationResult
 from .output import print_error, print_error_result, print_info
 from .process_manager import ProcessManager
-from .source_locator import list_addon_tests, locate_field_sources, locate_model_sources
+from .source_locator import (
+    list_addon_models,
+    list_addon_tests,
+    locate_field_sources,
+    locate_model_sources,
+)
 from .utils import validate_addon_name
 
 
@@ -432,6 +438,7 @@ class OdooOperations:
         language: str,
         no_http: bool = False,
         log_level: str | None = None,
+        suppress_output: bool = False,
     ) -> dict:
         """Export language translations for a specific module to a file.
 
@@ -459,7 +466,7 @@ class OdooOperations:
             >>> ops = OdooOperations(env_config)
             >>> ops.export_module_language('sale', 'sale_fr.po', 'fr_FR')
         """
-        if self.verbose:
+        if self.verbose and not suppress_output:
             print_info(f"Export language {language} to {filename} for module: {module}")
         builder = LanguageCommandBuilder(self.config, module, filename, language)
 
@@ -470,10 +477,16 @@ class OdooOperations:
 
         try:
             operation = builder.build_operation()
-            result = self.process_manager.run_operation(operation, verbose=self.verbose)
+            result = self.process_manager.run_operation(
+                operation,
+                verbose=self.verbose and not suppress_output,
+                suppress_output=suppress_output,
+            )
 
         except ConfigError as e:
             result = {"success": False, "error": str(e), "error_type": "ConfigError"}
+            if suppress_output:
+                return result
             if _output_module._formatter.format_type == "json":
                 print_error_result(str(e), 1)
             else:
@@ -995,6 +1008,7 @@ class OdooOperations:
         addon_name: str,
         destination: str | None = None,
         template: str | None = None,
+        suppress_output: bool = False,
     ) -> dict:
         """Create a new Odoo addon using the scaffold command.
 
@@ -1024,7 +1038,8 @@ class OdooOperations:
             >>> if result['success']:
             ...     print("Addon created successfully")
         """
-        print_info(f"Creating addon: {addon_name}")
+        if not suppress_output:
+            print_info(f"Creating addon: {addon_name}")
 
         if not validate_addon_name(addon_name):
             error_msg = (
@@ -1036,6 +1051,8 @@ class OdooOperations:
                 "error": error_msg,
                 "error_type": "ValidationError",
             }
+            if suppress_output:
+                return result
             if _output_module._formatter.format_type == "json":
                 print_error_result(error_msg, 1)
             else:
@@ -1061,7 +1078,11 @@ class OdooOperations:
             cmd.extend(["-t", template])
 
         try:
-            result = self.process_manager.run_command(cmd)
+            result = self.process_manager.run_command(
+                cmd,
+                verbose=self.verbose and not suppress_output,
+                suppress_output=suppress_output,
+            )
 
             if result:
                 result.update(
@@ -1076,6 +1097,8 @@ class OdooOperations:
 
         except ConfigError as e:
             result = {"success": False, "error": str(e), "error_type": "ConfigError"}
+            if suppress_output:
+                return result
             if _output_module._formatter.format_type == "json":
                 print_error_result(str(e), 1)
             else:
@@ -1720,6 +1743,16 @@ class OdooOperations:
         return list_addon_tests(
             addon_root, module_name, model=model, field_name=field_name
         )
+
+    def list_addon_models(self, module_name: str) -> AddonModelInventory:
+        """Return a static model inventory for one addon."""
+        module_manager = self._get_module_manager()
+        addon_root = module_manager.find_module_path(module_name)
+        if addon_root is None:
+            raise ModuleNotFoundError(
+                f"Module '{module_name}' was not found in addons_path"
+            )
+        return list_addon_models(addon_root, module_name)
 
     def list_duplicates(self) -> dict[str, list[str]]:
         """Return duplicate module names across configured addon paths."""

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .api_models import (
+    AddonModelEntry,
+    AddonModelInventory,
     AddonTestFile,
     AddonTestInventory,
     FieldSourceCandidate,
@@ -278,6 +280,85 @@ def locate_field_sources(
         scanned_python_files=scan.scanned_files,
         rationale=rationale,
         warnings=sorted(dict.fromkeys(scan.warnings + model_location.warnings)),
+        remediation=remediation,
+    )
+
+
+def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
+    """Return a static inventory of models declared or extended by one addon."""
+    scan = _scan_python_sources(addon_root)
+    models: list[AddonModelEntry] = []
+
+    for class_scan in scan.classes:
+        inherited_models = sorted(dict.fromkeys(class_scan.inherits))
+        delegated_models = sorted(class_scan.inherits_map)
+
+        if class_scan.name:
+            models.append(
+                AddonModelEntry(
+                    model=class_scan.name,
+                    relation_kind="declares",
+                    class_name=class_scan.class_name,
+                    path=class_scan.path,
+                    line_hint=class_scan.lineno,
+                    inherited_models=inherited_models,
+                    delegated_models=delegated_models,
+                )
+            )
+            continue
+
+        for inherited_model in inherited_models:
+            models.append(
+                AddonModelEntry(
+                    model=inherited_model,
+                    relation_kind="extends",
+                    class_name=class_scan.class_name,
+                    path=class_scan.path,
+                    line_hint=class_scan.lineno,
+                    inherited_models=inherited_models,
+                    delegated_models=delegated_models,
+                )
+            )
+
+        for delegated_model in delegated_models:
+            models.append(
+                AddonModelEntry(
+                    model=delegated_model,
+                    relation_kind="delegates",
+                    class_name=class_scan.class_name,
+                    path=class_scan.path,
+                    line_hint=class_scan.lineno,
+                    inherited_models=inherited_models,
+                    delegated_models=delegated_models,
+                )
+            )
+
+    relation_order = {"declares": 0, "extends": 1, "delegates": 2}
+    models.sort(
+        key=lambda item: (
+            item.model,
+            relation_order.get(item.relation_kind, 99),
+            item.path,
+            item.class_name,
+        )
+    )
+    remediation = (
+        []
+        if models
+        else [
+            (
+                f"No model declarations or extensions were found under `{module}`; "
+                "inspect XML, data files, or dynamic model generation manually."
+            ),
+        ]
+    )
+    return AddonModelInventory(
+        module=module,
+        addon_root=addon_root,
+        models=models,
+        model_count=len(models),
+        scanned_python_files=scan.scanned_files,
+        warnings=scan.warnings,
         remediation=remediation,
     )
 

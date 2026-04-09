@@ -117,6 +117,7 @@ def output_result_to_json(
         "unmet_dependencies",
         "failed_modules",
         "addons",
+        "models",
         "install_order",
         "impacted_modules",
         "candidates",

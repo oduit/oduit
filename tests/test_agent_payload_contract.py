@@ -98,6 +98,7 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "model-source-location.schema.json",
         SCHEMAS / "agent" / "field-source-location.schema.json",
         SCHEMAS / "agent" / "addon-test-inventory.schema.json",
+        SCHEMAS / "agent" / "addon-model-inventory.schema.json",
     ]
     for schema_path in expected:
         assert schema_path.exists(), schema_path
@@ -179,6 +180,18 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                 runner.invoke(
                     app,
                     ["--env", "dev", "agent", "list-addon-tests", "my_partner"],
+                ).output
+            ),
+            "addon-model-inventory.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "list-addon-models",
+                        "my_partner",
+                    ],
                 ).output
             ),
         }

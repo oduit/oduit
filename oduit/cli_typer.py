@@ -29,6 +29,7 @@ from .cli_types import (
     ShellInterface,
 )
 from .config_loader import ConfigLoader
+from .exceptions import ConfigError
 from .exceptions import ModuleNotFoundError as OduitModuleNotFoundError
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
@@ -964,6 +965,7 @@ def _resolve_agent_global_config(
     result_type: str,
 ) -> GlobalConfig:
     """Resolve configuration for agent commands without emitting text output."""
+    configure_output(format_type=OutputFormat.JSON.value, non_interactive=True)
     if ctx.obj is None:
         _agent_fail(
             operation,
@@ -1125,6 +1127,27 @@ def _parse_filter_values(
         field, value = raw_value.split(":", 1)
         filters.append((field.strip(), value.strip()))
     return filters
+
+
+def _require_agent_addons_path(
+    env_config: dict[str, Any],
+    operation: str,
+    result_type: str,
+) -> str:
+    """Return ``addons_path`` or emit a structured config error."""
+    addons_path = env_config.get("addons_path")
+    if isinstance(addons_path, str) and addons_path.strip():
+        return addons_path
+
+    _agent_fail(
+        operation,
+        result_type,
+        "addons_path is required for this agent command",
+        error_type="ConfigError",
+        remediation=[
+            "Set `addons_path` in the selected environment before retrying.",
+        ],
+    )
 
 
 def _redact_config_value(key: str, value: Any) -> Any:
@@ -2223,16 +2246,15 @@ def _apply_core_addon_filters(
         Filtered list of addon names
 
     Raises:
-        typer.Exit: If Odoo series cannot be detected
+        ValueError: If Odoo series cannot be detected
     """
     from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
 
     if not odoo_series:
-        print_error(
+        raise ValueError(
             "Could not detect Odoo series. "
             "Please specify --odoo-series to use exclusion filters"
         )
-        raise typer.Exit(1) from None
 
     filtered_addons = []
     for addon in addons:
@@ -2264,17 +2286,16 @@ def _apply_field_filters(
         Filtered list of addon names
 
     Raises:
-        typer.Exit: If field is invalid
+        ValueError: If field is invalid
     """
     # Apply include filters (skip if empty list)
     if include_filter:
         for field, value in include_filter:
             if field not in VALID_FILTER_FIELDS:
-                print_error(
+                raise ValueError(
                     f"Invalid field '{field}'. "
                     f"Valid fields: {', '.join(VALID_FILTER_FIELDS)}"
                 )
-                raise typer.Exit(1) from None
             addons = _filter_addons_by_field(
                 addons,
                 module_manager,
@@ -2288,11 +2309,10 @@ def _apply_field_filters(
     if exclude_filter:
         for field, value in exclude_filter:
             if field not in VALID_FILTER_FIELDS:
-                print_error(
+                raise ValueError(
                     f"Invalid field '{field}'. "
                     f"Valid fields: {', '.join(VALID_FILTER_FIELDS)}"
                 )
-                raise typer.Exit(1) from None
             addons = _filter_addons_by_field(
                 addons,
                 module_manager,
@@ -2508,14 +2528,22 @@ def list_addons(
     )
 
     if exclude_core_addons or exclude_enterprise_addons:
-        addons = _apply_core_addon_filters(
-            addons, exclude_core_addons, exclude_enterprise_addons, odoo_series
-        )
+        try:
+            addons = _apply_core_addon_filters(
+                addons, exclude_core_addons, exclude_enterprise_addons, odoo_series
+            )
+        except ValueError as e:
+            print_error(str(e))
+            raise typer.Exit(1) from None
 
     # Apply include/exclude filters
-    addons = _apply_field_filters(
-        addons, module_manager, include_filter, exclude_filter, odoo_series
-    )
+    try:
+        addons = _apply_field_filters(
+            addons, module_manager, include_filter, exclude_filter, odoo_series
+        )
+    except ValueError as e:
+        print_error(str(e))
+        raise typer.Exit(1) from None
 
     try:
         sorted_addons = module_manager.sort_modules(addons, sorting)
@@ -2607,9 +2635,13 @@ def list_manifest_values(
     )
 
     if exclude_core_addons or exclude_enterprise_addons:
-        addons = _apply_core_addon_filters(
-            addons, exclude_core_addons, exclude_enterprise_addons, odoo_series
-        )
+        try:
+            addons = _apply_core_addon_filters(
+                addons, exclude_core_addons, exclude_enterprise_addons, odoo_series
+            )
+        except ValueError as e:
+            print_error(str(e))
+            raise typer.Exit(1) from None
 
     # Collect unique values
     unique_values: set[str] = set()
@@ -3921,6 +3953,17 @@ def agent_locate_model(
                 "Run `oduit agent inspect-addon <module>` to confirm addon discovery.",
             ],
         )
+    except ConfigError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            details={"module": module, "model": model},
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
+            ],
+        )
 
     payload = _agent_payload(
         operation,
@@ -3955,6 +3998,17 @@ def agent_locate_field(
             remediation=[
                 "Verify that the addon exists in the configured addons paths.",
                 "Run `oduit agent inspect-addon <module>` to confirm addon discovery.",
+            ],
+        )
+    except ConfigError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            details={"module": module, "model": model, "field": field_name},
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
             ],
         )
 
@@ -3994,6 +4048,61 @@ def agent_list_addon_tests(
             details={"module": module},
             remediation=[
                 "Verify that the addon exists in the configured addons paths.",
+            ],
+        )
+    except ConfigError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            details={"module": module},
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
+            ],
+        )
+
+    payload = _agent_payload(
+        operation,
+        result_type,
+        inventory.to_dict(),
+        warnings=list(inventory.warnings),
+        remediation=list(inventory.remediation),
+    )
+    _agent_emit_payload(payload)
+
+
+@agent_app.command("list-addon-models")
+def agent_list_addon_models(
+    ctx: typer.Context,
+    module: str = typer.Argument(help="Addon to inspect"),
+) -> None:
+    """List the models declared or extended by one addon."""
+    operation = "list_addon_models"
+    result_type = "addon_model_inventory"
+    _, ops = _resolve_agent_ops(ctx, operation, result_type)
+    try:
+        inventory = ops.list_addon_models(module)
+    except OduitModuleNotFoundError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ModuleNotFoundError",
+            details={"module": module},
+            remediation=[
+                "Verify that the addon exists in the configured addons paths.",
+            ],
+        )
+    except ConfigError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            details={"module": module},
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
             ],
         )
 
@@ -4062,6 +4171,7 @@ def agent_list_addons(
     global_config, ops = _resolve_agent_ops(ctx, operation, result_type)
     env_config = global_config.env_config
     assert env_config is not None
+    addons_path = _require_agent_addons_path(env_config, operation, result_type)
 
     try:
         include_filter = _parse_filter_values(include, "include")
@@ -4074,7 +4184,7 @@ def agent_list_addons(
             details={"include": include, "exclude": exclude},
         )
 
-    module_manager = ModuleManager(env_config["addons_path"])
+    module_manager = ModuleManager(addons_path)
     addons = module_manager.find_module_dirs(filter_dir=select_dir)
     addons = [addon for addon in addons if not addon.startswith("test_")]
     odoo_series = global_config.odoo_series or module_manager.detect_odoo_series()
@@ -4087,7 +4197,7 @@ def agent_list_addons(
                 exclude_enterprise_addons,
                 odoo_series,
             )
-        except typer.Exit:
+        except ValueError:
             _agent_fail(
                 operation,
                 result_type,
@@ -4119,16 +4229,6 @@ def agent_list_addons(
             result_type,
             str(exc),
             error_type="ValidationError",
-        )
-    except typer.Exit:
-        _agent_fail(
-            operation,
-            result_type,
-            "Invalid addon field filter",
-            error_type="ValidationError",
-            remediation=[
-                f"Use supported filter fields only: {', '.join(VALID_FILTER_FIELDS)}.",
-            ],
         )
 
     inventory = ops.list_addons_inventory(sorted_addons, odoo_series=odoo_series)
@@ -4171,7 +4271,19 @@ def agent_dependency_graph(
             error_type="ValidationError",
         )
 
-    graph = ops.dependency_graph(module_names)
+    try:
+        graph = ops.dependency_graph(module_names)
+    except ConfigError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            details={"modules": module_names},
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
+            ],
+        )
     payload = _agent_payload(
         operation,
         result_type,
@@ -4290,7 +4402,18 @@ def agent_list_duplicates(ctx: typer.Context) -> None:
     operation = "list_duplicates"
     result_type = "duplicate_modules"
     _, ops = _resolve_agent_ops(ctx, operation, result_type)
-    duplicates = ops.list_duplicates()
+    try:
+        duplicates = ops.list_duplicates()
+    except ConfigError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
+            ],
+        )
     payload = _agent_payload(
         operation,
         result_type,
@@ -4353,6 +4476,8 @@ def agent_install_module(
             },
             warnings=list(inspection.warnings),
             remediation=list(inspection.remediation),
+            read_only=True,
+            safety_level=SAFE_READ_ONLY,
         )
         _agent_emit_payload(payload)
         return
@@ -4432,6 +4557,8 @@ def agent_update_module(
             },
             warnings=list(plan.warnings),
             remediation=list(plan.remediation),
+            read_only=True,
+            safety_level=SAFE_READ_ONLY,
         )
         _agent_emit_payload(payload)
         return
@@ -4499,12 +4626,19 @@ def agent_create_addon(
             remediation=[
                 "Retry with `--allow-mutation` to run the scaffold command.",
             ],
+            read_only=True,
+            safety_level=SAFE_READ_ONLY,
         )
         _agent_emit_payload(payload)
         return
 
     _agent_require_mutation(allow_mutation, operation, result_type, "addon creation")
-    result = ops.create_addon(addon_name, destination=path, template=template.value)
+    result = ops.create_addon(
+        addon_name,
+        destination=path,
+        template=template.value,
+        suppress_output=True,
+    )
     result["operation"] = operation
     payload = output_result_to_json(
         result,
@@ -4541,15 +4675,25 @@ def agent_export_lang(
     global_config, ops = _resolve_agent_ops(ctx, operation, result_type)
     env_config = global_config.env_config
     assert env_config is not None
+    addons_path = _require_agent_addons_path(env_config, operation, result_type)
 
     language_value = language or env_config.get("language", "de_DE")
     if language_value is None:
         language_value = "de_DE"
 
-    module_manager = ModuleManager(env_config["addons_path"])
+    module_manager = ModuleManager(addons_path)
     module_path = module_manager.find_module_path(module)
     if not module_path:
-        module_path = os.path.join(env_config["addons_path"].split(",")[0], module)
+        _agent_fail(
+            operation,
+            result_type,
+            f"Module '{module}' was not found in addons_path",
+            error_type="ModuleNotFoundError",
+            details={"module": module},
+            remediation=[
+                "Verify that the addon exists in the configured addons paths.",
+            ],
+        )
     i18n_dir = os.path.join(module_path, "i18n")
     language_slug = (
         language_value.split("_")[0] if "_" in language_value else language_value
@@ -4570,6 +4714,7 @@ def agent_export_lang(
                 "Retry with `--allow-mutation` to export the translation file.",
             ],
             read_only=True,
+            safety_level=SAFE_READ_ONLY,
         )
         _agent_emit_payload(payload)
         return
@@ -4582,6 +4727,7 @@ def agent_export_lang(
         language_value,
         no_http=global_config.no_http,
         log_level=log_level.value if log_level else None,
+        suppress_output=True,
     )
     result["operation"] = operation
     payload = output_result_to_json(
@@ -4609,6 +4755,7 @@ def agent_export_lang(
 def agent_test_summary(
     ctx: typer.Context,
     module: str | None = typer.Option(None, "--module", help="Module under test"),
+    allow_mutation: bool = typer.Option(False, "--allow-mutation"),
     install: str | None = typer.Option(
         None,
         "--install",
@@ -4639,6 +4786,8 @@ def agent_test_summary(
     if global_config.env_config is None:
         _agent_fail(operation, result_type, "No environment configuration available")
     assert global_config.env_config is not None
+
+    _agent_require_mutation(allow_mutation, operation, result_type, "test execution")
 
     ops = OdooOperations(global_config.env_config, verbose=False)
     result = ops.run_tests(

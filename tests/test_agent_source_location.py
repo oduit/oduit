@@ -216,3 +216,42 @@ def test_agent_list_addon_tests_ranks_references_and_handles_invalid_python(
     assert tests_payload["tests"][0]["references_field"] is True
     assert locate_result.exit_code == 0
     assert locate_payload["warnings"]
+
+
+def test_agent_list_addon_models_returns_static_inventory(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = _make_addon(addons_dir, "my_partner")
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class PartnerScore(models.Model):\n"
+        "    _name = 'x.partner.score'\n"
+        "    _inherit = 'mail.thread'\n"
+        "    partner_id = fields.Many2one('res.partner')\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "list-addon-models", "my_partner"],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_model_inventory"
+    assert payload["module"] == "my_partner"
+    assert payload["model_count"] == 2
+    assert payload["models"][0]["model"] == "res.partner"
+    assert payload["models"][0]["relation_kind"] == "extends"
+    assert payload["models"][1]["model"] == "x.partner.score"
+    assert payload["models"][1]["relation_kind"] == "declares"
+    assert payload["models"][1]["inherited_models"] == ["mail.thread"]
