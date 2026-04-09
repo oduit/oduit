@@ -24,6 +24,9 @@ from .api_models import (
     EnvironmentContext,
     EnvironmentSource,
     FieldSourceLocation,
+    InstalledModelField,
+    InstalledViewExtension,
+    ModelExtensionInventory,
     ModelFieldsResult,
     ModelSourceLocation,
     OdooVersionInfo,
@@ -61,6 +64,7 @@ from .process_manager import ProcessManager
 from .source_locator import (
     list_addon_models,
     list_addon_tests,
+    list_model_extensions,
     locate_field_sources,
     locate_model_sources,
 )
@@ -1753,6 +1757,106 @@ class OdooOperations:
                 f"Module '{module_name}' was not found in addons_path"
             )
         return list_addon_models(addon_root, module_name)
+
+    def find_model_extensions(
+        self,
+        model: str,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> ModelExtensionInventory:
+        """Return combined source and installed metadata for one model."""
+        addons_path = self.config.get_required("addons_path")
+        inventory = list_model_extensions(addons_path, model)
+
+        field_result = self.query_model(
+            "ir.model.fields",
+            domain=[["model", "=", model]],
+            fields=["name", "ttype", "relation", "modules", "state"],
+            limit=500,
+            database=database,
+            timeout=timeout,
+        )
+        if field_result.success:
+            inventory.installed_fields = [
+                InstalledModelField(
+                    name=str(record.get("name", "")),
+                    ttype=str(record.get("ttype", "")),
+                    relation=(
+                        str(record["relation"])
+                        if isinstance(record.get("relation"), str)
+                        else None
+                    ),
+                    modules=(
+                        str(record["modules"])
+                        if isinstance(record.get("modules"), str)
+                        else None
+                    ),
+                    state=(
+                        str(record["state"])
+                        if isinstance(record.get("state"), str)
+                        else None
+                    ),
+                )
+                for record in field_result.records
+                if record.get("name")
+            ]
+        elif field_result.error:
+            inventory.warnings.append(
+                f"Failed to query installed field metadata: {field_result.error}"
+            )
+
+        view_result = self.query_model(
+            "ir.ui.view",
+            domain=[["model", "=", model], ["inherit_id", "!=", False]],
+            fields=["name", "key", "priority", "inherit_id"],
+            limit=200,
+            database=database,
+            timeout=timeout,
+        )
+        if view_result.success:
+            inventory.installed_view_extensions = [
+                InstalledViewExtension(
+                    name=str(record.get("name", "")),
+                    key=(
+                        str(record["key"])
+                        if isinstance(record.get("key"), str)
+                        else None
+                    ),
+                    priority=(
+                        int(record["priority"])
+                        if isinstance(record.get("priority"), int)
+                        and not isinstance(record.get("priority"), bool)
+                        else None
+                    ),
+                    inherit_id=(
+                        list(record["inherit_id"])
+                        if isinstance(record.get("inherit_id"), list)
+                        else None
+                    ),
+                )
+                for record in view_result.records
+                if record.get("name")
+            ]
+        elif view_result.error:
+            inventory.warnings.append(
+                f"Failed to query installed view metadata: {view_result.error}"
+            )
+
+        declared_modules = {item.module for item in inventory.base_declarations}
+        inventory.installed_extension_fields = [
+            field
+            for field in inventory.installed_fields
+            if field.modules and field.modules not in declared_modules
+        ]
+        inventory.installed_extension_modules = sorted(
+            {
+                field.modules
+                for field in inventory.installed_extension_fields
+                if field.modules
+            }
+        )
+        inventory.warnings = sorted(dict.fromkeys(inventory.warnings))
+        return inventory
 
     def list_duplicates(self) -> dict[str, list[str]]:
         """Return duplicate module names across configured addon paths."""

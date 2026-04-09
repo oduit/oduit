@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/model-extension-inventory.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "model",
+    "base_declarations",
+    "source_extensions",
+    "source_view_extensions",
+    "installed_fields",
+    "installed_view_extensions"
+  ],
+  "properties": {
+    "type": { "const": "model_extension_inventory" },
+    "model": { "type": "string" },
+    "base_declarations": { "type": "array", "items": { "type": "object" } },
+    "source_extensions": { "type": "array", "items": { "type": "object" } },
+    "source_extension_modules": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "source_view_extensions": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "installed_fields": { "type": "array", "items": { "type": "object" } },
+    "installed_extension_fields": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "installed_view_extensions": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "installed_extension_modules": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "scanned_python_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

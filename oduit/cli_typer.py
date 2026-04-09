@@ -4116,6 +4116,49 @@ def agent_list_addon_models(
     _agent_emit_payload(payload)
 
 
+@agent_app.command("find-model-extensions")
+def agent_find_model_extensions(
+    ctx: typer.Context,
+    model: str = typer.Argument(help="Model to inspect across addons"),
+    database: str | None = typer.Option(
+        None, "--database", help="Override database name"
+    ),
+    timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
+) -> None:
+    """Find where a model is declared, extended, and installed."""
+    operation = "find_model_extensions"
+    result_type = "model_extension_inventory"
+    _, ops = _resolve_agent_ops(ctx, operation, result_type)
+    try:
+        inventory = ops.find_model_extensions(model, database=database, timeout=timeout)
+    except ConfigError as exc:
+        _agent_fail(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            details={"model": model},
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
+            ],
+        )
+
+    remediation = list(inventory.remediation)
+    if not inventory.installed_fields:
+        remediation.append(
+            "Runtime field metadata was unavailable; verify database access "
+            "if installed state matters."
+        )
+    payload = _agent_payload(
+        operation,
+        result_type,
+        inventory.to_dict(),
+        warnings=list(inventory.warnings),
+        remediation=list(dict.fromkeys(remediation)),
+    )
+    _agent_emit_payload(payload)
+
+
 @agent_app.command("doctor")
 def agent_doctor(ctx: typer.Context) -> None:
     """Return doctor diagnostics through the standard agent envelope."""

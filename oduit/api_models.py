@@ -363,3 +363,94 @@ class AddonModelInventory(DictModel):
     scanned_python_files: list[str] = dataclass_field(default_factory=list)
     warnings: list[str] = dataclass_field(default_factory=list)
     remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class ModelExtensionSource(DictModel):
+    """Static Python source extension for a model across addons."""
+
+    module: str
+    addon_root: str
+    path: str
+    class_name: str
+    line_hint: int | None = None
+    relation_kind: str = "extends"
+    added_fields: list[str] = dataclass_field(default_factory=list)
+    added_methods: list[str] = dataclass_field(default_factory=list)
+    inherited_models: list[str] = dataclass_field(default_factory=list)
+    delegated_models: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class ModelDeclarationSource(DictModel):
+    """Static source declaration for the model itself."""
+
+    module: str
+    addon_root: str
+    path: str
+    class_name: str
+    line_hint: int | None = None
+    added_fields: list[str] = dataclass_field(default_factory=list)
+    added_methods: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class InstalledModelField(DictModel):
+    """Runtime field metadata for one installed model field."""
+
+    name: str
+    ttype: str
+    relation: str | None = None
+    modules: str | None = None
+    state: str | None = None
+
+
+@dataclass
+class InstalledViewExtension(DictModel):
+    """Installed inherited view metadata for a model."""
+
+    name: str
+    key: str | None = None
+    priority: int | None = None
+    inherit_id: list[Any] | None = None
+
+
+@dataclass
+class ViewExtensionSource(DictModel):
+    """Static XML view extension for a model across addons."""
+
+    module: str
+    addon_root: str
+    path: str
+    record_id: str | None = None
+    name: str | None = None
+    priority: int | None = None
+    inherit_ref: str | None = None
+
+
+@dataclass
+class ModelExtensionInventory(DictModel):
+    """Combined source and runtime inventory for model extensions."""
+
+    model: str
+    base_declarations: list[ModelDeclarationSource] = dataclass_field(
+        default_factory=list
+    )
+    source_extensions: list[ModelExtensionSource] = dataclass_field(
+        default_factory=list
+    )
+    source_extension_modules: list[str] = dataclass_field(default_factory=list)
+    installed_fields: list[InstalledModelField] = dataclass_field(default_factory=list)
+    installed_extension_fields: list[InstalledModelField] = dataclass_field(
+        default_factory=list
+    )
+    source_view_extensions: list[ViewExtensionSource] = dataclass_field(
+        default_factory=list
+    )
+    installed_view_extensions: list[InstalledViewExtension] = dataclass_field(
+        default_factory=list
+    )
+    installed_extension_modules: list[str] = dataclass_field(default_factory=list)
+    scanned_python_files: list[str] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)

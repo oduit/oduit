@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import ast
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .addons_path_manager import AddonsPathManager
 from .api_models import (
     AddonModelEntry,
     AddonModelInventory,
@@ -13,8 +15,12 @@ from .api_models import (
     AddonTestInventory,
     FieldSourceCandidate,
     FieldSourceLocation,
+    ModelDeclarationSource,
+    ModelExtensionInventory,
+    ModelExtensionSource,
     ModelSourceCandidate,
     ModelSourceLocation,
+    ViewExtensionSource,
 )
 
 
@@ -27,6 +33,7 @@ class _ClassScan:
     name: str | None = None
     inherits_map: dict[str, str] = field(default_factory=dict)
     field_lines: dict[str, int | None] = field(default_factory=dict)
+    method_lines: dict[str, int | None] = field(default_factory=dict)
 
 
 @dataclass
@@ -124,9 +131,180 @@ def _scan_python_sources(addon_root: str) -> _ScanResult:
                         class_scan.inherits_map.update(_string_dict(value))
                     elif _is_field_call(value):
                         class_scan.field_lines[name] = lineno
+                if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+                    class_scan.method_lines[statement.name] = getattr(
+                        statement, "lineno", None
+                    )
             if class_scan.inherits or class_scan.name or class_scan.inherits_map:
                 result.classes.append(class_scan)
     return result
+
+
+def _iter_addon_roots(addons_path: str) -> list[tuple[str, str]]:
+    addon_roots: list[tuple[str, str]] = []
+    seen_roots: set[str] = set()
+    for configured_path in AddonsPathManager(addons_path).get_configured_paths():
+        base_path = Path(configured_path)
+        if not base_path.is_dir():
+            continue
+        for child in sorted(base_path.iterdir()):
+            if not child.is_dir():
+                continue
+            if not (
+                (child / "__manifest__.py").exists()
+                or (child / "__openerp__.py").exists()
+            ):
+                continue
+            child_str = str(child)
+            if child_str in seen_roots:
+                continue
+            seen_roots.add(child_str)
+            addon_roots.append((child.name, child_str))
+    return addon_roots
+
+
+def _extract_view_model(record: ET.Element) -> str | None:
+    model_name = record.get("model")
+    if model_name == "ir.ui.view":
+        for field in record.findall("field"):
+            if field.get("name") == "model" and field.text:
+                return field.text.strip()
+    return None
+
+
+def _scan_view_extensions(
+    addon_root: str, module: str, model: str
+) -> list[ViewExtensionSource]:
+    view_extensions: list[ViewExtensionSource] = []
+    root = Path(addon_root)
+    for path in sorted(root.rglob("*.xml")):
+        path_str = str(path)
+        try:
+            tree = ET.parse(path)
+        except (OSError, ET.ParseError):
+            continue
+        xml_root = tree.getroot()
+        for record in xml_root.iter("record"):
+            if _extract_view_model(record) != model:
+                continue
+            inherit_ref = None
+            name = None
+            priority = None
+            for field_element in record.findall("field"):
+                field_name = field_element.get("name")
+                if field_name == "inherit_id":
+                    inherit_ref = field_element.get("ref")
+                elif field_name == "name" and field_element.text:
+                    name = field_element.text.strip()
+                elif field_name == "priority" and field_element.text:
+                    try:
+                        priority = int(field_element.text.strip())
+                    except ValueError:
+                        priority = None
+            if inherit_ref is None:
+                continue
+            view_extensions.append(
+                ViewExtensionSource(
+                    module=module,
+                    addon_root=addon_root,
+                    path=path_str,
+                    record_id=record.get("id"),
+                    name=name,
+                    priority=priority,
+                    inherit_ref=inherit_ref,
+                )
+            )
+    return view_extensions
+
+
+def list_model_extensions(addons_path: str, model: str) -> ModelExtensionInventory:
+    """Return static extension locations for one model across all addons."""
+    base_declarations: list[ModelDeclarationSource] = []
+    source_extensions: list[ModelExtensionSource] = []
+    source_view_extensions: list[ViewExtensionSource] = []
+    scanned_python_files: list[str] = []
+    warnings: list[str] = []
+
+    for module, addon_root in _iter_addon_roots(addons_path):
+        scan = _scan_python_sources(addon_root)
+        scanned_python_files.extend(scan.scanned_files)
+        warnings.extend(scan.warnings)
+        source_view_extensions.extend(_scan_view_extensions(addon_root, module, model))
+        for class_scan in scan.classes:
+            added_fields = sorted(class_scan.field_lines)
+            added_methods = sorted(class_scan.method_lines)
+            inherited_models = sorted(dict.fromkeys(class_scan.inherits))
+            delegated_models = sorted(class_scan.inherits_map)
+
+            if class_scan.name == model:
+                base_declarations.append(
+                    ModelDeclarationSource(
+                        module=module,
+                        addon_root=addon_root,
+                        path=class_scan.path,
+                        class_name=class_scan.class_name,
+                        line_hint=class_scan.lineno,
+                        added_fields=added_fields,
+                        added_methods=added_methods,
+                    )
+                )
+
+            relation_kind: str | None = None
+            if model in class_scan.inherits:
+                relation_kind = "extends"
+            elif model in class_scan.inherits_map:
+                relation_kind = "delegates"
+
+            if relation_kind is None:
+                continue
+
+            source_extensions.append(
+                ModelExtensionSource(
+                    module=module,
+                    addon_root=addon_root,
+                    path=class_scan.path,
+                    class_name=class_scan.class_name,
+                    line_hint=class_scan.lineno,
+                    relation_kind=relation_kind,
+                    added_fields=added_fields,
+                    added_methods=added_methods,
+                    inherited_models=inherited_models,
+                    delegated_models=delegated_models,
+                )
+            )
+
+    base_declarations.sort(key=lambda item: (item.module, item.path, item.class_name))
+    source_extensions.sort(
+        key=lambda item: (
+            item.module,
+            0 if item.relation_kind == "extends" else 1,
+            item.path,
+            item.class_name,
+        )
+    )
+    source_view_extensions.sort(
+        key=lambda item: (item.module, item.path, item.record_id or "")
+    )
+    remediation = (
+        []
+        if source_extensions or base_declarations or source_view_extensions
+        else [
+            (
+                f"No static source declaration or extension was found for `{model}`; "
+                "inspect dynamic model registration or external addon paths manually."
+            )
+        ]
+    )
+    return ModelExtensionInventory(
+        model=model,
+        base_declarations=base_declarations,
+        source_extensions=source_extensions,
+        source_extension_modules=sorted({item.module for item in source_extensions}),
+        source_view_extensions=source_view_extensions,
+        scanned_python_files=sorted(dict.fromkeys(scanned_python_files)),
+        warnings=sorted(dict.fromkeys(warnings)),
+        remediation=remediation,
+    )
 
 
 def _base_confidence(path: Path) -> float:

@@ -255,3 +255,117 @@ def test_agent_list_addon_models_returns_static_inventory(tmp_path: Path) -> Non
     assert payload["models"][1]["model"] == "x.partner.score"
     assert payload["models"][1]["relation_kind"] == "declares"
     assert payload["models"][1]["inherited_models"] == ["mail.thread"]
+
+
+def test_agent_find_model_extensions_combines_source_and_runtime_metadata(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    base_dir = _make_addon(addons_dir, "dvo")
+    (base_dir / "models").mkdir()
+    (base_dir / "models" / "dvo.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class DVO(models.Model):\n"
+        "    _name = 'dvo.dvo'\n"
+        "    name = fields.Char()\n"
+    )
+    ext_dir = _make_addon(addons_dir, "dvo_helpdesk", depends=["dvo"])
+    (ext_dir / "models").mkdir()
+    (ext_dir / "models" / "dvo.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class DVO(models.Model):\n"
+        "    _inherit = 'dvo.dvo'\n"
+        "    helpdesk_team_ids = fields.Many2many('helpdesk.team')\n\n"
+        "    def _get_salesman_for_ticket(self):\n"
+        "        return False\n"
+    )
+    (ext_dir / "views").mkdir()
+    (ext_dir / "views" / "dvo_dvo_views.xml").write_text(
+        "<odoo>\n"
+        "  <record id='dvo_dvo_view_form_form_fields' model='ir.ui.view'>\n"
+        "    <field name='name'>dvo.dvo.view.dvo</field>\n"
+        "    <field name='model'>dvo.dvo</field>\n"
+        "    <field name='inherit_id' ref='dvo.dvo_dvo_view_form' />\n"
+        "    <field name='priority'>101</field>\n"
+        "  </record>\n"
+        "</odoo>\n"
+    )
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    def _query_side_effect(
+        self: object,
+        model: str,
+        domain: list[object] | None = None,
+        fields: list[str] | None = None,
+        limit: int = 80,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> MagicMock:
+        if model == "ir.model.fields":
+            return MagicMock(
+                success=True,
+                records=[
+                    {
+                        "name": "name",
+                        "ttype": "char",
+                        "relation": False,
+                        "modules": "dvo",
+                        "state": "base",
+                    },
+                    {
+                        "name": "helpdesk_team_ids",
+                        "ttype": "many2many",
+                        "relation": "helpdesk.team",
+                        "modules": "dvo_helpdesk",
+                        "state": "base",
+                    },
+                ],
+                error=None,
+            )
+        if model == "ir.ui.view":
+            return MagicMock(
+                success=True,
+                records=[
+                    {
+                        "name": "dvo.dvo.view.dvo",
+                        "key": False,
+                        "priority": 101,
+                        "inherit_id": [1501, "DVO Form"],
+                    }
+                ],
+                error=None,
+            )
+        raise AssertionError(model)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.odoo_operations.OdooOperations.query_model", new=_query_side_effect
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "find-model-extensions", "dvo.dvo"],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "model_extension_inventory"
+    assert payload["model"] == "dvo.dvo"
+    assert payload["base_declarations"][0]["module"] == "dvo"
+    assert payload["source_extensions"][0]["module"] == "dvo_helpdesk"
+    assert payload["source_extensions"][0]["added_fields"] == ["helpdesk_team_ids"]
+    assert payload["source_extensions"][0]["added_methods"] == [
+        "_get_salesman_for_ticket"
+    ]
+    assert payload["source_view_extensions"][0]["module"] == "dvo_helpdesk"
+    assert (
+        payload["source_view_extensions"][0]["inherit_ref"] == "dvo.dvo_dvo_view_form"
+    )
+    assert payload["installed_extension_fields"][0]["modules"] == "dvo_helpdesk"
+    assert payload["installed_view_extensions"][0]["priority"] == 101

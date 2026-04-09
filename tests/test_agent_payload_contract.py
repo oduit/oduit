@@ -99,6 +99,7 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "field-source-location.schema.json",
         SCHEMAS / "agent" / "addon-test-inventory.schema.json",
         SCHEMAS / "agent" / "addon-model-inventory.schema.json",
+        SCHEMAS / "agent" / "model-extension-inventory.schema.json",
     ]
     for schema_path in expected:
         assert schema_path.exists(), schema_path
@@ -129,6 +130,25 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
         patch(
             "oduit.cli_typer.OdooOperations.get_odoo_version",
             return_value={"success": True, "version": "17.0"},
+        ),
+        patch(
+            "oduit.odoo_operations.OdooOperations.query_model",
+            side_effect=[
+                MagicMock(
+                    success=True,
+                    records=[
+                        {
+                            "name": "email3",
+                            "ttype": "char",
+                            "relation": False,
+                            "modules": "my_partner",
+                            "state": "base",
+                        }
+                    ],
+                    error=None,
+                ),
+                MagicMock(success=True, records=[], error=None),
+            ],
         ),
     ):
         payloads = {
@@ -191,6 +211,18 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                         "agent",
                         "list-addon-models",
                         "my_partner",
+                    ],
+                ).output
+            ),
+            "model-extension-inventory.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "find-model-extensions",
+                        "res.partner",
                     ],
                 ).output
             ),
