@@ -84,6 +84,16 @@ Operations
    oduit --env dev test --test-tags /sale
    oduit --env dev shell
 
+Agent Inspection
+~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-addon sale
+   oduit --env dev agent list-addon-models my_partner
+   oduit --env dev agent find-model-extensions res.partner --summary
+   oduit --env dev agent get-model-views res.partner --types form,tree --summary
+
 Python API
 ----------
 

@@ -893,6 +893,36 @@ Build a read-only update plan with impact and risk metadata.
 
    oduit --env dev agent plan-update sale
 
+list-addon-models
+^^^^^^^^^^^^^^^^^
+
+Return the models declared or extended by one addon.
+
+.. code-block:: bash
+
+   oduit --env dev agent list-addon-models my_partner
+
+find-model-extensions
+^^^^^^^^^^^^^^^^^^^^^
+
+Return where a model is declared and extended across addons, plus installed
+field and view extension metadata from the database.
+
+.. code-block:: bash
+
+   oduit --env dev agent find-model-extensions dvo.dvo --summary
+
+get-model-views
+^^^^^^^^^^^^^^^
+
+Fetch primary and extension ``ir.ui.view`` records for a model directly from
+the database.
+
+.. code-block:: bash
+
+   oduit --env dev agent get-model-views dvo.dvo --types form,tree
+   oduit --env dev agent get-model-views dvo.dvo --types form,tree --summary
+
 locate-model
 ^^^^^^^^^^^^
 
@@ -969,11 +999,12 @@ Return duplicate addon-name analysis through the standard envelope.
 test-summary
 ^^^^^^^^^^^^
 
-Run tests and emit a normalized summary payload.
+Run tests and emit a normalized summary payload. This is a controlled mutation
+command and requires ``--allow-mutation``.
 
 .. code-block:: bash
 
-   oduit --env dev agent test-summary --module sale --test-tags /sale
+   oduit --env dev agent test-summary --allow-mutation --module sale --test-tags /sale
 
 Controlled mutation commands require ``--allow-mutation`` and support
 ``--dry-run`` planning where implemented.
@@ -1001,6 +1032,7 @@ Other read helpers follow the same pattern:
    oduit --env dev agent read-record res.partner 7 --fields name,email
    oduit --env dev agent search-count res.partner --domain-json '[["is_company", "=", true]]'
    oduit --env dev agent get-model-fields res.partner --attributes string,type
+   oduit --env dev agent get-model-views res.partner --types form,tree --summary
 
 Common Workflows
 ----------------

@@ -78,6 +78,9 @@ Published JSON Schema artifacts live under ``schemas/``:
 * ``schemas/agent/model-source-location.schema.json``
 * ``schemas/agent/field-source-location.schema.json``
 * ``schemas/agent/addon-test-inventory.schema.json``
+* ``schemas/agent/addon-model-inventory.schema.json``
+* ``schemas/agent/model-extension-inventory.schema.json``
+* ``schemas/agent/model-view-inventory.schema.json``
 
 Example
 -------

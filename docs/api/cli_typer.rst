@@ -45,6 +45,9 @@ Agent Commands
 .. autofunction:: oduit.cli_typer.agent_context
 .. autofunction:: oduit.cli_typer.agent_inspect_addon
 .. autofunction:: oduit.cli_typer.agent_plan_update
+.. autofunction:: oduit.cli_typer.agent_list_addon_models
+.. autofunction:: oduit.cli_typer.agent_find_model_extensions
+.. autofunction:: oduit.cli_typer.agent_get_model_views
 .. autofunction:: oduit.cli_typer.agent_locate_model
 .. autofunction:: oduit.cli_typer.agent_locate_field
 .. autofunction:: oduit.cli_typer.agent_list_addon_tests

@@ -13,6 +13,8 @@ Highlights
 * structured JSON output for automation and CI
 * addon intelligence commands such as ``list-addons``, ``list-depends``,
   ``install-order``, and ``impact-of-update``
+* agent-first model and view inspection such as ``find-model-extensions`` and
+  ``get-model-views``
 * Python APIs for operations, addon analysis, typed planning models, and safe
   read-only queries
 
