@@ -56,6 +56,7 @@ def register_app_commands(  # noqa: C901
     shell_command_impl: Any,
     install_command_impl: Any,
     update_command_impl: Any,
+    uninstall_command_impl: Any,
     test_command_impl: Any,
     create_db_command_impl: Any,
     list_db_command_impl: Any,
@@ -212,6 +213,43 @@ def register_app_commands(  # noqa: C901
             compact=compact,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+        )
+
+    @app.command()
+    def uninstall(
+        ctx: typer.Context,
+        module: str = typer.Argument(help="Module to uninstall"),
+        allow_uninstall: bool = typer.Option(
+            False,
+            "--allow-uninstall",
+            help="Confirm that this destructive uninstall is intended",
+        ),
+        log_level: LogLevel | None = log_level_option,
+        compact: bool = typer.Option(
+            False,
+            "--compact",
+            help="Suppress INFO logs at startup for cleaner output",
+        ),
+        include_command: bool = typer.Option(
+            False, "--include-command", help="Include executed command in result JSON"
+        ),
+        include_stdout: bool = typer.Option(
+            False, "--include-stdout", help="Include stdout in result JSON"
+        ),
+    ) -> None:
+        """Uninstall module."""
+        uninstall_command_impl(
+            ctx,
+            module=module,
+            allow_uninstall=allow_uninstall,
+            compact=compact,
+            log_level=log_level,
+            include_command=include_command,
+            include_stdout=include_stdout,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
         )
 
     @app.command()

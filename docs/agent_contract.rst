@@ -31,6 +31,7 @@ Default to the read-only inspection and planning commands:
 Only mutate through the controlled mutation commands:
 
 * ``install-module``
+* ``uninstall-module``
 * ``update-module``
 * ``create-addon``
 * ``export-lang``
@@ -111,12 +112,15 @@ Mutation Policy
 ---------------
 
 * Default to read-only commands.
-* ``install-module``, ``update-module``, ``create-addon``, ``export-lang``, and
-  ``test-summary`` are controlled mutations.
+* ``install-module``, ``uninstall-module``, ``update-module``,
+  ``create-addon``, ``export-lang``, and ``test-summary`` are controlled
+  mutations.
 * Controlled mutations require ``--allow-mutation``.
-* ``--dry-run`` is supported by ``install-module``, ``update-module``,
-  ``create-addon``, and ``export-lang``. Their dry runs return read-only
-  planning payloads.
+* ``uninstall-module`` also requires ``--allow-uninstall`` and
+  ``allow_uninstall = true`` in the active environment config.
+* ``--dry-run`` is supported by ``install-module``, ``uninstall-module``,
+  ``update-module``, ``create-addon``, and ``export-lang``. Their dry runs
+  return read-only planning payloads.
 * ``test-summary`` is mutation-gated because it can drive install, update, and
   database-backed test flows.
 * If ``context``, ``resolve-config``, or ``list-duplicates`` reports blockers,
@@ -235,6 +239,7 @@ Example failure codes:
 * ``mutation.confirmation_required``
 * ``runtime.test_failure``
 * ``runtime.install_dependency_error``
+* ``runtime.uninstall_dependency_blocked``
 
 When ``success = false``, do not guess about the next step. Inspect the
 structured payload, follow ``remediation``, reconcile state if needed, and then

@@ -16,6 +16,7 @@ from .exceptions import (
     ModuleOperationError,
     ModuleUpdateError,
     ModuleInstallError,
+    ModuleUninstallError,
     ModuleNotFoundError,
     DatabaseOperationError,
 )
@@ -105,6 +106,7 @@ __all__ = [
     "ModuleOperationError",
     "ModuleUpdateError",
     "ModuleInstallError",
+    "ModuleUninstallError",
     "ModuleNotFoundError",
     "DatabaseOperationError",
     "DemoProcessManager",

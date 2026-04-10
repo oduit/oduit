@@ -88,6 +88,46 @@ class TestConfigLoader(unittest.TestCase):
             self.assertEqual(result["python_bin"], "/usr/bin/python3")
             self.assertEqual(result["addons_path"], "/path1,/path2")
 
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data=(
+            b'[binaries]\npython_bin = "/usr/bin/python3"\n'
+            b'[odoo_params]\naddons_path = ["/path1", "/path2"]\n'
+            b"allow_uninstall = true\n"
+        ),
+    )
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    def test_load_toml_sectioned_config_preserves_allow_uninstall(
+        self, mock_expanduser, mock_exists, mock_file
+    ):
+        """Test load_config normalizes sectioned TOML and keeps allow_uninstall."""
+        mock_expanduser.return_value = "/mocked/home/.config/oduit"
+
+        def exists_side_effect(path):
+            return path.endswith("test.toml")
+
+        mock_exists.side_effect = exists_side_effect
+
+        with patch.object(ConfigLoader, "_import_toml_libs") as mock_import:
+            mock_tomllib = MagicMock()
+            mock_tomllib.load.return_value = {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {
+                    "addons_path": ["/path1", "/path2"],
+                    "allow_uninstall": True,
+                },
+            }
+            mock_import.return_value = (mock_tomllib, None)
+
+            config_loader = ConfigLoader()
+            result = config_loader.load_config("test")
+
+        self.assertEqual(result["python_bin"], "/usr/bin/python3")
+        self.assertEqual(result["addons_path"], "/path1,/path2")
+        self.assertTrue(result["allow_uninstall"])
+
     @patch("os.path.exists")
     @patch("os.path.expanduser")
     def test_load_config_file_not_found(self, mock_expanduser, mock_exists):
@@ -194,6 +234,39 @@ class TestConfigLoader(unittest.TestCase):
             self.assertEqual(result["python_bin"], "/usr/bin/python3")
             self.assertEqual(result["addons_path"], "/path1,/path2")
             mock_exists.assert_called_once_with(".oduit.toml")
+
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data=(
+            b'[binaries]\npython_bin = "/usr/bin/python3"\n'
+            b'[odoo_params]\naddons_path = ["/path1", "/path2"]\n'
+            b"allow_uninstall = true\n"
+        ),
+    )
+    @patch("os.path.exists")
+    def test_load_local_sectioned_config_preserves_allow_uninstall(
+        self, mock_exists, mock_file
+    ):
+        """Test load_local_config keeps allow_uninstall in sectioned TOML."""
+        mock_exists.return_value = True
+
+        with patch.object(ConfigLoader, "_import_toml_libs") as mock_import:
+            mock_tomllib = MagicMock()
+            mock_tomllib.load.return_value = {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {
+                    "addons_path": ["/path1", "/path2"],
+                    "allow_uninstall": True,
+                },
+            }
+            mock_import.return_value = (mock_tomllib, None)
+
+            config_loader = ConfigLoader()
+            result = config_loader.load_local_config()
+
+        self.assertEqual(result["addons_path"], "/path1,/path2")
+        self.assertTrue(result["allow_uninstall"])
 
     def test_local_config_integration(self):
         """Test local config functionality with real file."""

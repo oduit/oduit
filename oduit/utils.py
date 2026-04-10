@@ -43,6 +43,12 @@ def infer_error_code(error_type: str | None, error: str | None) -> str | None:
         return "runtime.query_failed"
     if error_type == "TestFailure":
         return "runtime.test_failure"
+    if error_type == "ModuleUninstallError":
+        if "dependent" in normalized_error:
+            return "runtime.uninstall_dependency_blocked"
+        if "not installed" in normalized_error:
+            return "runtime.uninstall_not_installed"
+        return "runtime.module_uninstall_failed"
     if error_type == "ModuleOperationError":
         return "runtime.module_operation_failed"
     if error_type == "CommandError":

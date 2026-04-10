@@ -11,6 +11,7 @@ from oduit import (
     InstalledAddonRecord,
     ModelFieldsResult,
     ModuleNotFoundError,
+    ModuleUninstallError,
     OdooOperations,
     QueryModelResult,
     RecordReadResult,
@@ -323,6 +324,256 @@ def test_list_installed_addons_supports_module_and_state_filters(
         database="alt_db",
         timeout=9.0,
     )
+
+
+def test_list_installed_dependents_filters_reverse_dependencies(tmp_path: Path) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "crm", depends=["base"])
+    _make_addon(addons_dir, "sale_crm", depends=["crm"])
+    _make_addon(addons_dir, "crm_iap", depends=["crm"])
+    _make_addon(addons_dir, "website", depends=["base"])
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    with patch("oduit.odoo_operations.OdooQuery") as mock_query_class:
+        query = MagicMock()
+        query.query_model.return_value = {
+            "success": True,
+            "operation": "query_model",
+            "model": "ir.module.module",
+            "records": [
+                {
+                    "name": "sale_crm",
+                    "state": "installed",
+                    "shortdesc": "Sale CRM",
+                }
+            ],
+            "database": "test_db",
+        }
+        mock_query_class.return_value = query
+
+        result = ops.list_installed_dependents("crm")
+
+    assert isinstance(result, InstalledAddonInventory)
+    assert result.success is True
+    assert result.operation == "list_installed_dependents"
+    assert result.modules_filter == ["crm_iap", "sale_crm"]
+    assert [addon.module for addon in result.addons] == ["sale_crm"]
+    query.query_model.assert_called_once_with(
+        "ir.module.module",
+        domain=[
+            ["state", "in", ["installed"]],
+            ["name", "in", ["crm_iap", "sale_crm"]],
+        ],
+        fields=["name", "state", "shortdesc", "application", "auto_install"],
+        limit=500,
+        database=None,
+        timeout=30.0,
+    )
+
+
+def test_list_installed_dependents_handles_no_reverse_dependencies(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "crm", depends=["base"])
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+    result = ops.list_installed_dependents("crm")
+
+    assert isinstance(result, InstalledAddonInventory)
+    assert result.success is True
+    assert result.operation == "list_installed_dependents"
+    assert result.total == 0
+    assert result.modules_filter == []
+    assert result.addons == []
+
+
+def test_module_uninstall_error_is_exported() -> None:
+    exc = ModuleUninstallError("failed")
+
+    assert str(exc) == "failed"
+
+
+def test_uninstall_module_requires_config_opt_in(tmp_path: Path) -> None:
+    ops = OdooOperations(_config(tmp_path, str(tmp_path / "addons")))
+
+    result = ops.uninstall_module("sale", allow_uninstall=True)
+
+    assert result["success"] is False
+    assert result["error_type"] == "ConfigError"
+    assert "allow_uninstall=true" in result["error"]
+
+
+def test_uninstall_module_requires_explicit_flag(tmp_path: Path) -> None:
+    config = _config(tmp_path, str(tmp_path / "addons"))
+    config["allow_uninstall"] = True
+    ops = OdooOperations(config)
+
+    result = ops.uninstall_module("sale")
+
+    assert result["success"] is False
+    assert result["error_type"] == "ConfirmationRequired"
+
+
+def test_uninstall_module_fails_when_module_not_installed(tmp_path: Path) -> None:
+    config = _config(tmp_path, str(tmp_path / "addons"))
+    config["allow_uninstall"] = True
+    ops = OdooOperations(config)
+
+    with (
+        patch.object(
+            ops,
+            "get_addon_install_state",
+            return_value=AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="sale",
+                record_found=True,
+                state="uninstalled",
+                installed=False,
+                database="test_db",
+            ),
+        ),
+        patch("oduit.odoo_operations.OdooCodeExecutor") as mock_executor_class,
+    ):
+        result = ops.uninstall_module("sale", allow_uninstall=True)
+
+    assert result["success"] is False
+    assert result["error_type"] == "ModuleUninstallError"
+    assert "not installed" in result["error"]
+    mock_executor_class.assert_not_called()
+
+
+def test_uninstall_module_blocks_installed_dependents(tmp_path: Path) -> None:
+    config = _config(tmp_path, str(tmp_path / "addons"))
+    config["allow_uninstall"] = True
+    ops = OdooOperations(config)
+
+    with (
+        patch.object(
+            ops,
+            "get_addon_install_state",
+            return_value=AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="crm",
+                record_found=True,
+                state="installed",
+                installed=True,
+                database="test_db",
+            ),
+        ),
+        patch.object(
+            ops,
+            "list_installed_dependents",
+            return_value=InstalledAddonInventory(
+                success=True,
+                operation="list_installed_dependents",
+                addons=[
+                    InstalledAddonRecord(
+                        module="sale_crm",
+                        state="installed",
+                        installed=True,
+                    )
+                ],
+                total=1,
+                states=["installed"],
+                modules_filter=["sale_crm"],
+                database="test_db",
+            ),
+        ),
+    ):
+        result = ops.uninstall_module("crm", allow_uninstall=True)
+
+    assert result["success"] is False
+    assert result["error_type"] == "ModuleUninstallError"
+    assert result["dependent_modules"] == ["sale_crm"]
+
+
+def test_uninstall_module_returns_structured_result(tmp_path: Path) -> None:
+    config = _config(tmp_path, str(tmp_path / "addons"))
+    config["allow_uninstall"] = True
+    ops = OdooOperations(config)
+
+    with (
+        patch.object(
+            ops,
+            "get_addon_install_state",
+            return_value=AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="crm",
+                record_found=True,
+                state="installed",
+                installed=True,
+                database="test_db",
+            ),
+        ),
+        patch.object(
+            ops,
+            "list_installed_dependents",
+            return_value=InstalledAddonInventory(
+                success=True,
+                operation="list_installed_dependents",
+                addons=[],
+                total=0,
+                states=["installed"],
+                modules_filter=[],
+                database="test_db",
+            ),
+        ),
+        patch("oduit.odoo_operations.OdooCodeExecutor") as mock_executor_class,
+    ):
+        executor = MagicMock()
+        executor._execute_generated_code.return_value = {
+            "success": True,
+            "value": {
+                "module": "crm",
+                "record_found": True,
+                "previous_state": "installed",
+                "final_state": "uninstalled",
+                "uninstalled": True,
+            },
+        }
+        mock_executor_class.return_value = executor
+
+        result = ops.uninstall_module("crm", allow_uninstall=True)
+
+    assert result["success"] is True
+    assert result["previous_state"] == "installed"
+    assert result["final_state"] == "uninstalled"
+    assert result["uninstalled"] is True
+    executor._execute_generated_code.assert_called_once()
+    _, kwargs = executor._execute_generated_code.call_args
+    assert kwargs["database"] == "test_db"
+    assert kwargs["commit"] is True
+
+
+def test_uninstall_module_raise_on_error_raises(tmp_path: Path) -> None:
+    config = _config(tmp_path, str(tmp_path / "addons"))
+    config["allow_uninstall"] = True
+    ops = OdooOperations(config)
+
+    with patch.object(
+        ops,
+        "get_addon_install_state",
+        return_value=AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="sale",
+            record_found=True,
+            state="uninstalled",
+            installed=False,
+            database="test_db",
+        ),
+    ):
+        with pytest.raises(ModuleUninstallError):
+            ops.uninstall_module("sale", allow_uninstall=True, raise_on_error=True)
 
 
 @pytest.mark.parametrize(

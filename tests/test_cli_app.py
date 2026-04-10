@@ -269,6 +269,93 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
+    def test_uninstall_command_requires_config_opt_in(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "uninstall", "sale", "--allow-uninstall"],
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("allow_uninstall=true", result.output)
+        mock_ops_instance.uninstall_module.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_uninstall_command_requires_allow_uninstall_flag(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "allow_uninstall": True,
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "uninstall", "sale"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("--allow-uninstall", result.output)
+        mock_ops_instance.uninstall_module.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_uninstall_command_json_schema(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "allow_uninstall": True,
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.uninstall_module.return_value = {
+            "success": True,
+            "operation": "uninstall_module",
+            "module": "sale",
+            "previous_state": "installed",
+            "final_state": "uninstalled",
+            "uninstalled": True,
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "uninstall",
+                "sale",
+                "--allow-uninstall",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assert_common_json_envelope(
+            payload,
+            read_only=False,
+            safety_level="controlled_runtime_mutation",
+        )
+        self.assertEqual(payload["type"], "module_uninstallation")
+        self.assertEqual(payload["operation"], "uninstall_module")
+        self.assertEqual(payload["final_state"], "uninstalled")
+        _, kwargs = mock_ops_instance.uninstall_module.call_args
+        self.assertTrue(kwargs.get("allow_uninstall"))
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_test_command(self, mock_config_loader_class, mock_odoo_ops):
         """Test test command."""
         mock_loader_instance = MagicMock()

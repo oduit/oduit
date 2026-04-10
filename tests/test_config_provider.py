@@ -257,6 +257,26 @@ class TestConfigProvider(unittest.TestCase):
         self.assertNotIn("--workers=4", params_list)
         self.assertNotIn("--log-level=info", params_list)
 
+    def test_get_optional_allow_uninstall_defaults_false(self):
+        """Test get_optional returns the provided default for missing keys."""
+        provider = ConfigProvider({"addons_path": "/path/to/addons"})
+
+        self.assertFalse(provider.get_optional("allow_uninstall", False))
+
+    def test_get_optional_allow_uninstall_from_sectioned_config(self):
+        """Test get_optional finds allow_uninstall in sectioned odoo_params."""
+        provider = ConfigProvider(
+            {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {
+                    "addons_path": "/path/to/addons",
+                    "allow_uninstall": True,
+                },
+            }
+        )
+
+        self.assertTrue(provider.get_optional("allow_uninstall", False))
+
 
 if __name__ == "__main__":
     unittest.main()

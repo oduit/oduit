@@ -71,6 +71,7 @@ def register_agent_commands(  # noqa: C901
     resolve_config_command_impl: Any,
     list_duplicates_command_impl: Any,
     install_module_command_impl: Any,
+    uninstall_module_command_impl: Any,
     update_module_command_impl: Any,
     create_addon_command_impl: Any,
     export_lang_command_impl: Any,
@@ -555,6 +556,35 @@ def register_agent_commands(  # noqa: C901
             module_not_found_error_cls=module_not_found_error_cls,
             safe_read_only=safe_read_only,
             controlled_runtime_mutation=controlled_runtime_mutation,
+        )
+
+    @agent_app.command("uninstall-module")
+    def agent_uninstall_module(
+        ctx: typer.Context,
+        module: str = typer.Argument(help="Module to uninstall"),
+        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        allow_uninstall: bool = typer.Option(False, "--allow-uninstall"),
+        dry_run: bool = typer.Option(False, "--dry-run"),
+        compact: bool = typer.Option(False, "--compact"),
+        log_level: LogLevel | None = log_level_option,
+    ) -> None:
+        """Uninstall a module with explicit runtime and destructive gates."""
+        uninstall_module_command_impl(
+            ctx,
+            module=module,
+            allow_mutation=allow_mutation,
+            allow_uninstall=allow_uninstall,
+            dry_run=dry_run,
+            compact=compact,
+            log_level=log_level,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_mutation_fn=agent_require_mutation_fn,
+            output_result_to_json_fn=output_result_to_json_fn,
+            controlled_runtime_mutation=controlled_runtime_mutation,
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("create-addon")

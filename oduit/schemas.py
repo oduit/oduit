@@ -51,6 +51,7 @@ CONTROLLED_RUNTIME_MUTATION_OPERATIONS = {
     "install",
     "test_summary",
     "install_module",
+    "uninstall_module",
     "update_module",
     "update",
     "test",

@@ -463,6 +463,8 @@ class ConfigLoader:
         if not isinstance(env_config, dict):
             raise ValueError(f"Invalid config format in: {config_path}")
 
+        env_config = self._normalize_sectioned_config(env_config)
+
         # Join addons_path list into a comma-separated string
         if isinstance(env_config.get("addons_path"), list):
             env_config["addons_path"] = ",".join(env_config["addons_path"])

@@ -22,6 +22,7 @@ contract changes such as new stable fields or failure codes.
 - `ModuleManager`
 - `ConfigError`
 - `OdooOperationError`, `ModuleOperationError`, `ModuleUpdateError`, `ModuleInstallError`
+- `ModuleUninstallError`
 - `ModuleNotFoundError`, `DatabaseOperationError`
 - `DemoProcessManager`
 - `OdooOperations`
@@ -40,6 +41,7 @@ contract changes such as new stable fields or failure codes.
 - `run`
 - `shell`
 - `install`
+- `uninstall`
 - `update`
 - `test`
 - `create-db`
@@ -89,6 +91,7 @@ contract changes such as new stable fields or failure codes.
 - `resolve-config`
 - `search-count`
 - `test-summary`
+- `uninstall-module`
 - `update-module`
 - `validate-addon-change`
 
@@ -98,6 +101,7 @@ contract changes such as new stable fields or failure codes.
 - `run_shell()`
 - `update_module()`
 - `install_module()`
+- `uninstall_module()`
 - `export_module_language()`
 - `run_tests()`
 - `db_exists()`
@@ -110,6 +114,7 @@ contract changes such as new stable fields or failure codes.
 - `inspect_addon()`
 - `plan_update()`
 - `get_addon_install_state()`
+- `list_installed_dependents()`
 - `list_installed_addons()`
 - `query_model()`
 - `read_record()`

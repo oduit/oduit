@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
+from oduit.api_models import AddonInstallState, InstalledAddonInventory
 from oduit.cli.app import app
 from oduit.odoo_code_executor import OdooCodeExecutor
 from oduit.odoo_operations import OdooOperations
@@ -365,3 +366,58 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
         self.assertEqual(payload["type"], "model_source_location")
+
+    def test_uninstall_module_uses_trusted_executor_not_shell_code(self) -> None:
+        ops = OdooOperations(
+            {
+                "addons_path": "./addons",
+                "db_name": "test_db",
+                "allow_uninstall": True,
+            }
+        )
+
+        with (
+            patch.object(
+                ops,
+                "execute_python_code",
+                side_effect=AssertionError("shell execution should not be used"),
+            ),
+            patch.object(
+                ops,
+                "get_addon_install_state",
+                return_value=AddonInstallState(
+                    success=True,
+                    operation="get_addon_install_state",
+                    module="sale",
+                    record_found=True,
+                    state="installed",
+                    installed=True,
+                    database="test_db",
+                ),
+            ),
+            patch.object(
+                ops,
+                "list_installed_dependents",
+                return_value=InstalledAddonInventory(
+                    success=True,
+                    operation="list_installed_dependents",
+                ),
+            ),
+            patch("oduit.odoo_operations.OdooCodeExecutor") as mock_executor_class,
+        ):
+            executor = MagicMock()
+            executor._execute_generated_code.return_value = {
+                "success": True,
+                "value": {
+                    "module": "sale",
+                    "record_found": True,
+                    "previous_state": "installed",
+                    "final_state": "uninstalled",
+                    "uninstalled": True,
+                },
+            }
+            mock_executor_class.return_value = executor
+
+            result = ops.uninstall_module("sale", allow_uninstall=True)
+
+        self.assertTrue(result["success"])

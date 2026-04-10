@@ -5,6 +5,40 @@ from typing import Any
 import typer
 
 
+def _config_flag_enabled(value: Any) -> bool:
+    """Normalize boolean-like config values from agent config dictionaries."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _require_uninstall_confirmation(
+    *,
+    allow_uninstall: bool,
+    operation: str,
+    result_type: str,
+    agent_fail_fn: Any,
+    controlled_runtime_mutation: str,
+) -> None:
+    """Enforce the extra uninstall confirmation gate."""
+    if allow_uninstall:
+        return
+    agent_fail_fn(
+        operation,
+        result_type,
+        "module uninstall requires --allow-uninstall",
+        error_type="ConfirmationRequired",
+        remediation=[
+            "Retry with both `--allow-mutation` and `--allow-uninstall` after "
+            "reviewing the dry-run payload.",
+        ],
+        read_only=False,
+        safety_level=controlled_runtime_mutation,
+    )
+
+
 def agent_install_module_command(
     ctx: typer.Context,
     *,
@@ -92,6 +126,168 @@ def agent_install_module_command(
             "safety_level": controlled_runtime_mutation,
             "remediation": (
                 ["Inspect unmet dependencies and retry after fixing them."]
+                if not result.get("success", False)
+                else []
+            ),
+        },
+        result_type=result_type,
+    )
+    agent_emit_payload_fn(payload)
+    if not result.get("success", False):
+        raise typer.Exit(1)
+
+
+def agent_uninstall_module_command(
+    ctx: typer.Context,
+    *,
+    module: str,
+    allow_mutation: bool,
+    allow_uninstall: bool,
+    dry_run: bool,
+    compact: bool,
+    log_level: Any,
+    resolve_agent_ops_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    agent_require_mutation_fn: Any,
+    output_result_to_json_fn: Any,
+    controlled_runtime_mutation: str,
+    safe_read_only: str,
+) -> None:
+    """Uninstall a module with explicit mutation and destructive-action gates."""
+    operation = "uninstall_module"
+    result_type = "module_uninstallation"
+    global_config, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    assert global_config.env_config is not None
+    config_allows_uninstall = _config_flag_enabled(
+        global_config.env_config.get("allow_uninstall", False)
+    )
+
+    if dry_run:
+        state_result = ops.get_addon_install_state(module)
+        if not state_result.success:
+            agent_fail_fn(
+                operation,
+                result_type,
+                state_result.error or "Failed to query module install state",
+                error_type=state_result.error_type or "QueryError",
+                details={"module": module},
+                remediation=[
+                    "Verify database access and retry the uninstall dry run.",
+                ],
+            )
+
+        dependents_result = ops.list_installed_dependents(
+            module,
+            database=state_result.database,
+        )
+        if not dependents_result.success:
+            agent_fail_fn(
+                operation,
+                result_type,
+                dependents_result.error or "Failed to query installed dependents",
+                error_type=dependents_result.error_type or "QueryError",
+                details={"module": module},
+                remediation=[
+                    "Verify database access and retry the uninstall dry run.",
+                ],
+            )
+
+        dependent_modules = [addon.module for addon in dependents_result.addons]
+        blocked_reasons: list[str] = []
+        if not config_allows_uninstall:
+            blocked_reasons.append("environment config does not allow uninstall")
+        if not allow_uninstall:
+            blocked_reasons.append("--allow-uninstall was not provided")
+        if not state_result.record_found:
+            blocked_reasons.append("module was not found in ir.module.module")
+        elif not state_result.installed:
+            blocked_reasons.append(
+                f"module is not installed (state: {state_result.state})"
+            )
+        if dependent_modules:
+            blocked_reasons.append(
+                "installed dependents exist: " + ", ".join(dependent_modules)
+            )
+
+        payload = agent_payload_fn(
+            operation,
+            result_type,
+            {
+                "module": module,
+                "planned_action": "uninstall",
+                "config_allows_uninstall": config_allows_uninstall,
+                "allow_uninstall_flag": allow_uninstall,
+                "installed_state": {
+                    "module": module,
+                    "record_found": state_result.record_found,
+                    "state": state_result.state,
+                    "installed": state_result.installed,
+                },
+                "dependent_modules": dependent_modules,
+                "blocked": bool(blocked_reasons),
+                "blocked_reasons": blocked_reasons,
+                "dry_run": True,
+            },
+            remediation=[
+                "Retry with `--allow-mutation --allow-uninstall` once the blocked "
+                "conditions are resolved."
+            ],
+            read_only=True,
+            safety_level=safe_read_only,
+        )
+        agent_emit_payload_fn(payload)
+        return
+
+    agent_require_mutation_fn(
+        allow_mutation,
+        operation,
+        result_type,
+        "module uninstall",
+        controlled_runtime_mutation,
+    )
+    _require_uninstall_confirmation(
+        allow_uninstall=allow_uninstall,
+        operation=operation,
+        result_type=result_type,
+        agent_fail_fn=agent_fail_fn,
+        controlled_runtime_mutation=controlled_runtime_mutation,
+    )
+    if not config_allows_uninstall:
+        agent_fail_fn(
+            operation,
+            result_type,
+            "Uninstall is disabled in this environment. "
+            "Set allow_uninstall=true in config.",
+            error_type="ConfigError",
+            details={"module": module},
+            remediation=[
+                "Enable `allow_uninstall = true` in the selected environment before "
+                "retrying.",
+            ],
+            read_only=False,
+            safety_level=controlled_runtime_mutation,
+        )
+
+    result = ops.uninstall_module(
+        module,
+        suppress_output=True,
+        compact=compact,
+        log_level=log_level.value if log_level else None,
+        allow_uninstall=allow_uninstall,
+    )
+    payload = output_result_to_json_fn(
+        result,
+        additional_fields={
+            "module": module,
+            "read_only": False,
+            "safety_level": controlled_runtime_mutation,
+            "remediation": (
+                [
+                    "Review dependent modules and environment gates, then retry the "
+                    "uninstall."
+                ]
                 if not result.get("success", False)
                 else []
             ),

@@ -37,6 +37,12 @@ class ModuleInstallError(ModuleOperationError):
     pass
 
 
+class ModuleUninstallError(ModuleOperationError):
+    """Raised when module uninstall fails"""
+
+    pass
+
+
 class ModuleNotFoundError(ModuleOperationError):
     """Raised when module doesn't exist"""
 

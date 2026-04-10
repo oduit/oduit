@@ -42,6 +42,7 @@ odoo_bin = "./odoo/odoo-bin"
 [odoo_params]
 addons_path = "./addons"
 db_name = "project_dev"
+allow_uninstall = false
 ```
 
 Then run:
@@ -100,10 +101,12 @@ oduit --env dev agent resolve-config
 oduit --env dev agent query-model res.partner --fields name,email --limit 5
 oduit --env dev agent validate-addon-change my_partner --allow-mutation --update --discover-tests
 oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
+oduit --env dev agent uninstall-module crm --dry-run
 
 # Operations
 oduit --env dev install sale
 oduit --env dev update sale
+oduit --env dev uninstall sale --allow-uninstall
 oduit --env dev test --test-tags /sale
 oduit --env dev shell
 oduit --env dev --non-interactive create-db
@@ -128,6 +131,8 @@ Agent commands always emit JSON and do not require the global `--json` flag.
 Structured payloads include an explicit `schema_version`, currently `2.0`.
 For one-shot verification after an addon change, prefer
 `oduit --env <env> agent validate-addon-change <module> --allow-mutation`.
+Destructive uninstall support is disabled by default and requires both
+`allow_uninstall = true` in config and `--allow-uninstall` at execution time.
 
 Recommended command sequence for an addon field change:
 

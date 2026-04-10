@@ -51,6 +51,7 @@ Create a configuration file for your environment.
    http_port = 8069
    workers = 4
    dev = true
+   allow_uninstall = false
 
 **Compatibility YAML format** (``~/.config/oduit/dev.yaml``):
 
@@ -84,6 +85,7 @@ Create a ``.oduit.toml`` file in your project root:
    addons_path = "./addons"
    db_name = "project_dev"
    dev = true
+   allow_uninstall = false
 
 If present, this configuration will be used when ``--env`` is not specified.
 
@@ -222,6 +224,33 @@ Update an Odoo module.
 
    # Update with compact output
    oduit --env dev update sale --compact
+
+uninstall
+^^^^^^^^^
+
+Uninstall an Odoo module through the trusted runtime mutation path.
+
+.. code-block:: bash
+
+   oduit --env dev uninstall MODULE --allow-uninstall
+
+**Notes:**
+
+- Uninstall is disabled by default and requires ``allow_uninstall = true`` in
+  the active config.
+- The CLI requires ``--allow-uninstall`` for each destructive uninstall.
+- Uninstall may fail early if installed dependents still rely on the target
+  module.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Uninstall a module after opting in at config level
+   oduit --env dev uninstall crm --allow-uninstall
+
+   # Machine-readable uninstall result
+   oduit --env dev --json uninstall crm --allow-uninstall
 
 test
 ^^^^

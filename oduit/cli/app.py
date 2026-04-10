@@ -39,6 +39,9 @@ from .agent.mutate import (
 )
 from .agent.mutate import agent_test_summary_command as _agent_test_summary_command
 from .agent.mutate import (
+    agent_uninstall_module_command as _agent_uninstall_module_command,
+)
+from .agent.mutate import (
     agent_update_module_command as _agent_update_module_command,
 )
 from .agent.payloads import agent_emit_payload as _agent_emit_payload_impl
@@ -151,6 +154,7 @@ from .commands.runtime import (
 from .commands.runtime import run_command as _run_command_impl
 from .commands.runtime import shell_command as _shell_command_impl
 from .commands.runtime import test_command as _test_command_impl
+from .commands.runtime import uninstall_command as _uninstall_command_impl
 from .commands.runtime import update_command as _update_command_impl
 from .dependency_output import print_dependency_list, print_dependency_tree
 from .doctor import build_doctor_report, print_doctor_report
@@ -430,6 +434,7 @@ register_app_commands(
     shell_command_impl=_shell_command_impl,
     install_command_impl=_install_command_impl,
     update_command_impl=_update_command_impl,
+    uninstall_command_impl=_uninstall_command_impl,
     test_command_impl=_test_command_impl,
     create_db_command_impl=_create_db_command_impl,
     list_db_command_impl=_list_db_command_impl,
@@ -522,6 +527,7 @@ register_agent_commands(
     resolve_config_command_impl=_agent_resolve_config_command,
     list_duplicates_command_impl=_agent_list_duplicates_command,
     install_module_command_impl=_agent_install_module_command,
+    uninstall_module_command_impl=_agent_uninstall_module_command,
     update_module_command_impl=_agent_update_module_command,
     create_addon_command_impl=_agent_create_addon_command,
     export_lang_command_impl=_agent_export_lang_command,

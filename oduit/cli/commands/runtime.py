@@ -25,6 +25,15 @@ def _parse_csv_items(raw_value: str | None) -> list[str] | None:
     return items or None
 
 
+def _config_flag_enabled(value: Any) -> bool:
+    """Normalize boolean-like config values from CLI config dictionaries."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def doctor_command(
     ctx: typer.Context,
     *,
@@ -224,6 +233,82 @@ def update_command(
         print_info(str(result))
 
     if not result.get("success"):
+        raise typer.Exit(1)
+
+
+def uninstall_command(
+    ctx: typer.Context,
+    *,
+    module: str,
+    allow_uninstall: bool,
+    compact: bool,
+    log_level: LogLevel | None,
+    include_command: bool,
+    include_stdout: bool,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+    confirmation_required_error_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Uninstall a module."""
+    if not module:
+        print_error("Module name is required for uninstall")
+        raise typer.Exit(1) from None
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    if not _config_flag_enabled(env_config.get("allow_uninstall", False)):
+        print_command_error_result_fn(
+            global_config,
+            "uninstall_module",
+            "Uninstall is disabled in this environment. "
+            "Set allow_uninstall=true in config.",
+            error_type="ConfigError",
+            details={"module": module},
+            remediation=[
+                "Enable `allow_uninstall = true` in the selected environment.",
+            ],
+        )
+        raise typer.Exit(1) from None
+
+    if not allow_uninstall:
+        confirmation_required_error_fn(
+            global_config,
+            "uninstall_module",
+            "Uninstall requires --allow-uninstall.",
+            remediation=[
+                f"Retry `oduit uninstall {module} --allow-uninstall` after "
+                "reviewing dependent modules.",
+            ],
+        )
+
+    odoo_operations = build_odoo_operations_fn(global_config)
+    result = odoo_operations.uninstall_module(
+        module,
+        suppress_output=True,
+        compact=compact,
+        log_level=log_level.value if log_level else None,
+        allow_uninstall=allow_uninstall,
+    )
+
+    if global_config.format == OutputFormat.JSON:
+        exclude_fields = ["command", "stdout"]
+        if include_command:
+            exclude_fields.remove("command")
+        if include_stdout:
+            exclude_fields.remove("stdout")
+        payload = output_result_to_json(
+            result,
+            additional_fields={"module": module},
+            exclude_fields=exclude_fields,
+            result_type="module_uninstallation",
+        )
+        print(json.dumps(payload))
+    elif result.get("success", False):
+        print_info(f"Uninstalled module: {module}")
+    else:
+        print_error(result.get("error") or "Module uninstall failed")
+
+    if not result.get("success", False):
         raise typer.Exit(1)
 
 

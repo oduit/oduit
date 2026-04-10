@@ -58,10 +58,12 @@ from .exceptions import (
     DatabaseOperationError,
     ModuleInstallError,
     ModuleNotFoundError,
+    ModuleUninstallError,
     ModuleUpdateError,
     OdooOperationError,
 )
 from .module_manager import ModuleManager
+from .odoo_code_executor import OdooCodeExecutor
 from .odoo_query import OdooQuery
 from .operation_result import OperationResult
 from .output import print_error, print_error_result, print_info
@@ -115,6 +117,7 @@ class OdooOperations:
         self.verbose = verbose
         self.env_config = env_config
         self._query_helper: OdooQuery | None = None
+        self._code_executor: OdooCodeExecutor | None = None
 
         self.config = ConfigProvider(env_config)
         if env_config.get("demo_mode", False):
@@ -1210,6 +1213,67 @@ class OdooOperations:
             self._query_helper = OdooQuery(self.env_config)
         return self._query_helper
 
+    def _get_code_executor(self) -> OdooCodeExecutor:
+        """Return the shared trusted code executor for this environment."""
+        if self._code_executor is None:
+            self._code_executor = OdooCodeExecutor(self.config)
+        return self._code_executor
+
+    @staticmethod
+    def _normalize_config_bool(value: Any) -> bool:
+        """Normalize boolean-like config values."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
+    def _config_allows_uninstall(self) -> bool:
+        """Return whether uninstall is enabled for the active environment."""
+        return self._normalize_config_bool(
+            self.config.get_optional("allow_uninstall", False)
+        )
+
+    @staticmethod
+    def _build_uninstall_module_code(module: str) -> str:
+        """Build trusted code for uninstalling one addon."""
+        return "\n".join(
+            [
+                f"_oduit_module_name = {module!r}",
+                "_oduit_module_model = env['ir.module.module']",
+                "_oduit_module = _oduit_module_model.search(",
+                "    [('name', '=', _oduit_module_name)],",
+                "    limit=1,",
+                ")",
+                "if not _oduit_module:",
+                "    raise ValueError(",
+                '        f"Module {_oduit_module_name!r} was not found in '
+                'ir.module.module"',
+                "    )",
+                "_oduit_previous_state = _oduit_module.state or 'uninstalled'",
+                "if _oduit_previous_state != 'installed':",
+                "    raise ValueError(",
+                '        f"Module {_oduit_module_name!r} is not installed"',
+                "    )",
+                "_oduit_module.button_immediate_uninstall()",
+                "_oduit_final = _oduit_module_model.search(",
+                "    [('name', '=', _oduit_module_name)],",
+                "    limit=1,",
+                ")",
+                "{",
+                "    'module': _oduit_module_name,",
+                "    'record_found': bool(_oduit_final),",
+                "    'previous_state': _oduit_previous_state,",
+                "    'final_state': (",
+                "        _oduit_final.state if _oduit_final else 'uninstalled'",
+                "    ),",
+                "    'uninstalled': (",
+                "        (not _oduit_final) or _oduit_final.state != 'installed'",
+                "    ),",
+                "}",
+            ]
+        )
+
     @staticmethod
     def _probe_binary(configured_value: Any, fallbacks: list[str]) -> BinaryProbe:
         """Resolve a configured or auto-detected binary into a typed probe."""
@@ -1981,6 +2045,235 @@ class OdooOperations:
             installed=state == "installed",
             database=result.database,
         )
+
+    def list_installed_dependents(
+        self,
+        module: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> InstalledAddonInventory:
+        """Return installed addons that depend on the target module."""
+        reverse_dependencies = self._get_module_manager().get_reverse_dependencies(
+            module
+        )
+        if not reverse_dependencies:
+            return InstalledAddonInventory(
+                success=True,
+                operation="list_installed_dependents",
+                addons=[],
+                total=0,
+                states=["installed"],
+                modules_filter=[],
+                database=database,
+            )
+
+        result = self.list_installed_addons(
+            modules=reverse_dependencies,
+            states=["installed"],
+            database=database,
+            timeout=timeout,
+        )
+        if not result.success:
+            return InstalledAddonInventory(
+                success=False,
+                operation="list_installed_dependents",
+                addons=[],
+                total=0,
+                states=["installed"],
+                modules_filter=reverse_dependencies,
+                database=result.database,
+                error=result.error,
+                error_type=result.error_type,
+                warnings=list(result.warnings),
+                remediation=list(result.remediation),
+            )
+
+        return InstalledAddonInventory(
+            success=True,
+            operation="list_installed_dependents",
+            addons=list(result.addons),
+            total=result.total,
+            states=list(result.states),
+            modules_filter=reverse_dependencies,
+            database=result.database,
+            warnings=list(result.warnings),
+            remediation=list(result.remediation),
+        )
+
+    def uninstall_module(
+        self,
+        module: str,
+        *,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        compact: bool = False,
+        log_level: str | None = None,
+        allow_uninstall: bool = False,
+        check_dependents: bool = True,
+    ) -> dict[str, Any]:
+        """Uninstall a module through a trusted runtime action."""
+        config_allows_uninstall = self._config_allows_uninstall()
+        result: dict[str, Any] = {
+            "success": False,
+            "operation": "uninstall_module",
+            "module": module,
+            "config_allows_uninstall": config_allows_uninstall,
+            "allow_uninstall": allow_uninstall,
+            "check_dependents": check_dependents,
+            "dependent_modules": [],
+            "compact": compact,
+            "log_level": log_level,
+        }
+
+        if not config_allows_uninstall:
+            result.update(
+                {
+                    "error": (
+                        "Uninstall is disabled in this environment. "
+                        "Set allow_uninstall=true in config."
+                    ),
+                    "error_type": "ConfigError",
+                }
+            )
+        elif not allow_uninstall:
+            result.update(
+                {
+                    "error": "Module uninstall requires allow_uninstall=True.",
+                    "error_type": "ConfirmationRequired",
+                }
+            )
+        else:
+            state_result = self.get_addon_install_state(module)
+            result["database"] = state_result.database
+            if not state_result.success:
+                result.update(
+                    {
+                        "error": state_result.error or "Failed to query module state",
+                        "error_type": state_result.error_type or "QueryError",
+                    }
+                )
+            elif not state_result.record_found:
+                result.update(
+                    {
+                        "error": (
+                            f"Module '{module}' was not found in ir.module.module."
+                        ),
+                        "error_type": "ModuleNotFoundError",
+                    }
+                )
+            elif not state_result.installed:
+                result.update(
+                    {
+                        "error": (
+                            f"Module '{module}' is not installed "
+                            f"(state: {state_result.state})."
+                        ),
+                        "error_type": "ModuleUninstallError",
+                        "previous_state": state_result.state,
+                        "final_state": state_result.state,
+                    }
+                )
+            else:
+                result["previous_state"] = state_result.state
+                if check_dependents:
+                    dependents_result = self.list_installed_dependents(
+                        module,
+                        database=state_result.database,
+                    )
+                    if not dependents_result.success:
+                        result.update(
+                            {
+                                "error": (
+                                    dependents_result.error
+                                    or "Failed to query installed dependents"
+                                ),
+                                "error_type": dependents_result.error_type
+                                or "QueryError",
+                            }
+                        )
+                    else:
+                        dependent_modules = [
+                            addon.module for addon in dependents_result.addons
+                        ]
+                        result["dependent_modules"] = dependent_modules
+                        if dependent_modules:
+                            result.update(
+                                {
+                                    "error": (
+                                        f"Cannot uninstall '{module}' because "
+                                        "installed dependents exist: "
+                                        f"{', '.join(dependent_modules)}."
+                                    ),
+                                    "error_type": "ModuleUninstallError",
+                                }
+                            )
+
+                if not result.get("error"):
+                    executor_result = self._get_code_executor()._execute_generated_code(
+                        self._build_uninstall_module_code(module),
+                        database=state_result.database,
+                        commit=True,
+                    )
+                    if not executor_result.get("success", False):
+                        result.update(
+                            {
+                                "error": (
+                                    executor_result.get("error")
+                                    or f"Failed to uninstall module '{module}'."
+                                ),
+                                "error_type": "ModuleUninstallError",
+                            }
+                        )
+                        if executor_result.get("traceback"):
+                            result["traceback"] = executor_result["traceback"]
+                        if executor_result.get("output"):
+                            result["stdout"] = executor_result["output"]
+                    else:
+                        payload = executor_result.get("value")
+                        if not isinstance(payload, dict):
+                            result.update(
+                                {
+                                    "error": (
+                                        "Trusted uninstall action returned no data."
+                                    ),
+                                    "error_type": "ModuleUninstallError",
+                                }
+                            )
+                        else:
+                            result.update(payload)
+                            result["success"] = bool(payload.get("uninstalled", False))
+                            result["final_state"] = str(
+                                payload.get("final_state") or "unknown"
+                            )
+                            if executor_result.get("output"):
+                                result["stdout"] = executor_result["output"]
+                            if not result["success"]:
+                                result.update(
+                                    {
+                                        "error": (
+                                            f"Module '{module}' remained in state "
+                                            f"{result['final_state']} after uninstall."
+                                        ),
+                                        "error_type": "ModuleUninstallError",
+                                    }
+                                )
+
+        if raise_on_error and not result.get("success", False):
+            raise ModuleUninstallError(
+                result.get("error", "Module uninstall failed"),
+                operation_result=result,
+            )
+
+        if (
+            result.get("success")
+            and self.verbose
+            and not suppress_output
+            and not compact
+        ):
+            print_info(f"Uninstalled module: {module}")
+
+        return result
 
     def list_installed_addons(
         self,

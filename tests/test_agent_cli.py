@@ -798,6 +798,140 @@ def test_agent_create_addon_reports_source_mutation(tmp_path: Path) -> None:
     assert payload["safety_level"] == "controlled_source_mutation"
 
 
+def test_agent_uninstall_module_dry_run_returns_planning_payload(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    config["allow_uninstall"] = True
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.get_addon_install_state.return_value = AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="crm",
+            record_found=True,
+            state="installed",
+            installed=True,
+            database="test_db",
+        )
+        ops.list_installed_dependents.return_value = InstalledAddonInventory(
+            success=True,
+            operation="list_installed_dependents",
+            addons=[
+                InstalledAddonRecord(
+                    module="sale_crm",
+                    state="installed",
+                    installed=True,
+                )
+            ],
+            total=1,
+            states=["installed"],
+            modules_filter=["sale_crm"],
+            database="test_db",
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "uninstall-module", "crm", "--dry-run"],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "module_uninstallation"
+    assert payload["read_only"] is True
+    assert payload["planned_action"] == "uninstall"
+    assert payload["config_allows_uninstall"] is True
+    assert payload["allow_uninstall_flag"] is False
+    assert payload["dependent_modules"] == ["sale_crm"]
+    assert payload["blocked"] is True
+
+
+def test_agent_uninstall_module_requires_allow_uninstall(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    config["allow_uninstall"] = True
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        mock_ops_class.return_value = MagicMock()
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "uninstall-module",
+                "crm",
+                "--allow-mutation",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error_type"] == "ConfirmationRequired"
+    assert payload["read_only"] is False
+    assert payload["safety_level"] == "controlled_runtime_mutation"
+
+
+def test_agent_uninstall_module_reports_runtime_mutation(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    config["allow_uninstall"] = True
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.uninstall_module.return_value = {
+            "success": True,
+            "operation": "uninstall_module",
+            "module": "crm",
+            "previous_state": "installed",
+            "final_state": "uninstalled",
+            "uninstalled": True,
+        }
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "uninstall-module",
+                "crm",
+                "--allow-mutation",
+                "--allow-uninstall",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "module_uninstallation"
+    assert payload["read_only"] is False
+    assert payload["safety_level"] == "controlled_runtime_mutation"
+    ops.uninstall_module.assert_called_once_with(
+        "crm",
+        suppress_output=True,
+        compact=False,
+        log_level=None,
+        allow_uninstall=True,
+    )
+
+
 def test_agent_validate_addon_change_aggregates_runtime_verification(
     tmp_path: Path,
 ) -> None:
