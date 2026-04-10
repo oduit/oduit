@@ -119,6 +119,7 @@ for:
 - failure handling
 
 Agent commands always emit JSON and do not require the global `--json` flag.
+Structured payloads include an explicit `schema_version`, currently `2.0`.
 
 ## Python API
 

@@ -35,7 +35,8 @@
       "type": "string",
       "enum": [
         "safe_read_only",
-        "controlled_mutation",
+        "controlled_runtime_mutation",
+        "controlled_source_mutation",
         "unsafe_arbitrary_execution"
       ]
     },

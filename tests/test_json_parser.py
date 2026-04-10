@@ -15,7 +15,7 @@ from oduit.process_manager import ProcessManager
 
 
 def _assert_common_json_envelope(test_case: unittest.TestCase, payload: dict) -> None:
-    test_case.assertEqual(payload["schema_version"], "1.0")
+    test_case.assertEqual(payload["schema_version"], "2.0")
     test_case.assertIn("read_only", payload)
     test_case.assertIn("safety_level", payload)
     test_case.assertIn("warnings", payload)

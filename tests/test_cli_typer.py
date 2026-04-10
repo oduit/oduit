@@ -107,7 +107,7 @@ class TestCLICommands(unittest.TestCase):
         read_only: bool,
         safety_level: str,
     ) -> None:
-        self.assertEqual(payload["schema_version"], "1.0")
+        self.assertEqual(payload["schema_version"], "2.0")
         self.assertIn("type", payload)
         self.assertIn("success", payload)
         self.assertEqual(payload["read_only"], read_only)
@@ -398,7 +398,7 @@ class TestCLICommands(unittest.TestCase):
         self.assert_common_json_envelope(
             payload,
             read_only=False,
-            safety_level="controlled_mutation",
+            safety_level="controlled_runtime_mutation",
         )
         self.assertEqual(payload["error_type"], "ConfirmationRequired")
         self.assertIn("requires confirmation", payload["error"])
@@ -1441,7 +1441,7 @@ class TestCLICommands(unittest.TestCase):
         self.assert_common_json_envelope(
             payload,
             read_only=False,
-            safety_level="controlled_mutation",
+            safety_level="controlled_runtime_mutation",
         )
         self.assertEqual(payload["type"], "result")
         self.assertTrue(payload["success"])

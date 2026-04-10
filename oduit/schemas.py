@@ -4,10 +4,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-JSON_SCHEMA_VERSION = "1.0"
+JSON_SCHEMA_VERSION = "2.0"
 
 SAFE_READ_ONLY = "safe_read_only"
-CONTROLLED_MUTATION = "controlled_mutation"
+CONTROLLED_RUNTIME_MUTATION = "controlled_runtime_mutation"
+CONTROLLED_SOURCE_MUTATION = "controlled_source_mutation"
 UNSAFE_ARBITRARY_EXECUTION = "unsafe_arbitrary_execution"
 
 SAFE_READ_ONLY_OPERATIONS = {
@@ -44,21 +45,24 @@ SAFE_READ_ONLY_OPERATIONS = {
     "get_model_fields",
 }
 
-CONTROLLED_MUTATION_OPERATIONS = {
+CONTROLLED_RUNTIME_MUTATION_OPERATIONS = {
     "install",
     "test_summary",
     "install_module",
     "update_module",
-    "create_agent_addon",
-    "export_lang_module",
     "update",
     "test",
     "create_db",
     "drop_db",
-    "create_addon",
-    "export_module_language",
     "run_odoo",
     "run_shell",
+}
+
+CONTROLLED_SOURCE_MUTATION_OPERATIONS = {
+    "create_addon",
+    "create_agent_addon",
+    "export_lang_module",
+    "export_module_language",
 }
 
 UNSAFE_OPERATIONS = {
@@ -106,7 +110,11 @@ def infer_read_only(operation: str | None, payload_type: str) -> bool:
     """Infer whether a JSON payload represents a read-only action."""
     if operation in SAFE_READ_ONLY_OPERATIONS or payload_type in SAFE_READ_ONLY_TYPES:
         return True
-    if operation in CONTROLLED_MUTATION_OPERATIONS or operation in UNSAFE_OPERATIONS:
+    if (
+        operation in CONTROLLED_RUNTIME_MUTATION_OPERATIONS
+        or operation in CONTROLLED_SOURCE_MUTATION_OPERATIONS
+        or operation in UNSAFE_OPERATIONS
+    ):
         return False
     return payload_type in {"log", "error", "result"}
 
@@ -115,14 +123,16 @@ def infer_safety_level(operation: str | None, payload_type: str) -> str:
     """Infer the safety level for a JSON payload."""
     if operation in UNSAFE_OPERATIONS:
         return UNSAFE_ARBITRARY_EXECUTION
-    if operation in CONTROLLED_MUTATION_OPERATIONS:
-        return CONTROLLED_MUTATION
+    if operation in CONTROLLED_SOURCE_MUTATION_OPERATIONS:
+        return CONTROLLED_SOURCE_MUTATION
+    if operation in CONTROLLED_RUNTIME_MUTATION_OPERATIONS:
+        return CONTROLLED_RUNTIME_MUTATION
     if operation in SAFE_READ_ONLY_OPERATIONS or payload_type in SAFE_READ_ONLY_TYPES:
         return SAFE_READ_ONLY
     return (
         SAFE_READ_ONLY
         if infer_read_only(operation, payload_type)
-        else CONTROLLED_MUTATION
+        else CONTROLLED_RUNTIME_MUTATION
     )
 
 

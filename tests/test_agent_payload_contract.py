@@ -264,6 +264,7 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
 
     envelope_schema = json.loads((SCHEMAS / "result-envelope.schema.json").read_text())
     for schema_name, payload in payloads.items():
+        assert payload["schema_version"] == "2.0"
         command_schema = json.loads((SCHEMAS / "agent" / schema_name).read_text())
         _validate_schema(envelope_schema, payload)
         _validate_schema(command_schema, payload)

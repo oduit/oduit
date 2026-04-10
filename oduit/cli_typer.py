@@ -34,7 +34,11 @@ from .exceptions import ModuleNotFoundError as OduitModuleNotFoundError
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
 from .output import configure_output, print_error, print_info, print_warning
-from .schemas import CONTROLLED_MUTATION, SAFE_READ_ONLY
+from .schemas import (
+    CONTROLLED_RUNTIME_MUTATION,
+    CONTROLLED_SOURCE_MUTATION,
+    SAFE_READ_ONLY,
+)
 from .utils import (
     build_json_payload,
     format_dependency_tree,
@@ -1215,6 +1219,7 @@ def _agent_require_mutation(
     operation: str,
     result_type: str,
     action: str,
+    safety_level: str,
 ) -> None:
     """Enforce an explicit allow-mutation gate for agent mutation commands."""
     if allow_mutation:
@@ -1232,7 +1237,7 @@ def _agent_require_mutation(
             "Use a read-only planning command first if you need impact analysis.",
         ],
         read_only=False,
-        safety_level=CONTROLLED_MUTATION,
+        safety_level=safety_level,
     )
 
 
@@ -4656,7 +4661,13 @@ def agent_install_module(
         _agent_emit_payload(payload)
         return
 
-    _agent_require_mutation(allow_mutation, operation, result_type, "module install")
+    _agent_require_mutation(
+        allow_mutation,
+        operation,
+        result_type,
+        "module install",
+        CONTROLLED_RUNTIME_MUTATION,
+    )
     result = ops.install_module(
         module,
         no_http=global_config.no_http,
@@ -4678,7 +4689,7 @@ def agent_install_module(
             "language": language,
             "compact": compact,
             "read_only": False,
-            "safety_level": CONTROLLED_MUTATION,
+            "safety_level": CONTROLLED_RUNTIME_MUTATION,
             "remediation": (
                 ["Inspect unmet dependencies and retry after fixing them."]
                 if not result.get("success", False)
@@ -4737,7 +4748,13 @@ def agent_update_module(
         _agent_emit_payload(payload)
         return
 
-    _agent_require_mutation(allow_mutation, operation, result_type, "module update")
+    _agent_require_mutation(
+        allow_mutation,
+        operation,
+        result_type,
+        "module update",
+        CONTROLLED_RUNTIME_MUTATION,
+    )
     result = ops.update_module(
         module,
         no_http=global_config.no_http,
@@ -4759,7 +4776,7 @@ def agent_update_module(
             "i18n_overwrite": i18n_overwrite,
             "compact": compact,
             "read_only": False,
-            "safety_level": CONTROLLED_MUTATION,
+            "safety_level": CONTROLLED_RUNTIME_MUTATION,
             "remediation": (
                 ["Inspect the update error and rerun targeted tests after fixing it."]
                 if not result.get("success", False)
@@ -4806,7 +4823,13 @@ def agent_create_addon(
         _agent_emit_payload(payload)
         return
 
-    _agent_require_mutation(allow_mutation, operation, result_type, "addon creation")
+    _agent_require_mutation(
+        allow_mutation,
+        operation,
+        result_type,
+        "addon creation",
+        CONTROLLED_SOURCE_MUTATION,
+    )
     result = ops.create_addon(
         addon_name,
         destination=path,
@@ -4820,7 +4843,7 @@ def agent_create_addon(
             "path": path,
             "template": template.value,
             "read_only": False,
-            "safety_level": CONTROLLED_MUTATION,
+            "safety_level": CONTROLLED_SOURCE_MUTATION,
             "remediation": (
                 ["Verify the target path and addon name, then retry the scaffold."]
                 if not result.get("success", False)
@@ -4893,7 +4916,13 @@ def agent_export_lang(
         _agent_emit_payload(payload)
         return
 
-    _agent_require_mutation(allow_mutation, operation, result_type, "language export")
+    _agent_require_mutation(
+        allow_mutation,
+        operation,
+        result_type,
+        "language export",
+        CONTROLLED_SOURCE_MUTATION,
+    )
     os.makedirs(i18n_dir, exist_ok=True)
     result = ops.export_module_language(
         module,
@@ -4911,7 +4940,7 @@ def agent_export_lang(
             "language": language_value,
             "filename": filename,
             "read_only": False,
-            "safety_level": CONTROLLED_MUTATION,
+            "safety_level": CONTROLLED_SOURCE_MUTATION,
             "remediation": (
                 ["Inspect the export error and verify the module path and language."]
                 if not result.get("success", False)
@@ -4961,7 +4990,13 @@ def agent_test_summary(
         _agent_fail(operation, result_type, "No environment configuration available")
     assert global_config.env_config is not None
 
-    _agent_require_mutation(allow_mutation, operation, result_type, "test execution")
+    _agent_require_mutation(
+        allow_mutation,
+        operation,
+        result_type,
+        "test execution",
+        CONTROLLED_RUNTIME_MUTATION,
+    )
 
     ops = OdooOperations(global_config.env_config, verbose=False)
     result = ops.run_tests(
@@ -5049,7 +5084,7 @@ def agent_test_summary(
         ),
         remediation=suggested_next_steps,
         read_only=False,
-        safety_level=CONTROLLED_MUTATION,
+        safety_level=CONTROLLED_RUNTIME_MUTATION,
         error=result.get("error"),
         error_type=result.get("error_type"),
     )

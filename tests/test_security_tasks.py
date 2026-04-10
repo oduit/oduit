@@ -244,7 +244,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         payload = json.loads(result.output)
         self.assertEqual(payload["error_type"], "ConfirmationRequired")
         self.assertFalse(payload["read_only"])
-        self.assertEqual(payload["safety_level"], "controlled_mutation")
+        self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
 
     def test_agent_test_summary_requires_allow_mutation(self) -> None:
         runner = CliRunner()
@@ -274,7 +274,31 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         payload = json.loads(result.output)
         self.assertEqual(payload["error_type"], "ConfirmationRequired")
         self.assertFalse(payload["read_only"])
-        self.assertEqual(payload["safety_level"], "controlled_mutation")
+        self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
+
+    def test_agent_create_addon_requires_allow_mutation_as_source_mutation(
+        self,
+    ) -> None:
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            tmp_path = Path.cwd()
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            config = self._agent_config(tmp_path, str(addons_dir))
+            loader = self._loader_with_config(config, tmp_path)
+
+            with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+                result = runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "create-addon", "x_new"],
+                )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["error_type"], "ConfirmationRequired")
+        self.assertFalse(payload["read_only"])
+        self.assertEqual(payload["safety_level"], "controlled_source_mutation")
 
     def test_agent_locate_model_does_not_use_runtime_execution(self) -> None:
         runner = CliRunner()

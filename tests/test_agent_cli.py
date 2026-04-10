@@ -509,7 +509,7 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
     assert payload["type"] == "test_summary"
     assert payload["operation"] == "test_summary"
     assert payload["read_only"] is False
-    assert payload["safety_level"] == "controlled_mutation"
+    assert payload["safety_level"] == "controlled_runtime_mutation"
     assert payload["selected_modules"] == ["x_sale"]
     assert payload["failed_tests"] == 1
     assert payload["error_tests"] == 1
@@ -573,6 +573,42 @@ def test_agent_test_summary_includes_error_output_excerpt_without_failures(
     assert payload.get("failure_details", []) == []
     assert payload["error_output_excerpt"]
     assert payload["error_output_excerpt"][-1] == "ValueError: missing dependency"
+
+
+def test_agent_create_addon_reports_source_mutation(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.create_addon.return_value = {
+            "success": True,
+            "operation": "create_addon",
+            "return_code": 0,
+        }
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "create-addon",
+                "x_custom",
+                "--allow-mutation",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_creation"
+    assert payload["read_only"] is False
+    assert payload["safety_level"] == "controlled_source_mutation"
 
 
 def test_agent_test_summary_module_uses_fast_test_tags_semantics(

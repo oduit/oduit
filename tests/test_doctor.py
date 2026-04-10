@@ -368,7 +368,7 @@ class TestDoctorCommand:
 
         assert result.exit_code == 0
         payload = json.loads(result.output)
-        assert payload["schema_version"] == "1.0"
+        assert payload["schema_version"] == "2.0"
         assert payload["type"] == "doctor_report"
         assert payload["success"] is True
         assert payload["read_only"] is True

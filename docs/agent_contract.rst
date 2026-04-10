@@ -126,25 +126,27 @@ When available, commands also include:
 
 ``data`` is the canonical command payload container.
 
-For ``1.x`` compatibility, command-specific fields are also flattened to the
+For ``2.x`` compatibility, command-specific fields are also flattened to the
 top level when they do not collide with envelope keys. That flattened shape is
-part of the public ``1.x`` contract and must remain stable within this schema
+part of the public ``2.x`` contract and must remain stable within this schema
 version.
 
 Compatibility Policy
 --------------------
 
-* additive fields are allowed within ``schema_version = 1.x``
+* additive fields are allowed within ``schema_version = 2.x``
 * breaking changes require a schema-version bump
 * new consumers should prefer reading ``data`` first
-* existing consumers may continue using flattened top-level fields in ``1.x``
+* existing consumers may continue using flattened top-level fields in ``2.x``
 
 Safety Levels
 -------------
 
 * ``safe_read_only``: inspection and analysis only
-* ``controlled_mutation``: explicit mutation commands gated by flags such as
-  ``--allow-mutation``
+* ``controlled_runtime_mutation``: explicit commands that mutate database,
+  process, or runtime state, gated by flags such as ``--allow-mutation``
+* ``controlled_source_mutation``: explicit commands that write or rewrite addon
+  source files, also gated by flags such as ``--allow-mutation``
 * ``unsafe_arbitrary_execution``: trusted arbitrary code execution only
 
 Published Schemas
@@ -174,8 +176,8 @@ Failure Handling
 * Prefer ``error_type`` for the stable failure category.
 * Prefer ``errors`` for structured details.
 * Prefer ``remediation`` for next actions the caller can take.
-* ``ConfirmationRequired`` means a controlled mutation was attempted without
-  ``--allow-mutation``.
+* ``ConfirmationRequired`` means a controlled runtime or source mutation was
+  attempted without ``--allow-mutation``.
 * ``ConfigError`` usually means the environment config, resolved binaries, or
   ``addons_path`` needs to be fixed before retrying.
 * ``ModuleNotFoundError`` means the requested addon was not resolved in the
@@ -193,7 +195,7 @@ Example
 .. code-block:: json
 
    {
-      "schema_version": "1.0",
+      "schema_version": "2.0",
       "type": "model_source_location",
       "success": true,
       "operation": "locate_model",

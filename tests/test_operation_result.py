@@ -9,6 +9,7 @@ import unittest
 from datetime import datetime
 
 from oduit.operation_result import OperationResult
+from oduit.schemas import infer_safety_level
 from oduit.utils import output_result_to_json
 
 
@@ -91,11 +92,11 @@ class TestOperationResult(unittest.TestCase):
         json_output = output_result_to_json(builder.finalize())
 
         # Check core fields are present
-        self.assertEqual(json_output["schema_version"], "1.0")
+        self.assertEqual(json_output["schema_version"], "2.0")
         self.assertEqual(json_output["type"], "result")
         self.assertEqual(json_output["operation"], "install")
         self.assertFalse(json_output["read_only"])
-        self.assertEqual(json_output["safety_level"], "controlled_mutation")
+        self.assertEqual(json_output["safety_level"], "controlled_runtime_mutation")
         self.assertEqual(json_output["warnings"], [])
         self.assertEqual(json_output["errors"], [])
         self.assertEqual(json_output["remediation"], [])
@@ -150,13 +151,28 @@ class TestOperationResult(unittest.TestCase):
         json_output = output_result_to_json(
             builder.finalize(), include_null_values=True
         )
-        self.assertEqual(json_output["schema_version"], "1.0")
+        self.assertEqual(json_output["schema_version"], "2.0")
         self.assertEqual(json_output["type"], "result")
         # Null values should be present
         self.assertIn("database", json_output)
         self.assertIsNone(json_output["database"])
         self.assertIn("error", json_output)
         self.assertIsNone(json_output["error"])
+
+    def test_infer_safety_level_distinguishes_runtime_and_source_mutations(self):
+        """Test safety-level inference splits runtime and source mutations."""
+        self.assertEqual(
+            infer_safety_level("update_module", "module_update"),
+            "controlled_runtime_mutation",
+        )
+        self.assertEqual(
+            infer_safety_level("create_addon", "result"),
+            "controlled_source_mutation",
+        )
+        self.assertEqual(
+            infer_safety_level("agent_context", "environment_context"),
+            "safe_read_only",
+        )
 
     def test_to_json_output_meaningful_empty_fields(self):
         """Test that meaningful empty fields are preserved"""

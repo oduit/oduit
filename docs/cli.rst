@@ -793,12 +793,12 @@ Example output:
 .. code-block:: json
 
    {
-      "schema_version": "1.0",
+      "schema_version": "2.0",
       "type": "result",
       "success": true,
       "operation": "install",
       "read_only": false,
-      "safety_level": "controlled_mutation",
+      "safety_level": "controlled_runtime_mutation",
       "warnings": [],
       "errors": [],
       "remediation": [],
@@ -830,8 +830,8 @@ Guaranteed keys for result payloads:
 * ``type``: payload family such as ``result`` or ``doctor_report``
 * ``success``: overall success flag
 * ``read_only``: whether the command is inspection-only
-* ``safety_level``: ``safe_read_only``, ``controlled_mutation``, or
-  ``unsafe_arbitrary_execution``
+* ``safety_level``: ``safe_read_only``, ``controlled_runtime_mutation``,
+  ``controlled_source_mutation``, or ``unsafe_arbitrary_execution``
 * ``warnings`` / ``errors`` / ``remediation``: normalized machine-readable
   guidance lists
 * ``data``: command-specific payload content
