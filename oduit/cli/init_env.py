@@ -164,3 +164,48 @@ def display_config_summary(env_config: dict[str, Any]) -> None:
                 print_info(f"  addons_path: {', '.join(addons)}")
             else:
                 print_info(f"  addons_path: {addons}")
+
+
+def init_env_command(
+    *,
+    env_name: str,
+    from_conf: str | None,
+    python_bin: str | None,
+    odoo_bin: str | None,
+    coverage_bin: str | None,
+    config_loader_cls: type[ConfigLoader] = ConfigLoader,
+    check_environment_exists_fn: Any = check_environment_exists,
+    detect_binaries_fn: Any = detect_binaries,
+    build_initial_config_fn: Any = build_initial_config,
+    import_or_convert_config_fn: Any = import_or_convert_config,
+    normalize_addons_path_fn: Any = normalize_addons_path,
+    save_config_file_fn: Any = save_config_file,
+    display_config_summary_fn: Any = display_config_summary,
+) -> None:
+    """Initialize a new oduit environment configuration."""
+    config_loader = config_loader_cls()
+    check_environment_exists_fn(config_loader, env_name)
+
+    python_bin, odoo_bin, coverage_bin = detect_binaries_fn(
+        python_bin, odoo_bin, coverage_bin
+    )
+    env_config = build_initial_config_fn(python_bin, odoo_bin, coverage_bin)
+    env_config = import_or_convert_config_fn(
+        env_config,
+        from_conf,
+        config_loader,
+        python_bin,
+        odoo_bin,
+        coverage_bin,
+    )
+    normalize_addons_path_fn(env_config)
+
+    config_path = config_loader.get_config_path(env_name, "toml")
+    try:
+        save_config_file_fn(config_path, env_config, config_loader)
+        print_info(f"Environment '{env_name}' created successfully")
+        print_info(f"Configuration saved to: {config_path}")
+        display_config_summary_fn(env_config)
+    except Exception as exc:
+        print_error(f"Failed to save configuration: {exc}")
+        raise typer.Exit(1) from None

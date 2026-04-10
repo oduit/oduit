@@ -7,7 +7,6 @@
 """New Typer-based CLI implementation for oduit."""
 
 import functools
-import json
 import os
 from typing import Any, NoReturn
 
@@ -161,6 +160,54 @@ from .cli.agent.services import (
     resolve_agent_ops as _resolve_agent_ops_impl,
 )
 from .cli.app import agent_app, app
+from .cli.commands.addons import (
+    create_addon_command as _create_addon_command_impl,
+)
+from .cli.commands.addons import (
+    list_addons_command as _list_addons_command_impl,
+)
+from .cli.commands.addons import (
+    list_duplicates_command as _list_duplicates_command_impl,
+)
+from .cli.commands.addons import (
+    list_manifest_values_command as _list_manifest_values_command_impl,
+)
+from .cli.commands.addons import (
+    print_manifest_command as _print_manifest_command_impl,
+)
+from .cli.commands.database import (
+    create_db_command as _create_db_command_impl,
+)
+from .cli.commands.database import list_db_command as _list_db_command_impl
+from .cli.commands.database import list_env_command as _list_env_command_impl
+from .cli.commands.database import (
+    print_config_command as _print_config_command_impl,
+)
+from .cli.commands.dependencies import (
+    impact_of_update_command as _impact_of_update_command_impl,
+)
+from .cli.commands.dependencies import (
+    install_order_command as _install_order_command_impl,
+)
+from .cli.commands.dependencies import (
+    list_codepends_command as _list_codepends_command_impl,
+)
+from .cli.commands.dependencies import (
+    list_depends_command as _list_depends_command_impl,
+)
+from .cli.commands.dependencies import (
+    list_missing_command as _list_missing_command_impl,
+)
+from .cli.commands.runtime import doctor_command as _doctor_command_impl
+from .cli.commands.runtime import export_lang_command as _export_lang_command_impl
+from .cli.commands.runtime import (
+    get_odoo_version_command as _get_odoo_version_command_impl,
+)
+from .cli.commands.runtime import install_command as _install_command_impl
+from .cli.commands.runtime import run_command as _run_command_impl
+from .cli.commands.runtime import shell_command as _shell_command_impl
+from .cli.commands.runtime import test_command as _test_command_impl
+from .cli.commands.runtime import update_command as _update_command_impl
 from .cli.dependency_output import print_dependency_list, print_dependency_tree
 from .cli.doctor import (
     build_doctor_check,
@@ -184,6 +231,9 @@ from .cli.init_env import (
     normalize_addons_path,
     save_config_file,
 )
+from .cli.init_env import (
+    init_env_command as _init_env_command_impl,
+)
 from .cli_types import (
     AddonListType,
     AddonTemplate,
@@ -198,7 +248,7 @@ from .exceptions import ConfigError
 from .exceptions import ModuleNotFoundError as OduitModuleNotFoundError
 from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
-from .output import configure_output, print_error, print_info, print_warning
+from .output import configure_output, print_error
 from .schemas import (
     CONTROLLED_RUNTIME_MUTATION,
     CONTROLLED_SOURCE_MUTATION,
@@ -485,6 +535,45 @@ def with_config(func: Any) -> Any:
         return func(global_config)
 
     return wrapper
+
+
+def _resolve_command_global_config(ctx: typer.Context) -> GlobalConfig:
+    """Resolve command context into a `GlobalConfig` instance."""
+    if ctx.obj is None:
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    if isinstance(ctx.obj, dict):
+        try:
+            return create_global_config(**ctx.obj)
+        except typer.Exit:
+            raise
+        except Exception as exc:
+            print_error(f"Failed to create global config: {exc}")
+            raise typer.Exit(1) from None
+
+    if not isinstance(ctx.obj, GlobalConfig):
+        print_error("No global configuration found")
+        raise typer.Exit(1) from None
+
+    return ctx.obj
+
+
+def _resolve_command_env_config(
+    ctx: typer.Context,
+) -> tuple[GlobalConfig, dict[str, Any]]:
+    """Resolve command context and require an environment configuration."""
+    global_config = _resolve_command_global_config(ctx)
+    if global_config.env_config is None:
+        print_error("No environment configuration available")
+        raise typer.Exit(1) from None
+    return global_config, global_config.env_config
+
+
+def _build_odoo_operations(global_config: GlobalConfig) -> OdooOperations:
+    """Build an operations facade from resolved global config."""
+    assert global_config.env_config is not None
+    return OdooOperations(global_config.env_config, verbose=global_config.verbose)
 
 
 # App objects are defined in oduit.cli.app and re-exported here.
@@ -927,33 +1016,12 @@ def main(
 @app.command()
 def doctor(ctx: typer.Context) -> None:
     """Diagnose environment and configuration issues."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    report = _build_doctor_report(global_config)
-    if global_config.format == OutputFormat.JSON:
-        print(json.dumps(report))
-    else:
-        _print_doctor_report(report)
-
-    if not report.get("success", False):
-        raise typer.Exit(1)
+    _doctor_command_impl(
+        ctx,
+        resolve_command_global_config_fn=_resolve_command_global_config,
+        build_doctor_report_fn=_build_doctor_report,
+        print_doctor_report_fn=_print_doctor_report,
+    )
 
 
 @app.command()
@@ -969,32 +1037,13 @@ def run(
     ),
 ) -> None:
     """Run Odoo server."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
-    )
-    odoo_operations.run_odoo(
-        no_http=global_config.no_http,
+    _run_command_impl(
+        ctx,
         dev=dev,
-        log_level=log_level.value if log_level else None,
+        log_level=log_level,
         stop_after_init=stop_after_init,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
     )
 
 
@@ -1010,32 +1059,13 @@ def shell(
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ) -> None:
     """Start Odoo shell."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
-    )
-
-    odoo_operations.run_shell(
-        shell_interface=shell_interface.value if shell_interface else None,
+    _shell_command_impl(
+        ctx,
+        shell_interface=shell_interface,
         compact=compact,
-        log_level=log_level.value if log_level else None,
+        log_level=log_level,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
     )
 
 
@@ -1067,68 +1097,20 @@ def install(
     ),
 ) -> None:
     """Install module."""
-    if not module:
-        print_error("Module name is required for install")
-        raise typer.Exit(1) from None
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
-    )
-
-    output = odoo_operations.install_module(
-        module,
-        no_http=global_config.no_http,
-        max_cron_threads=max_cron_threads,
-        without_demo=without_demo or False,
+    _install_command_impl(
+        ctx,
+        module=module,
+        without_demo=without_demo,
         with_demo=with_demo,
         language=language,
+        max_cron_threads=max_cron_threads,
+        log_level=log_level,
         compact=compact,
-        log_level=log_level.value if log_level else None,
+        include_command=include_command,
+        include_stdout=include_stdout,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
     )
-
-    # Optional JSON output
-    if global_config.format == OutputFormat.JSON:
-        # By default, exclude command and stdout from result
-        exclude_fields = ["command", "stdout"]
-
-        additional_fields = {
-            "without_demo": without_demo,
-            "verbose": global_config.verbose,
-        }
-
-        # Only include command if requested
-        if include_command:
-            exclude_fields.remove("command")
-
-        # Only include stdout if requested
-        if include_stdout:
-            exclude_fields.remove("stdout")
-
-        result_json = output_result_to_json(
-            output, additional_fields=additional_fields, exclude_fields=exclude_fields
-        )
-        print(json.dumps(result_json))
-
-    # Exit with code 1 on failure regardless of output format
-    if not output.get("success"):
-        raise typer.Exit(1)
 
 
 @app.command()
@@ -1155,54 +1137,18 @@ def update(
     ),
 ) -> None:
     """Update module."""
-    if not module:
-        print_error("Module name is required for update")
-        raise typer.Exit(1) from None
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    if i18n_overwrite:
-        language = language or global_config.env_config.get("language", "de_DE")
-        # Ensure language is a string
-        if language is None:
-            language = "de_DE"
-
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
-    )
-
-    result = odoo_operations.update_module(
-        module,
-        no_http=global_config.no_http,
-        max_cron_threads=max_cron_threads,
-        without_demo=without_demo or False,
+    _update_command_impl(
+        ctx,
+        module=module,
+        without_demo=without_demo,
         language=language,
         i18n_overwrite=i18n_overwrite,
+        max_cron_threads=max_cron_threads,
+        log_level=log_level,
         compact=compact,
-        log_level=log_level.value if log_level else None,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
     )
-    if compact and result:
-        print_info(str(result))
-
-    # Exit with code 1 on failure regardless of output format
-    if not result.get("success"):
-        raise typer.Exit(1)
 
 
 @app.command()
@@ -1258,72 +1204,21 @@ def test(
       oduit test --test-tags /sale --coverage sale     # With coverage
       oduit test --install sale --test-tags /sale      # Install & test
     """
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
-    )
-
-    result = odoo_operations.run_tests(
-        None,
+    _test_command_impl(
+        ctx,
         stop_on_error=stop_on_error,
-        update=update,
         install=install,
+        update=update,
         coverage=coverage,
         test_file=test_file,
         test_tags=test_tags,
         compact=compact,
-        log_level=log_level.value if log_level else None,
+        log_level=log_level,
+        include_command=include_command,
+        include_stdout=include_stdout,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
     )
-
-    # Optional JSON output
-    if global_config.format == OutputFormat.JSON:
-        # By default, exclude command and stdout from result
-        exclude_fields = ["command", "stdout"]
-
-        additional_fields: dict[str, Any] = {
-            "stop_on_error": stop_on_error,
-            "install": install,
-            "update": update,
-            "coverage": coverage,
-            "test_file": test_file,
-            "test_tags": test_tags,
-            "compact": compact,
-            "verbose": global_config.verbose,
-        }
-
-        # Only include command if requested
-        if include_command:
-            exclude_fields.remove("command")
-
-        # Only include stdout if requested
-        if include_stdout:
-            exclude_fields.remove("stdout")
-
-        result_json = output_result_to_json(
-            result, additional_fields=additional_fields, exclude_fields=exclude_fields
-        )
-        print(json.dumps(result_json))
-
-    # Exit with code 1 on failure regardless of output format
-    if not result.get("success"):
-        raise typer.Exit(1)
 
 
 @app.command("create-db")
@@ -1361,105 +1256,18 @@ def create_db(
     ),
 ) -> None:
     """Create database."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    db_name = global_config.env_config.get("db_name", "Unknown")
-    effective_non_interactive = non_interactive or global_config.non_interactive
-
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
-    )
-
-    # Check if database exists
-    exists_result = odoo_operations.db_exists(
+    _create_db_command_impl(
+        ctx,
+        create_role=create_role,
+        alter_role=alter_role,
         with_sudo=with_sudo,
-        suppress_output=True,
+        drop=drop,
+        non_interactive=non_interactive,
         db_user=db_user,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
+        confirmation_required_error_fn=_confirmation_required_error,
     )
-
-    db_exists = exists_result.get("exists", False)
-
-    # Handle existing database
-    if db_exists:
-        if drop:
-            confirmation = ""
-            if effective_non_interactive:
-                _confirmation_required_error(
-                    global_config,
-                    "create_db",
-                    f"Database '{db_name}' already exists and dropping it "
-                    "requires confirmation.",
-                    remediation=[
-                        "Re-run without `--non-interactive` to confirm the drop.",
-                        "Or remove `--drop` if the existing database should be kept.",
-                    ],
-                )
-            else:
-                print_warning(f"Database '{db_name}' already exists.")
-                message = "Do you want to drop it before creating?"
-                confirmation = input(f"{message} (y/N): ").strip().lower()
-
-            if confirmation == "y":
-                print_info(f"Dropping existing database '{db_name}'...")
-                drop_result = odoo_operations.drop_db(
-                    with_sudo=with_sudo,
-                    suppress_output=False,
-                )
-                if not drop_result.get("success", False):
-                    print_error("Failed to drop database")
-                    raise typer.Exit(1) from None
-            else:
-                print_info("Database drop cancelled.")
-                raise typer.Exit(0) from None
-        else:
-            print_error(
-                f"Database '{db_name}' already exists. "
-                f"Use --drop flag to drop it first."
-            )
-            raise typer.Exit(1) from None
-
-    # Create database
-    confirmation = ""
-    if not db_exists:
-        if effective_non_interactive:
-            _confirmation_required_error(
-                global_config,
-                "create_db",
-                f"Creating database '{db_name}' requires confirmation in "
-                "non-interactive mode.",
-                remediation=[
-                    "Re-run without `--non-interactive` to confirm database creation.",
-                ],
-            )
-        print_warning(f"This will create a new database named '{db_name}'.")
-        message = "Are you sure you want to create a new database?"
-        confirmation = input(f"{message} (y/N): ").strip().lower()
-
-    if confirmation == "y":
-        odoo_operations.create_db(
-            create_role=create_role,
-            alter_role=alter_role,
-            with_sudo=with_sudo,
-            db_user=db_user,
-        )
-    else:
-        print_info("Database creation cancelled.")
 
 
 @app.command("list-db")
@@ -1483,142 +1291,30 @@ def list_db(
     ),
 ) -> None:
     """List all databases."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
-    )
-    result = odoo_operations.list_db(
+    _list_db_command_impl(
+        ctx,
         with_sudo=with_sudo,
         db_user=db_user,
+        include_command=include_command,
+        include_stdout=include_stdout,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
     )
-
-    if global_config.format == OutputFormat.JSON:
-        # By default, exclude command and stdout from result
-        exclude_fields = ["command", "stdout"]
-
-        additional_fields: dict[str, Any] = {}
-
-        # Only include command if requested
-        if include_command:
-            exclude_fields.remove("command")
-
-        # Only include stdout if requested
-        if include_stdout:
-            exclude_fields.remove("stdout")
-
-        result_json = output_result_to_json(
-            result, additional_fields=additional_fields, exclude_fields=exclude_fields
-        )
-        print(json.dumps(result_json))
-    elif not result.get("success"):
-        raise typer.Exit(1)
 
 
 @app.command("list-env")
 def list_env() -> None:
     """List available environments."""
-    from rich.console import Console
-    from rich.table import Table
-
-    from oduit.config_loader import ConfigLoader
-
-    try:
-        environments = ConfigLoader().get_available_environments()
-        if not environments:
-            print_info("No environments found in .oduit directory")
-            return
-
-        table = Table(title="Available Environments", show_header=True)
-        table.add_column("Environment", style="cyan", no_wrap=True)
-
-        for env in environments:
-            table.add_row(env)
-
-        console = Console()
-        console.print(table)
-    except FileNotFoundError:
-        print_error("No .oduit directory found in current directory")
-        raise typer.Exit(1) from None
-    except Exception as e:
-        print_error(f"Failed to list environments: {e}")
-        raise typer.Exit(1) from None
+    _list_env_command_impl(config_loader_cls=ConfigLoader)
 
 
 @app.command("print-config")
 def print_config_cmd(ctx: typer.Context) -> None:
     """Print environment config."""
-    from rich.console import Console
-    from rich.table import Table
-
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    if global_config.format == OutputFormat.JSON:
-        output_data = output_result_to_json(
-            {
-                "success": True,
-                "operation": "print_config",
-                "environment": global_config.env_name,
-                "config": global_config.env_config,
-            }
-        )
-        print(json.dumps(output_data))
-        return
-
-    console = Console()
-    table = Table(
-        title=f"Environment Configuration: {global_config.env_name}",
-        show_header=True,
-        header_style="bold cyan",
+    _print_config_command_impl(
+        ctx,
+        resolve_command_env_config_fn=_resolve_command_env_config,
     )
-    table.add_column("Setting", style="cyan", no_wrap=True)
-    table.add_column("Value", style="green")
-
-    for key, value in sorted(global_config.env_config.items()):
-        if isinstance(value, list):
-            formatted_value = "\n".join(f"• {item}" for item in value)
-            table.add_row(key, formatted_value)
-        elif isinstance(value, str) and key == "addons_path" and "," in value:
-            paths = [p.strip() for p in value.split(",")]
-            formatted_value = "\n".join(f"• {item}" for item in paths)
-            table.add_row(key, formatted_value)
-        else:
-            table.add_row(key, str(value))
-
-    console.print(table)
 
 
 @app.command("create-addon")
@@ -1631,36 +1327,15 @@ def create_addon(
     template: AddonTemplate = ADDON_TEMPLATE_OPTION,
 ) -> None:
     """Create new addon."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    if not validate_addon_name(addon_name):
-        print_error(
-            f"Invalid addon name '{addon_name}'. "
-            f"Must be lowercase letters, numbers, underscores only."
-        )
-        raise typer.Exit(1) from None
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
+    _create_addon_command_impl(
+        ctx,
+        addon_name=addon_name,
+        path=path,
+        template=template,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
+        validate_addon_name_fn=validate_addon_name,
     )
-
-    odoo_operations.create_addon(addon_name, destination=path, template=template.value)
 
 
 def _get_addon_type(addon_name: str, odoo_series: OdooSeries | None) -> str:
@@ -1750,78 +1425,14 @@ def print_manifest(
     Displays key manifest fields including name, version, author, license,
     dependencies, and whether the addon is a core CE/EE addon.
     """
-    from rich.console import Console
-
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-
-    manifest = module_manager.get_manifest(addon_name)
-    if not manifest:
-        print_error(f"Addon '{addon_name}' not found in addons path")
-        raise typer.Exit(1) from None
-
-    # Detect Odoo series for CE/EE detection
-    odoo_series = (
-        global_config.odoo_series
-        if global_config.odoo_series
-        else module_manager.detect_odoo_series()
+    _print_manifest_command_impl(
+        ctx,
+        addon_name=addon_name,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        module_manager_cls=ModuleManager,
+        get_addon_type_fn=_get_addon_type,
+        build_addon_table_fn=_build_addon_table,
     )
-
-    addon_type = _get_addon_type(addon_name, odoo_series)
-
-    # JSON output
-    if global_config.format == OutputFormat.JSON:
-        raw_data = manifest.get_raw_data()
-        output_data: dict[str, Any] = output_result_to_json(
-            {
-                "success": True,
-                "operation": "print_manifest",
-                "technical_name": addon_name,
-                "name": manifest.name,
-                "version": manifest.version,
-                "summary": manifest.summary,
-                "author": manifest.author,
-                "website": manifest.website,
-                "license": manifest.license,
-                "installable": manifest.installable,
-                "auto_install": manifest.auto_install,
-                "depends": manifest.codependencies,
-                "addon_type": addon_type,
-                "module_path": manifest.module_path,
-            },
-            result_type="manifest",
-        )
-        if manifest.python_dependencies:
-            output_data["python_dependencies"] = manifest.python_dependencies
-        if manifest.binary_dependencies:
-            output_data["binary_dependencies"] = manifest.binary_dependencies
-        if "category" in raw_data:
-            output_data["category"] = raw_data["category"]
-        print(json.dumps(output_data))
-        return
-
-    # Table output
-    console = Console()
-    table = _build_addon_table(addon_name, manifest, addon_type)
-    console.print(table)
 
 
 def _parse_filter_option(
@@ -1869,90 +1480,21 @@ def list_addons(
 
       oduit list-addons --include author:Odoo --include category:Sales
     """
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    # Parse include/exclude filters from FIELD:VALUE format
-    include_filter: list[tuple[str, str]] = []
-    exclude_filter: list[tuple[str, str]] = []
-
-    for filter_str in include:
-        if ":" not in filter_str:
-            print_error(
-                f"Invalid include filter '{filter_str}'. "
-                f"Use format 'FIELD:VALUE' (e.g., 'category:Sales')"
-            )
-            raise typer.Exit(1) from None
-        field, value = filter_str.split(":", 1)
-        include_filter.append((field.strip(), value.strip()))
-
-    for filter_str in exclude:
-        if ":" not in filter_str:
-            print_error(
-                f"Invalid exclude filter '{filter_str}'. "
-                f"Use format 'FIELD:VALUE' (e.g., 'category:Theme')"
-            )
-            raise typer.Exit(1) from None
-        field, value = filter_str.split(":", 1)
-        exclude_filter.append((field.strip(), value.strip()))
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-    addons = module_manager.find_module_dirs(filter_dir=select_dir)
-
-    addons = [addon for addon in addons if not addon.startswith("test_")]
-
-    # Detect Odoo series once for filters that need it
-    odoo_series = (
-        global_config.odoo_series
-        if global_config.odoo_series
-        else module_manager.detect_odoo_series()
+    _list_addons_command_impl(
+        ctx,
+        type=type,
+        select_dir=select_dir,
+        separator=separator,
+        exclude_core_addons=exclude_core_addons,
+        exclude_enterprise_addons=exclude_enterprise_addons,
+        include=include,
+        exclude=exclude,
+        sorting=sorting,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        module_manager_cls=ModuleManager,
+        apply_core_addon_filters_fn=_apply_core_addon_filters,
+        apply_field_filters_fn=_apply_field_filters,
     )
-
-    if exclude_core_addons or exclude_enterprise_addons:
-        try:
-            addons = _apply_core_addon_filters(
-                addons, exclude_core_addons, exclude_enterprise_addons, odoo_series
-            )
-        except ValueError as e:
-            print_error(str(e))
-            raise typer.Exit(1) from None
-
-    # Apply include/exclude filters
-    try:
-        addons = _apply_field_filters(
-            addons, module_manager, include_filter, exclude_filter, odoo_series
-        )
-    except ValueError as e:
-        print_error(str(e))
-        raise typer.Exit(1) from None
-
-    try:
-        sorted_addons = module_manager.sort_modules(addons, sorting)
-    except ValueError as e:
-        print_error(f"Sorting failed: {e}")
-        raise typer.Exit(1) from None
-
-    if separator:
-        print(separator.join(sorted_addons))
-    else:
-        for addon in sorted_addons:
-            print(addon)
 
 
 @app.command("list-manifest-values")
@@ -1995,149 +1537,30 @@ def list_manifest_values(
 
       oduit list-manifest-values license --separator ","
     """
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    # Validate field
-    if field not in VALID_FILTER_FIELDS:
-        print_error(
-            f"Invalid field '{field}'. Valid fields: {', '.join(VALID_FILTER_FIELDS)}"
-        )
-        raise typer.Exit(1) from None
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-    addons = module_manager.find_module_dirs(filter_dir=select_dir)
-
-    # Detect Odoo series for filters that need it
-    odoo_series = (
-        global_config.odoo_series
-        if global_config.odoo_series
-        else module_manager.detect_odoo_series()
+    _list_manifest_values_command_impl(
+        ctx,
+        field=field,
+        separator=separator,
+        select_dir=select_dir,
+        exclude_core_addons=exclude_core_addons,
+        exclude_enterprise_addons=exclude_enterprise_addons,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        valid_filter_fields=VALID_FILTER_FIELDS,
+        module_manager_cls=ModuleManager,
+        get_addon_field_value_fn=_get_addon_field_value,
+        apply_core_addon_filters_fn=_apply_core_addon_filters,
     )
-
-    if exclude_core_addons or exclude_enterprise_addons:
-        try:
-            addons = _apply_core_addon_filters(
-                addons, exclude_core_addons, exclude_enterprise_addons, odoo_series
-            )
-        except ValueError as e:
-            print_error(str(e))
-            raise typer.Exit(1) from None
-
-    # Collect unique values
-    unique_values: set[str] = set()
-    for addon in addons:
-        value = _get_addon_field_value(addon, field, module_manager, odoo_series)
-        if not value:
-            continue
-        # Handle comma-separated values (e.g., depends field)
-        if field == "depends":
-            for v in value.split(","):
-                v = v.strip()
-                if v:
-                    unique_values.add(v)
-        else:
-            unique_values.add(value)
-
-    sorted_values = sorted(unique_values)
-
-    # JSON output
-    if global_config.format == OutputFormat.JSON:
-        output_data = output_result_to_json(
-            {
-                "success": True,
-                "operation": "list_manifest_values",
-                "field": field,
-                "values": sorted_values,
-            },
-            result_type="manifest_values",
-        )
-        print(json.dumps(output_data))
-        return
-
-    # Text output
-    if separator:
-        print(separator.join(sorted_values))
-    else:
-        for value in sorted_values:
-            print(value)
 
 
 @app.command("list-duplicates")
 def list_duplicates(ctx: typer.Context) -> None:
     """List duplicate addon names across configured addon paths."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    addons_path = global_config.env_config.get("addons_path")
-    if not addons_path:
-        _print_command_error_result(
-            global_config,
-            "list_duplicates",
-            "addons_path is not configured",
-            error_type="ConfigError",
-            remediation=[
-                "Set `addons_path` before running duplicate-module analysis.",
-            ],
-        )
-        raise typer.Exit(1) from None
-
-    path_manager = AddonsPathManager(str(addons_path))
-    duplicate_modules = path_manager.find_duplicate_module_names()
-
-    if global_config.format == OutputFormat.JSON:
-        payload = output_result_to_json(
-            {
-                "success": True,
-                "operation": "list_duplicates",
-                "duplicate_modules": duplicate_modules,
-                "duplicate_count": len(duplicate_modules),
-            },
-            result_type="duplicate_modules",
-        )
-        print(json.dumps(payload))
-        return
-
-    if not duplicate_modules:
-        print_info("No duplicate addon names found")
-        return
-
-    for module_name in sorted(duplicate_modules):
-        print(f"{module_name}:")
-        for location in duplicate_modules[module_name]:
-            print(f"  - {location}")
+    _list_duplicates_command_impl(
+        ctx,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        addons_path_manager_cls=AddonsPathManager,
+        print_command_error_result_fn=_print_command_error_result,
+    )
 
 
 def _print_dependency_tree(
@@ -2209,70 +1632,19 @@ def list_depends(
     Use --tree to show the full dependency tree with versions.
     Use --select-dir to get dependencies for all modules in a specific directory.
     """
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-
-    if modules is None and select_dir is None:
-        print_error("Either provide module names or use --select-dir option")
-        raise typer.Exit(1) from None
-
-    if modules is not None and select_dir is not None:
-        print_error("Cannot use both module names and --select-dir option")
-        raise typer.Exit(1) from None
-
-    try:
-        if select_dir:
-            addons = module_manager.find_module_dirs(filter_dir=select_dir)
-            if not addons:
-                print_error(f"No modules found in directory '{select_dir}'")
-                raise typer.Exit(1) from None
-            module_list = sorted(addons)
-            source_desc = f"directory '{select_dir}'"
-        else:
-            assert modules is not None
-            module_list = [m.strip() for m in modules.split(",")]
-            if len(module_list) == 1:
-                source_desc = f"'{modules}'"
-            else:
-                source_desc = f"modules [{', '.join(module_list)}]"
-
-        tree_depth = depth + 1 if depth is not None and depth >= 0 else None
-
-        if tree:
-            _print_dependency_tree(
-                module_list, module_manager, tree_depth, global_config.odoo_series
-            )
-        else:
-            _print_dependency_list(
-                module_list,
-                module_manager,
-                tree_depth,
-                depth,
-                separator,
-                source_desc,
-                sorting,
-            )
-    except ValueError as e:
-        print_error(f"Error checking dependencies: {e}")
-        raise typer.Exit(1) from None
+    _list_depends_command_impl(
+        ctx,
+        modules=modules,
+        separator=separator,
+        tree=tree,
+        depth=depth,
+        select_dir=select_dir,
+        sorting=sorting,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        module_manager_cls=ModuleManager,
+        print_dependency_tree_fn=_print_dependency_tree,
+        print_dependency_list_fn=_print_dependency_list,
+    )
 
 
 @app.command("list-codepends")
@@ -2290,40 +1662,13 @@ def list_codepends(
     The output includes the selected module itself plus any modules that
     directly or indirectly depend on it.
     """
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-
-    reverse_dependencies = module_manager.get_reverse_dependencies(module)
-
-    # Include the selected module itself in the output
-    all_codeps = sorted(reverse_dependencies + [module])
-
-    if separator:
-        if all_codeps:
-            print(separator.join(all_codeps))
-    elif all_codeps:
-        for dep in all_codeps:
-            print(f"{dep}")
-    else:
-        print_info(f"Module '{module}' has no reverse dependencies")
+    _list_codepends_command_impl(
+        ctx,
+        module=module,
+        separator=separator,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        module_manager_cls=ModuleManager,
+    )
 
 
 @app.command("install-order")
@@ -2344,120 +1689,16 @@ def install_order(
     ),
 ) -> None:
     """Return the dependency-resolved install order for one or more addons."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-
-    if modules is None and select_dir is None:
-        _print_command_error_result(
-            global_config,
-            "install_order",
-            "Either provide module names or use --select-dir option",
-            details={"modules": modules, "select_dir": select_dir},
-        )
-        raise typer.Exit(1) from None
-
-    if modules is not None and select_dir is not None:
-        _print_command_error_result(
-            global_config,
-            "install_order",
-            "Cannot use both module names and --select-dir option",
-            details={"modules": modules, "select_dir": select_dir},
-        )
-        raise typer.Exit(1) from None
-
-    if select_dir:
-        module_list = sorted(module_manager.find_module_dirs(filter_dir=select_dir))
-        if not module_list:
-            _print_command_error_result(
-                global_config,
-                "install_order",
-                f"No modules found in directory '{select_dir}'",
-                details={"select_dir": select_dir},
-            )
-            raise typer.Exit(1) from None
-        source = "select_dir"
-    else:
-        assert modules is not None
-        module_list = [
-            module.strip() for module in modules.split(",") if module.strip()
-        ]
-        missing_modules = [
-            module
-            for module in module_list
-            if module_manager.find_module_path(module) is None
-        ]
-        if missing_modules:
-            _print_command_error_result(
-                global_config,
-                "install_order",
-                f"Modules not found in addons_path: {', '.join(missing_modules)}",
-                details={"modules": module_list, "missing_modules": missing_modules},
-            )
-            raise typer.Exit(1) from None
-        source = "modules"
-
-    try:
-        ordered_modules = module_manager.get_install_order(*module_list)
-    except ValueError as e:
-        cycle_details = _dependency_error_details(module_manager, str(e))
-        _print_command_error_result(
-            global_config,
-            "install_order",
-            f"Failed to compute install order: {e}",
-            error_type=("DependencyCycleError" if cycle_details else "DependencyError"),
-            details={
-                "modules": module_list,
-                "select_dir": select_dir,
-                **cycle_details,
-            },
-            remediation=(
-                [
-                    "Resolve the dependency cycle and retry the install-order "
-                    "analysis.",
-                ]
-                if cycle_details
-                else []
-            ),
-        )
-        raise typer.Exit(1) from None
-
-    if global_config.format == OutputFormat.JSON:
-        result_json = output_result_to_json(
-            {
-                "success": True,
-                "operation": "install_order",
-                "modules": module_list,
-                "install_order": ordered_modules,
-                "source": source,
-                "select_dir": select_dir,
-            }
-        )
-        print(json.dumps(result_json))
-        return
-
-    if separator:
-        print(separator.join(ordered_modules))
-    else:
-        for module in ordered_modules:
-            print(module)
+    _install_order_command_impl(
+        ctx,
+        modules=modules,
+        separator=separator,
+        select_dir=select_dir,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        module_manager_cls=ModuleManager,
+        print_command_error_result_fn=_print_command_error_result,
+        dependency_error_details_fn=_dependency_error_details,
+    )
 
 
 @app.command("impact-of-update")
@@ -2471,59 +1712,14 @@ def impact_of_update(
     ),
 ) -> None:
     """Show addons affected by updating a specific module."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-    if module_manager.find_module_path(module) is None:
-        _print_command_error_result(
-            global_config,
-            "impact_of_update",
-            f"Module '{module}' was not found in addons_path",
-            details={"module": module},
-        )
-        raise typer.Exit(1) from None
-
-    impacted_modules = module_manager.get_reverse_dependencies(module)
-
-    if global_config.format == OutputFormat.JSON:
-        result_json = output_result_to_json(
-            {
-                "success": True,
-                "operation": "impact_of_update",
-                "module": module,
-                "impacted_modules": impacted_modules,
-                "impact_count": len(impacted_modules),
-            }
-        )
-        print(json.dumps(result_json))
-        return
-
-    if not impacted_modules:
-        print_info(f"No addons would be impacted by updating '{module}'")
-        return
-
-    if separator:
-        print(separator.join(impacted_modules))
-    else:
-        for impacted_module in impacted_modules:
-            print(impacted_module)
+    _impact_of_update_command_impl(
+        ctx,
+        module=module,
+        separator=separator,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        module_manager_cls=ModuleManager,
+        print_command_error_result_fn=_print_command_error_result,
+    )
 
 
 @app.command("list-missing")
@@ -2550,63 +1746,14 @@ def list_missing(
 
     Use --select-dir to check all modules in a specific directory.
     """
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-
-    if modules is None and select_dir is None:
-        print_error("Either provide module names or use --select-dir option")
-        raise typer.Exit(1) from None
-
-    if modules is not None and select_dir is not None:
-        print_error("Cannot use both module names and --select-dir option")
-        raise typer.Exit(1) from None
-
-    try:
-        if select_dir:
-            module_list = module_manager.find_module_dirs(filter_dir=select_dir)
-            if not module_list:
-                print_error(f"No modules found in directory '{select_dir}'")
-                raise typer.Exit(1) from None
-        else:
-            assert modules is not None
-            module_list = [m.strip() for m in modules.split(",")]
-
-        all_missing = set()
-        for module in module_list:
-            missing = module_manager.find_missing_dependencies(module)
-            all_missing.update(missing)
-
-        if all_missing:
-            sorted_missing = sorted(all_missing)
-            if separator:
-                print(separator.join(sorted_missing))
-            else:
-                for dep in sorted_missing:
-                    print(dep)
-        else:
-            if not separator:
-                print_info("All dependencies are available")
-    except ValueError as e:
-        print_error(f"Error checking missing dependencies: {e}")
-        raise typer.Exit(1) from None
+    _list_missing_command_impl(
+        ctx,
+        modules=modules,
+        separator=separator,
+        select_dir=select_dir,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        module_manager_cls=ModuleManager,
+    )
 
 
 def _check_environment_exists(config_loader: ConfigLoader, env_name: str) -> None:
@@ -2704,32 +1851,21 @@ def init_env(
     Auto-detects python and odoo binaries from PATH unless explicitly provided.
     Can import settings from existing Odoo .conf file.
     """
-    config_loader = ConfigLoader()
-
-    _check_environment_exists(config_loader, env_name)
-
-    python_bin, odoo_bin, coverage_bin = _detect_binaries(
-        python_bin, odoo_bin, coverage_bin
+    _init_env_command_impl(
+        env_name=env_name,
+        from_conf=from_conf,
+        python_bin=python_bin,
+        odoo_bin=odoo_bin,
+        coverage_bin=coverage_bin,
+        config_loader_cls=ConfigLoader,
+        check_environment_exists_fn=_check_environment_exists,
+        detect_binaries_fn=_detect_binaries,
+        build_initial_config_fn=_build_initial_config,
+        import_or_convert_config_fn=_import_or_convert_config,
+        normalize_addons_path_fn=_normalize_addons_path,
+        save_config_file_fn=_save_config_file,
+        display_config_summary_fn=_display_config_summary,
     )
-
-    env_config = _build_initial_config(python_bin, odoo_bin, coverage_bin)
-
-    env_config = _import_or_convert_config(
-        env_config, from_conf, config_loader, python_bin, odoo_bin, coverage_bin
-    )
-
-    _normalize_addons_path(env_config)
-
-    config_path = config_loader.get_config_path(env_name, "toml")
-
-    try:
-        _save_config_file(config_path, env_config, config_loader)
-        print_info(f"Environment '{env_name}' created successfully")
-        print_info(f"Configuration saved to: {config_path}")
-        _display_config_summary(env_config)
-    except Exception as e:
-        print_error(f"Failed to save configuration: {e}")
-        raise typer.Exit(1) from None
 
 
 @app.command("export-lang")
@@ -2740,57 +1876,14 @@ def export_lang(
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ) -> None:
     """Export language module."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    language = language or global_config.env_config.get("language", "de_DE")
-    if language is None:
-        language = "de_DE"
-
-    module_manager = ModuleManager(global_config.env_config["addons_path"])
-
-    module_path = module_manager.find_module_path(module)
-    if not module_path:
-        print_warning(
-            f"Module '{module}' not found in addons path. Using default path."
-        )
-        module_path = os.path.join(
-            global_config.env_config["addons_path"].split(",")[0], module
-        )
-
-    i18n_dir = os.path.join(module_path, "i18n")
-    if "_" in language:
-        filename = os.path.join(i18n_dir, f"{language.split('_')[0]}.po")
-    else:
-        filename = os.path.join(i18n_dir, f"{language}.po")
-
-    os.makedirs(i18n_dir, exist_ok=True)
-    odoo_operations = OdooOperations(
-        global_config.env_config, verbose=global_config.verbose
-    )
-
-    odoo_operations.export_module_language(
-        module,
-        filename,
-        language,
-        no_http=global_config.no_http,
-        log_level=log_level.value if log_level else None,
+    _export_lang_command_impl(
+        ctx,
+        module=module,
+        language=language,
+        log_level=log_level,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
+        module_manager_cls=ModuleManager,
     )
 
 
@@ -2799,37 +1892,11 @@ def get_odoo_version_cmd(
     ctx: typer.Context,
 ) -> None:
     """Get Odoo version from odoo-bin."""
-    if ctx.obj is None:
-        print_error("No global configuration found")
-        raise typer.Exit(1) from None
-
-    if isinstance(ctx.obj, dict):
-        try:
-            global_config = create_global_config(**ctx.obj)
-        except typer.Exit:
-            raise
-        except Exception as e:
-            print_error(f"Failed to create global config: {e}")
-            raise typer.Exit(1) from None
-    else:
-        global_config = ctx.obj
-
-    if global_config.env_config is None:
-        print_error("No environment configuration available")
-        raise typer.Exit(1) from None
-
-    ops = OdooOperations(global_config.env_config, verbose=global_config.verbose)
-    result = ops.get_odoo_version(suppress_output=True)
-
-    if global_config.format == OutputFormat.JSON:
-        result_json = output_result_to_json(result)
-        print(json.dumps(result_json))
-    else:
-        if result.get("success", False) and result.get("version"):
-            typer.echo(result["version"])
-        else:
-            print_error("Failed to detect Odoo version")
-            raise typer.Exit(1)
+    _get_odoo_version_command_impl(
+        ctx,
+        resolve_command_env_config_fn=_resolve_command_env_config,
+        build_odoo_operations_fn=_build_odoo_operations,
+    )
 
 
 def _build_environment_context_data(global_config: GlobalConfig) -> dict[str, Any]:
