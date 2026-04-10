@@ -82,6 +82,18 @@ this loop:
 For runtime spot checks after a change, prefer ``query-model``, ``read-record``,
 and ``search-count`` over arbitrary code execution.
 
+For a single end-to-end runtime verification pass after editing one addon, use
+``validate-addon-change``:
+
+.. code-block:: bash
+
+   oduit --env dev agent validate-addon-change my_partner --allow-mutation --update --discover-tests
+
+This command inspects the addon, checks environment health and duplicate names,
+optionally installs or updates the addon, runs the full module test suite using
+``/<module>`` test tags by default, and returns one aggregate payload with
+sub-results for each step.
+
 Mutation Policy
 ---------------
 
@@ -165,6 +177,7 @@ Published JSON Schema artifacts live under ``schemas/``:
 * ``schemas/agent/addon-model-inventory.schema.json``
 * ``schemas/agent/model-extension-inventory.schema.json``
 * ``schemas/agent/model-view-inventory.schema.json``
+* ``schemas/agent/addon-change-validation.schema.json``
 
 Failure Handling
 ----------------

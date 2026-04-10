@@ -1007,6 +1007,18 @@ command and requires ``--allow-mutation``.
 
    oduit --env dev agent test-summary --allow-mutation --module sale --test-tags /sale
 
+validate-addon-change
+^^^^^^^^^^^^^^^^^^^^^
+
+Run one end-to-end addon verification pass and return aggregate sub-results for
+inspection, config health, duplicate checks, optional install or update, the
+full module test suite, and optional discovered test inventory.
+
+.. code-block:: bash
+
+   oduit --env dev agent validate-addon-change sale --allow-mutation --update
+   oduit --env dev agent validate-addon-change sale --allow-mutation --install-if-needed --discover-tests
+
 Controlled mutation commands require ``--allow-mutation``. See
 :doc:`agent_contract` for the mutation rules and ``--dry-run`` expectations.
 

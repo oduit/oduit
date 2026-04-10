@@ -83,6 +83,7 @@ for external coding agents. Keep the inventory below in sync with
 - `search-count`
 - `test-summary`
 - `update-module`
+- `validate-addon-change`
 
 ## `OdooOperations` methods
 

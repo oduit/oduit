@@ -102,6 +102,7 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "addon-model-inventory.schema.json",
         SCHEMAS / "agent" / "model-extension-inventory.schema.json",
         SCHEMAS / "agent" / "model-view-inventory.schema.json",
+        SCHEMAS / "agent" / "addon-change-validation.schema.json",
     ]
     for schema_path in expected:
         assert schema_path.exists(), schema_path
@@ -150,7 +151,34 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                     error=None,
                 ),
                 MagicMock(success=True, records=[], error=None),
+                MagicMock(
+                    success=True,
+                    records=[{"name": "my_partner", "state": "installed"}],
+                    error=None,
+                    error_type=None,
+                ),
             ],
+        ),
+        patch(
+            "oduit.cli_typer.OdooOperations.get_odoo_version",
+            return_value={"success": True, "version": "17.0"},
+        ),
+        patch(
+            "oduit.cli_typer.OdooOperations.db_exists",
+            return_value={"success": True, "exists": True},
+        ),
+        patch(
+            "oduit.cli_typer.OdooOperations.run_tests",
+            return_value={
+                "success": True,
+                "operation": "test",
+                "return_code": 0,
+                "total_tests": 1,
+                "passed_tests": 1,
+                "failed_tests": 0,
+                "error_tests": 0,
+                "failures": [],
+            },
         ),
         patch(
             "oduit.cli_typer.OdooOperations.get_model_views",
@@ -257,6 +285,19 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                         "res.partner",
                         "--types",
                         "form",
+                    ],
+                ).output
+            ),
+            "addon-change-validation.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "validate-addon-change",
+                        "my_partner",
+                        "--allow-mutation",
                     ],
                 ).output
             ),

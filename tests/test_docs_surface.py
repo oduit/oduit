@@ -134,6 +134,7 @@ def test_agent_contract_page_covers_required_topics() -> None:
         '"schema_version": "2.0"',
         "controlled_runtime_mutation",
         "controlled_source_mutation",
+        "validate-addon-change",
         "oduit --env dev agent context",
         "oduit --env dev agent inspect-addon my_partner",
         "oduit --env dev agent plan-update my_partner",

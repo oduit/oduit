@@ -1241,6 +1241,406 @@ def _agent_require_mutation(
     )
 
 
+def _agent_sub_result(
+    *,
+    success: bool,
+    data: dict[str, Any] | None = None,
+    warnings: list[str] | None = None,
+    errors: list[dict[str, Any]] | None = None,
+    remediation: list[str] | None = None,
+    error: str | None = None,
+    error_type: str | None = None,
+    read_only: bool = True,
+    safety_level: str = SAFE_READ_ONLY,
+    skipped: bool = False,
+) -> dict[str, Any]:
+    """Build a normalized sub-result for aggregate agent payloads."""
+    return {
+        "success": success,
+        "read_only": read_only,
+        "safety_level": safety_level,
+        "warnings": warnings or [],
+        "errors": errors or [],
+        "remediation": remediation or [],
+        "error": error,
+        "error_type": error_type,
+        "skipped": skipped,
+        "data": data or {},
+    }
+
+
+def _build_agent_test_summary_details(
+    result: dict[str, Any],
+    *,
+    module: str | None,
+    install: str | None,
+    update: str | None,
+    coverage: str | None,
+    test_file: str | None,
+    test_tags: str | None,
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Normalize ``run_tests()`` output for agent-facing summaries."""
+    selected_modules = list(
+        dict.fromkeys(value for value in [module, install, update, coverage] if value)
+    )
+    failures = list(result.get("failures", []))
+    error_output_excerpt = (
+        _build_error_output_excerpt(result) if not result.get("success", False) else []
+    )
+    traceback_summary = [
+        {
+            "test_name": failure.get("test_name"),
+            "file": failure.get("file"),
+            "line": failure.get("line"),
+            "function_name": failure.get("function_name"),
+            "source_line": failure.get("source_line"),
+            "broken_line_count": failure.get("broken_line_count", 0),
+            "failure_excerpt": failure.get("failure_excerpt"),
+            "error_message": failure.get("error_message"),
+        }
+        for failure in failures
+    ]
+    suggested_next_steps: list[str] = []
+    if failures:
+        suggested_next_steps.append(
+            "Inspect the first failure traceback and reproduce it locally."
+        )
+    if selected_modules:
+        suggested_next_steps.append(
+            f"Retest the selected module set: {', '.join(selected_modules)}."
+        )
+    if coverage:
+        suggested_next_steps.append(
+            "Review the generated coverage report to identify untested files."
+        )
+
+    data = {
+        "selected_modules": selected_modules,
+        "selection": {
+            "module": module,
+            "install": install,
+            "update": update,
+            "coverage": coverage,
+            "test_file": test_file,
+            "test_tags": test_tags,
+        },
+        "total_tests": result.get("total_tests", 0),
+        "passed_tests": result.get("passed_tests", 0),
+        "failed_tests": result.get("failed_tests", 0),
+        "error_tests": result.get("error_tests", 0),
+        "failure_details": failures,
+        "error_output_excerpt": error_output_excerpt,
+        "traceback_summary": traceback_summary,
+        "coverage_summary": {
+            "requested": bool(coverage),
+            "module": coverage,
+            "available": bool(coverage),
+        },
+        "per_file_coverage": result.get("per_file_coverage", []),
+        "suggested_next_steps": suggested_next_steps,
+        "return_code": result.get("return_code"),
+        "command": result.get("command"),
+    }
+    warnings = (
+        ["Per-file coverage entries are not currently normalized by run_tests()."]
+        if coverage
+        else []
+    )
+    return data, warnings, suggested_next_steps
+
+
+def _build_validate_addon_change_payload(
+    module: str,
+    *,
+    install_if_needed: bool,
+    update: bool,
+    resolved_test_tags: str | None,
+    discover_tests: bool,
+    installed_state: dict[str, Any] | None,
+    mutation_action: dict[str, Any],
+    sub_results: dict[str, dict[str, Any]],
+    completed_steps: list[str],
+    failed_step: str | None,
+) -> tuple[
+    dict[str, Any],
+    bool,
+    list[str],
+    list[dict[str, Any]],
+    list[str],
+    str | None,
+    str | None,
+]:
+    """Assemble the aggregate payload data for addon-change validation."""
+    warnings: list[str] = []
+    errors: list[dict[str, Any]] = []
+    remediation: list[str] = []
+    error = None
+    error_type = None
+
+    for step_name, step in sub_results.items():
+        for warning in step.get("warnings", []):
+            if warning not in warnings:
+                warnings.append(warning)
+
+        for item in step.get("remediation", []):
+            if item not in remediation:
+                remediation.append(item)
+
+        if not step.get("success", False):
+            step_error = step.get("error") or f"{step_name} failed"
+            step_error_type = step.get("error_type") or "CommandError"
+            errors.append(
+                {
+                    "step": step_name,
+                    "message": step_error,
+                    "error_type": step_error_type,
+                }
+            )
+            if error is None:
+                error = step_error
+                error_type = step_error_type
+
+    success = failed_step is None and not errors
+    payload_data = {
+        "module": module,
+        "requested_actions": {
+            "install_if_needed": install_if_needed,
+            "update": update,
+            "test_tags": resolved_test_tags,
+            "discover_tests": discover_tests,
+        },
+        "installed_state": installed_state,
+        "mutation_action": mutation_action,
+        "sub_results": sub_results,
+        "verification_summary": {
+            "completed_steps": completed_steps,
+            "failed_step": failed_step,
+            "blocking_issues": errors,
+            "warnings": warnings,
+        },
+    }
+    return payload_data, success, warnings, errors, remediation, error, error_type
+
+
+def _run_validate_addon_change_preflight(
+    ops: OdooOperations,
+    global_config: GlobalConfig,
+    module: str,
+) -> tuple[
+    dict[str, dict[str, Any]],
+    list[str],
+    str | None,
+    dict[str, Any] | None,
+]:
+    """Run inspect, doctor, duplicate, and installed-state checks."""
+    sub_results: dict[str, dict[str, Any]] = {}
+    completed_steps: list[str] = []
+    failed_step: str | None = None
+    installed_state: dict[str, Any] | None = None
+
+    try:
+        inspection = ops.inspect_addon(module, odoo_series=global_config.odoo_series)
+        sub_results["inspection"] = _agent_sub_result(
+            success=True,
+            data=inspection.to_dict(),
+            warnings=list(inspection.warnings),
+            remediation=list(inspection.remediation),
+        )
+        completed_steps.append("inspection")
+    except OduitModuleNotFoundError as exc:
+        failed_step = "inspection"
+        sub_results["inspection"] = _agent_sub_result(
+            success=False,
+            data={"module": module},
+            error=str(exc),
+            error_type="ModuleNotFoundError",
+            remediation=[
+                "Verify that the addon exists in the configured addons paths.",
+                "Run `oduit agent context` to inspect the resolved addons paths.",
+            ],
+        )
+        return sub_results, completed_steps, failed_step, installed_state
+
+    doctor_report = _build_doctor_report(global_config)
+    sub_results["doctor"] = _agent_sub_result(
+        success=doctor_report.get("success", False),
+        data={
+            "source": doctor_report.get("source", {}),
+            "checks": doctor_report.get("checks", []),
+            "summary": doctor_report.get("summary", {}),
+            "next_steps": doctor_report.get("next_steps", []),
+        },
+        warnings=list(doctor_report.get("warnings", [])),
+        errors=list(doctor_report.get("errors", [])),
+        remediation=list(doctor_report.get("remediation", [])),
+        error=doctor_report.get("error"),
+        error_type=doctor_report.get("error_type"),
+    )
+    completed_steps.append("doctor")
+    if not doctor_report.get("success", False):
+        return sub_results, completed_steps, "doctor", installed_state
+
+    try:
+        duplicates = ops.list_duplicates()
+    except ConfigError as exc:
+        sub_results["duplicates"] = _agent_sub_result(
+            success=False,
+            error=str(exc),
+            error_type="ConfigError",
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
+            ],
+        )
+        return sub_results, completed_steps, "duplicates", installed_state
+
+    duplicate_warning = (
+        ["Duplicate addon names can make module resolution ambiguous."]
+        if duplicates
+        else []
+    )
+    duplicate_remediation = (
+        ["Remove or reorder duplicate addon paths before mutating modules."]
+        if duplicates
+        else []
+    )
+    target_module_duplicated = module in duplicates
+    sub_results["duplicates"] = _agent_sub_result(
+        success=not target_module_duplicated,
+        data={
+            "duplicate_modules": duplicates,
+            "duplicate_count": len(duplicates),
+            "target_module_duplicated": target_module_duplicated,
+        },
+        warnings=duplicate_warning,
+        remediation=duplicate_remediation,
+        error=(
+            f"Module '{module}' is duplicated across addons paths"
+            if target_module_duplicated
+            else None
+        ),
+        error_type="DuplicateModuleError" if target_module_duplicated else None,
+    )
+    completed_steps.append("duplicates")
+    if target_module_duplicated:
+        return sub_results, completed_steps, "duplicates", installed_state
+
+    state_result = ops.query_model(
+        "ir.module.module",
+        domain=[["name", "=", module]],
+        fields=["name", "state"],
+        limit=1,
+        database=None,
+        timeout=30.0,
+    )
+    if not state_result.success:
+        sub_results["installed_state"] = _agent_sub_result(
+            success=False,
+            data={"module": module},
+            error=state_result.error,
+            error_type=state_result.error_type,
+            remediation=[
+                "Verify database access and retry the module-state lookup.",
+            ],
+        )
+        return sub_results, completed_steps, "installed_state", installed_state
+
+    record = state_result.records[0] if state_result.records else {}
+    state = str(record.get("state", "uninstalled"))
+    installed_state = {
+        "module": module,
+        "record_found": bool(state_result.records),
+        "state": state,
+        "installed": state == "installed",
+    }
+    sub_results["installed_state"] = _agent_sub_result(
+        success=True,
+        data=installed_state,
+    )
+    completed_steps.append("installed_state")
+    return sub_results, completed_steps, None, installed_state
+
+
+def _build_validate_addon_change_discovery_result(
+    ops: OdooOperations,
+    module: str,
+    *,
+    discover_tests: bool,
+    failed_step: str | None,
+) -> tuple[dict[str, Any], str | None, bool]:
+    """Build the optional discovered-test sub-result."""
+    if not discover_tests:
+        return (
+            _agent_sub_result(
+                success=True,
+                data={
+                    "module": module,
+                    "requested": False,
+                    "executed": False,
+                },
+                skipped=True,
+            ),
+            failed_step,
+            False,
+        )
+
+    if failed_step is not None:
+        return (
+            _agent_sub_result(
+                success=True,
+                data={
+                    "module": module,
+                    "executed": False,
+                    "reason": "skipped_after_failed_required_step",
+                },
+                skipped=True,
+            ),
+            failed_step,
+            False,
+        )
+
+    try:
+        inventory = ops.list_addon_tests(module)
+    except (OduitModuleNotFoundError, ConfigError) as exc:
+        return (
+            _agent_sub_result(
+                success=False,
+                data={"module": module},
+                error=str(exc),
+                error_type=(
+                    "ModuleNotFoundError"
+                    if isinstance(exc, OduitModuleNotFoundError)
+                    else "ConfigError"
+                ),
+                remediation=[
+                    "Verify the addon path and test discovery inputs before retrying.",
+                ],
+            ),
+            "discovered_tests",
+            False,
+        )
+
+    discovery_remediation = list(inventory.remediation)
+    discovery_remediation.append(
+        "Run a specific discovered test file only when you need narrower "
+        "reproduction than the full module suite."
+    )
+    return (
+        _agent_sub_result(
+            success=True,
+            data={
+                **inventory.to_dict(),
+                "executed": False,
+                "execution_strategy": "inventory_only",
+                "reason": "full_module_suite_already_ran",
+            },
+            warnings=list(inventory.warnings),
+            remediation=list(dict.fromkeys(discovery_remediation)),
+        ),
+        None,
+        True,
+    )
+
+
 def _get_agent_addon_type(addon_name: str, odoo_series: OdooSeries | None) -> str:
     """Return a machine-oriented addon classification."""
     addon_type = _get_addon_type(addon_name, odoo_series)
@@ -5011,77 +5411,22 @@ def agent_test_summary(
         suppress_output=True,
         log_level=log_level.value if log_level else None,
     )
-
-    selected_modules = list(
-        dict.fromkeys(value for value in [module, install, update, coverage] if value)
+    payload_data, warnings, suggested_next_steps = _build_agent_test_summary_details(
+        result,
+        module=module,
+        install=install,
+        update=update,
+        coverage=coverage,
+        test_file=test_file,
+        test_tags=test_tags,
     )
-    failures = list(result.get("failures", []))
-    error_output_excerpt = (
-        _build_error_output_excerpt(result) if not result.get("success", False) else []
-    )
-    traceback_summary = [
-        {
-            "test_name": failure.get("test_name"),
-            "file": failure.get("file"),
-            "line": failure.get("line"),
-            "function_name": failure.get("function_name"),
-            "source_line": failure.get("source_line"),
-            "broken_line_count": failure.get("broken_line_count", 0),
-            "failure_excerpt": failure.get("failure_excerpt"),
-            "error_message": failure.get("error_message"),
-        }
-        for failure in failures
-    ]
-    suggested_next_steps: list[str] = []
-    if failures:
-        suggested_next_steps.append(
-            "Inspect the first failure traceback and reproduce it locally."
-        )
-    if selected_modules:
-        suggested_next_steps.append(
-            f"Retest the selected module set: {', '.join(selected_modules)}."
-        )
-    if coverage:
-        suggested_next_steps.append(
-            "Review the generated coverage report to identify untested files."
-        )
 
     payload = _agent_payload(
         operation,
         result_type,
-        {
-            "selected_modules": selected_modules,
-            "selection": {
-                "module": module,
-                "install": install,
-                "update": update,
-                "coverage": coverage,
-                "test_file": test_file,
-                "test_tags": test_tags,
-            },
-            "total_tests": result.get("total_tests", 0),
-            "passed_tests": result.get("passed_tests", 0),
-            "failed_tests": result.get("failed_tests", 0),
-            "error_tests": result.get("error_tests", 0),
-            "failure_details": failures,
-            "error_output_excerpt": error_output_excerpt,
-            "traceback_summary": traceback_summary,
-            "coverage_summary": {
-                "requested": bool(coverage),
-                "module": coverage,
-                "available": bool(coverage),
-            },
-            "per_file_coverage": result.get("per_file_coverage", []),
-            "suggested_next_steps": suggested_next_steps,
-            "return_code": result.get("return_code"),
-            "command": result.get("command"),
-        },
+        payload_data,
         success=result.get("success", False),
-        warnings=(
-            ["Per-file coverage entries are not currently normalized by run_tests()."]
-            if coverage
-            else []
-        ),
+        warnings=warnings,
         remediation=suggested_next_steps,
         read_only=False,
         safety_level=CONTROLLED_RUNTIME_MUTATION,
@@ -5090,6 +5435,211 @@ def agent_test_summary(
     )
     _agent_emit_payload(payload)
     if not result.get("success", False):
+        raise typer.Exit(1)
+
+
+@agent_app.command("validate-addon-change")
+def agent_validate_addon_change(
+    ctx: typer.Context,
+    module: str = typer.Argument(help="Addon to validate end-to-end"),
+    allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+    install_if_needed: bool = typer.Option(False, "--install-if-needed"),
+    update: bool = typer.Option(False, "--update"),
+    test_tags: str | None = typer.Option(
+        None,
+        "--test-tags",
+        help="Test tags filter; defaults to /<module>.",
+    ),
+    discover_tests: bool = typer.Option(
+        False,
+        "--discover-tests",
+        help="Include discovered addon test inventory after the module suite passes.",
+    ),
+    stop_on_error: bool = typer.Option(False, "--stop-on-error"),
+    compact: bool = typer.Option(False, "--compact"),
+    log_level: LogLevel | None = LOG_LEVEL_OPTION,
+) -> None:
+    """Validate an addon change with one aggregate structured payload."""
+    operation = "validate_addon_change"
+    result_type = "addon_change_validation"
+    global_config = _resolve_agent_global_config(ctx, operation, result_type)
+    if global_config.env_config is None:
+        _agent_fail(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    _agent_require_mutation(
+        allow_mutation,
+        operation,
+        result_type,
+        "addon change validation",
+        CONTROLLED_RUNTIME_MUTATION,
+    )
+
+    ops = OdooOperations(global_config.env_config, verbose=False)
+    resolved_test_tags = test_tags or f"/{module}"
+    mutation_action = {"action": "none", "performed": False}
+    sub_results, completed_steps, failed_step, installed_state = (
+        _run_validate_addon_change_preflight(ops, global_config, module)
+    )
+
+    if failed_step is None:
+        assert installed_state is not None
+        should_install = install_if_needed and not installed_state["installed"]
+        should_update = update and not should_install
+        if should_install:
+            result = ops.install_module(
+                module,
+                no_http=global_config.no_http,
+                suppress_output=True,
+                compact=compact,
+                max_cron_threads=None,
+                without_demo=False,
+                language=None,
+                with_demo=False,
+                log_level=log_level.value if log_level else None,
+            )
+            mutation_action = {
+                "action": "install",
+                "performed": True,
+                "reason": "module_not_installed",
+            }
+        elif should_update:
+            result = ops.update_module(
+                module,
+                no_http=global_config.no_http,
+                suppress_output=True,
+                compact=compact,
+                log_level=log_level.value if log_level else None,
+                max_cron_threads=None,
+                without_demo=False,
+                language=None,
+                i18n_overwrite=False,
+            )
+            mutation_action = {
+                "action": "update",
+                "performed": True,
+                "reason": "update_requested",
+            }
+        else:
+            result = None
+            mutation_action = {
+                "action": "none",
+                "performed": False,
+                "reason": (
+                    "module_already_installed"
+                    if install_if_needed and installed_state["installed"]
+                    else "no_runtime_mutation_requested"
+                ),
+            }
+
+        if result is None:
+            sub_results["module_action"] = _agent_sub_result(
+                success=True,
+                data=mutation_action,
+                skipped=True,
+            )
+        else:
+            action_success = bool(result.get("success", False))
+            remediation = (
+                ["Inspect the module-action error before retrying verification."]
+                if not action_success
+                else []
+            )
+            sub_results["module_action"] = _agent_sub_result(
+                success=action_success,
+                data={
+                    **result,
+                    **mutation_action,
+                },
+                remediation=remediation,
+                error=result.get("error"),
+                error_type=result.get("error_type"),
+                read_only=False,
+                safety_level=CONTROLLED_RUNTIME_MUTATION,
+            )
+            if not action_success:
+                failed_step = "module_action"
+        completed_steps.append("module_action")
+
+    if failed_step is None:
+        test_result = ops.run_tests(
+            module=module,
+            stop_on_error=stop_on_error,
+            install=None,
+            update=None,
+            coverage=None,
+            test_file=None,
+            test_tags=resolved_test_tags,
+            compact=compact,
+            suppress_output=True,
+            log_level=log_level.value if log_level else None,
+        )
+        test_data, test_warnings, test_remediation = _build_agent_test_summary_details(
+            test_result,
+            module=module,
+            install=None,
+            update=None,
+            coverage=None,
+            test_file=None,
+            test_tags=resolved_test_tags,
+        )
+        sub_results["module_tests"] = _agent_sub_result(
+            success=bool(test_result.get("success", False)),
+            data=test_data,
+            warnings=test_warnings,
+            remediation=test_remediation,
+            error=test_result.get("error"),
+            error_type=test_result.get("error_type"),
+            read_only=False,
+            safety_level=CONTROLLED_RUNTIME_MUTATION,
+        )
+        completed_steps.append("module_tests")
+        if not test_result.get("success", False):
+            failed_step = "module_tests"
+
+    discovery_result, discovery_failed_step, discovery_completed = (
+        _build_validate_addon_change_discovery_result(
+            ops,
+            module,
+            discover_tests=discover_tests,
+            failed_step=failed_step,
+        )
+    )
+    sub_results["discovered_tests"] = discovery_result
+    if discovery_completed:
+        completed_steps.append("discovered_tests")
+    if discovery_failed_step is not None:
+        failed_step = discovery_failed_step
+
+    payload_data, success, warnings, errors, remediation, error, error_type = (
+        _build_validate_addon_change_payload(
+            module,
+            install_if_needed=install_if_needed,
+            update=update,
+            resolved_test_tags=resolved_test_tags,
+            discover_tests=discover_tests,
+            installed_state=installed_state,
+            mutation_action=mutation_action,
+            sub_results=sub_results,
+            completed_steps=completed_steps,
+            failed_step=failed_step,
+        )
+    )
+    payload = _agent_payload(
+        operation,
+        result_type,
+        payload_data,
+        success=success,
+        warnings=warnings,
+        errors=errors,
+        remediation=remediation,
+        read_only=False,
+        safety_level=CONTROLLED_RUNTIME_MUTATION,
+        error=error,
+        error_type=error_type,
+    )
+    _agent_emit_payload(payload)
+    if not success:
         raise typer.Exit(1)
 
 

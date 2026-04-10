@@ -120,6 +120,8 @@ for:
 
 Agent commands always emit JSON and do not require the global `--json` flag.
 Structured payloads include an explicit `schema_version`, currently `2.0`.
+For one-shot verification after an addon change, prefer
+`oduit --env <env> agent validate-addon-change <module> --allow-mutation`.
 
 ## Python API
 

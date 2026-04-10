@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/addon-change-validation.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "module",
+    "requested_actions",
+    "sub_results",
+    "verification_summary"
+  ],
+  "properties": {
+    "type": { "const": "addon_change_validation" },
+    "module": { "type": "string" },
+    "requested_actions": { "type": "object" },
+    "installed_state": { "type": ["object", "null"] },
+    "mutation_action": { "type": "object" },
+    "sub_results": { "type": "object" },
+    "verification_summary": { "type": "object" }
+  },
+  "additionalProperties": true
+}

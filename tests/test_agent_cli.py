@@ -611,6 +611,157 @@ def test_agent_create_addon_reports_source_mutation(tmp_path: Path) -> None:
     assert payload["safety_level"] == "controlled_source_mutation"
 
 
+def test_agent_validate_addon_change_aggregates_runtime_verification(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.query_model.return_value = MagicMock(
+            success=True,
+            records=[{"name": "x_sale", "state": "installed"}],
+            error=None,
+            error_type=None,
+        )
+        ops.update_module.return_value = {
+            "success": True,
+            "operation": "update_module",
+            "return_code": 0,
+        }
+        ops.run_tests.return_value = {
+            "success": True,
+            "operation": "test",
+            "return_code": 0,
+            "total_tests": 5,
+            "passed_tests": 5,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "failures": [],
+        }
+        ops.list_addon_tests.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "tests": []},
+            warnings=[],
+            remediation=[],
+        )
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+                "--update",
+                "--discover-tests",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_change_validation"
+    assert payload["safety_level"] == "controlled_runtime_mutation"
+    assert payload["requested_actions"]["test_tags"] == "/x_sale"
+    assert payload["mutation_action"]["action"] == "update"
+    assert payload["sub_results"]["module_tests"]["success"] is True
+    assert payload["sub_results"]["discovered_tests"]["data"]["executed"] is False
+    ops.update_module.assert_called_once()
+    ops.run_tests.assert_called_once_with(
+        module="x_sale",
+        stop_on_error=False,
+        install=None,
+        update=None,
+        coverage=None,
+        test_file=None,
+        test_tags="/x_sale",
+        compact=False,
+        suppress_output=True,
+        log_level=None,
+    )
+
+
+def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.query_model.return_value = MagicMock(
+            success=True,
+            records=[{"name": "x_sale", "state": "uninstalled"}],
+            error=None,
+            error_type=None,
+        )
+        ops.install_module.return_value = {
+            "success": True,
+            "operation": "install_module",
+            "return_code": 0,
+        }
+        ops.run_tests.return_value = {
+            "success": True,
+            "operation": "test",
+            "return_code": 0,
+            "total_tests": 1,
+            "passed_tests": 1,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "failures": [],
+        }
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+                "--install-if-needed",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["installed_state"]["installed"] is False
+    assert payload["mutation_action"]["action"] == "install"
+    ops.install_module.assert_called_once()
+    ops.update_module.assert_not_called()
+
+
 def test_agent_test_summary_module_uses_fast_test_tags_semantics(
     tmp_path: Path,
 ) -> None:
