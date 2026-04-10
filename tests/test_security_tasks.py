@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from oduit.cli_typer import app
+from oduit.cli.app import app
 from oduit.odoo_code_executor import OdooCodeExecutor
 from oduit.odoo_operations import OdooOperations
 from oduit.process_manager import ProcessManager
@@ -234,7 +234,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             config = self._agent_config(tmp_path, str(addons_dir))
             loader = self._loader_with_config(config, tmp_path)
 
-            with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
                 result = runner.invoke(
                     app,
                     ["--env", "dev", "agent", "update-module", "sale"],
@@ -257,7 +257,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             config = self._agent_config(tmp_path, str(addons_dir))
             loader = self._loader_with_config(config, tmp_path)
 
-            with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
                 result = runner.invoke(
                     app,
                     [
@@ -288,7 +288,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             config = self._agent_config(tmp_path, str(addons_dir))
             loader = self._loader_with_config(config, tmp_path)
 
-            with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
                 result = runner.invoke(
                     app,
                     ["--env", "dev", "agent", "create-addon", "x_new"],
@@ -311,7 +311,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             config = self._agent_config(tmp_path, str(addons_dir))
             loader = self._loader_with_config(config, tmp_path)
 
-            with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
                 result = runner.invoke(
                     app,
                     ["--env", "dev", "agent", "validate-addon-change", "sale"],
@@ -342,7 +342,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             loader = self._loader_with_config(config, tmp_path)
 
             with (
-                patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+                patch("oduit.cli.app.ConfigLoader", return_value=loader),
                 patch.object(
                     OdooOperations,
                     "execute_python_code",

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from oduit.api_models import ModelViewInventory, ModelViewRecord
-from oduit.cli_typer import app
+from oduit.cli.app import app
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS = ROOT / "schemas"
@@ -129,9 +129,9 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
         patch(
-            "oduit.cli_typer.OdooOperations.get_odoo_version",
+            "oduit.cli.app.OdooOperations.get_odoo_version",
             return_value={"success": True, "version": "17.0"},
         ),
         patch(
@@ -160,15 +160,15 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
             ],
         ),
         patch(
-            "oduit.cli_typer.OdooOperations.get_odoo_version",
+            "oduit.cli.app.OdooOperations.get_odoo_version",
             return_value={"success": True, "version": "17.0"},
         ),
         patch(
-            "oduit.cli_typer.OdooOperations.db_exists",
+            "oduit.cli.app.OdooOperations.db_exists",
             return_value={"success": True, "exists": True},
         ),
         patch(
-            "oduit.cli_typer.OdooOperations.run_tests",
+            "oduit.cli.app.OdooOperations.run_tests",
             return_value={
                 "success": True,
                 "operation": "test",
@@ -181,7 +181,7 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
             },
         ),
         patch(
-            "oduit.cli_typer.OdooOperations.get_model_views",
+            "oduit.cli.app.OdooOperations.get_model_views",
             return_value=ModelViewInventory(
                 model="res.partner",
                 requested_types=["form"],
@@ -319,7 +319,7 @@ def test_resolve_config_redacts_sensitive_values(tmp_path: Path) -> None:
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
         result = runner.invoke(app, ["--env", "dev", "agent", "resolve-config"])
 
     assert result.exit_code == 0

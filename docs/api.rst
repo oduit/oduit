@@ -27,6 +27,7 @@ Command Line Interface
 .. toctree::
    :maxdepth: 2
 
+   api/cli_app
    api/cli_typer
    api/cli_types
 

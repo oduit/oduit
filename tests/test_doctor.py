@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from oduit.cli_typer import app
+from oduit.cli.app import app
 
 
 def _make_executable(path: Path) -> str:
@@ -61,8 +61,8 @@ class TestDoctorCommand:
     def setup_method(self) -> None:
         self.runner = CliRunner()
 
-    @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_doctor_with_env_success(
         self,
         mock_config_loader_class: MagicMock,
@@ -106,8 +106,8 @@ class TestDoctorCommand:
             with_sudo=False, suppress_output=True
         )
 
-    @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_doctor_with_local_config(
         self,
         mock_config_loader_class: MagicMock,
@@ -148,8 +148,8 @@ class TestDoctorCommand:
         assert "Config source: local" in result.output
         assert str(tmp_path / ".oduit.toml") in result.output
 
-    @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_doctor_missing_odoo_bin(
         self,
         mock_config_loader_class: MagicMock,
@@ -186,8 +186,8 @@ class TestDoctorCommand:
             "Configured odoo_bin does not exist or is not executable" in result.output
         )
 
-    @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_doctor_invalid_addons_path(
         self,
         mock_config_loader_class: MagicMock,
@@ -223,8 +223,8 @@ class TestDoctorCommand:
         assert result.exit_code == 1
         assert "Configured addons paths are invalid" in result.output
 
-    @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_doctor_version_detection_failure(
         self,
         mock_config_loader_class: MagicMock,
@@ -258,8 +258,8 @@ class TestDoctorCommand:
         assert result.exit_code == 1
         assert "Failed to detect Odoo version" in result.output
 
-    @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_doctor_db_check_failure(
         self,
         mock_config_loader_class: MagicMock,
@@ -295,8 +295,8 @@ class TestDoctorCommand:
         assert result.exit_code == 1
         assert "Database existence check failed" in result.output
 
-    @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_doctor_db_missing_without_connection_failure(
         self,
         mock_config_loader_class: MagicMock,
@@ -333,8 +333,8 @@ class TestDoctorCommand:
         assert result.exit_code == 0
         assert "Database 'test_db' does not exist" in result.output
 
-    @patch("oduit.cli_typer.OdooOperations")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_doctor_json_output_structure(
         self,
         mock_config_loader_class: MagicMock,

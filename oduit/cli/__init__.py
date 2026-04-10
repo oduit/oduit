@@ -1,5 +1,6 @@
-"""Internal CLI package for the Typer-based interface."""
+"""Internal CLI package for the Typer-based interface.
 
-from .app import agent_app, app, cli_main
+Import concrete app objects from :mod:`oduit.cli.app`.
+"""
 
-__all__ = ["app", "agent_app", "cli_main"]
+__all__: list[str] = []

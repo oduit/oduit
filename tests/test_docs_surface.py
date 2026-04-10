@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from oduit.cli_typer import agent_app
+from oduit.cli.app import agent_app
 
 ROOT = Path(__file__).resolve().parent.parent
 DOC_FILES = [
@@ -152,7 +152,7 @@ def test_agent_contract_page_covers_required_topics() -> None:
 
 def test_public_api_inventory_lists_all_agent_commands() -> None:
     content = (ROOT / "docs" / "maintainer" / "public_api.md").read_text().splitlines()
-    section_header = "## `oduit agent` subcommands in `oduit.cli_typer`"
+    section_header = "## `oduit agent` subcommands in `oduit.cli.app`"
     start_index = content.index(section_header) + 1
     documented_commands: set[str] = set()
 

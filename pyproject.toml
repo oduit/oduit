@@ -2,8 +2,9 @@
 requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["oduit"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["oduit*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -43,7 +44,7 @@ classifiers = [
 dynamic=["version"]
 
 [project.scripts]
-oduit = "oduit.cli_typer:cli_main"
+oduit = "oduit.cli.app:cli_main"
 
 [project.urls]
 Homepage = "https://github.com/oduit/oduit"

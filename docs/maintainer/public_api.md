@@ -31,7 +31,7 @@ for external coding agents. Keep the inventory below in sync with
 - `configure_output`, `print_info`, `print_success`, `print_warning`, `print_error`
 - `print_result`, `print_error_result`
 
-## CLI commands in `oduit.cli_typer`
+## CLI commands in `oduit.cli.app`
 
 - `doctor`
 - `run`
@@ -57,7 +57,7 @@ for external coding agents. Keep the inventory below in sync with
 - `export-lang`
 - `version`
 
-## `oduit agent` subcommands in `oduit.cli_typer`
+## `oduit agent` subcommands in `oduit.cli.app`
 
 - `context`
 - `create-addon`
@@ -153,6 +153,21 @@ for external coding agents. Keep the inventory below in sync with
 
 - `execute_code()`
 - `execute_multiple()`
+
+## Compatibility facade in `oduit.cli_typer`
+
+- `app`
+- `agent_app`
+- `main`
+- `cli_main`
+- `create_global_config()`
+- `_check_environment_exists()`
+- `_detect_binaries()`
+- `_build_initial_config()`
+- `_import_or_convert_config()`
+- `_normalize_addons_path()`
+- `_save_config_file()`
+- `_display_config_summary()`
 
 Note:
 

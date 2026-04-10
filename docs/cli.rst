@@ -1165,14 +1165,16 @@ CLI Types
    :show-inheritance:
    :no-index:
 
-CLI Implementation
-^^^^^^^^^^^^^^^^^^
+CLI Composition
+^^^^^^^^^^^^^^^
 
-.. automodule:: oduit.cli_typer
+.. automodule:: oduit.cli.app
    :members:
    :undoc-members:
    :show-inheritance:
    :no-index:
+
+``oduit.cli_typer`` remains available as a compatibility import facade.
 
 See Also
 --------

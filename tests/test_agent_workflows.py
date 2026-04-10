@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from oduit.cli_typer import app
+from oduit.cli.app import app
 
 
 def _make_executable(path: Path) -> str:
@@ -71,9 +71,9 @@ def test_agent_workflow_for_partner_field_change(tmp_path: Path) -> None:
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
         patch(
-            "oduit.cli_typer.OdooOperations.get_model_fields",
+            "oduit.cli.app.OdooOperations.get_model_fields",
             return_value=MagicMock(
                 success=True,
                 error=None,
@@ -88,7 +88,7 @@ def test_agent_workflow_for_partner_field_change(tmp_path: Path) -> None:
             ),
         ),
         patch(
-            "oduit.cli_typer.OdooOperations.run_tests",
+            "oduit.cli.app.OdooOperations.run_tests",
             return_value={
                 "success": True,
                 "operation": "test",

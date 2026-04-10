@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from oduit.cli_typer import app
+from oduit.cli.app import app
 
 
 def _make_executable(path: Path) -> str:
@@ -73,7 +73,7 @@ def test_agent_locate_model_returns_ranked_candidates(tmp_path: Path) -> None:
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
         result = runner.invoke(
             app,
             [
@@ -115,7 +115,7 @@ def test_agent_locate_field_reports_existing_field_and_insertion_candidate(
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
         existing = runner.invoke(
             app,
             [
@@ -180,7 +180,7 @@ def test_agent_list_addon_tests_ranks_references_and_handles_invalid_python(
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
         tests_result = runner.invoke(
             app,
             [
@@ -239,7 +239,7 @@ def test_agent_list_addon_models_returns_static_inventory(tmp_path: Path) -> Non
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
         result = runner.invoke(
             app,
             ["--env", "dev", "agent", "list-addon-models", "my_partner"],
@@ -343,7 +343,7 @@ def test_agent_find_model_extensions_combines_source_and_runtime_metadata(
         raise AssertionError(model)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
         patch(
             "oduit.odoo_operations.OdooOperations.query_model", new=_query_side_effect
         ),
@@ -402,7 +402,7 @@ def test_agent_find_model_extensions_summary_omits_scanned_files(
         return MagicMock(success=True, records=[], error=None)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
         patch(
             "oduit.odoo_operations.OdooOperations.query_model", new=_query_side_effect
         ),

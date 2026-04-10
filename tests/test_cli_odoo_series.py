@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from manifestoo_core.odoo_series import OdooSeries
 from typer.testing import CliRunner
 
-from oduit.cli_typer import app, create_global_config
+from oduit.cli.app import app, create_global_config
 from oduit.cli_types import GlobalConfig
 
 
@@ -24,8 +24,8 @@ class TestOdooSeriesOption(unittest.TestCase):
             "odoo_bin": "/usr/bin/odoo-bin",
         }
 
-    @patch("oduit.cli_typer.configure_output")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_create_global_config_with_odoo_series(
         self, mock_config_loader_class, mock_configure
     ):
@@ -44,8 +44,8 @@ class TestOdooSeriesOption(unittest.TestCase):
         self.assertEqual(result.odoo_series, OdooSeries.v16_0)
         self.assertEqual(result.env_config, mock_config)
 
-    @patch("oduit.cli_typer.ModuleManager")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_list_depends_tree_with_odoo_series_option(
         self, mock_config_loader_class, mock_module_manager
     ):
@@ -84,8 +84,8 @@ class TestOdooSeriesOption(unittest.TestCase):
         )
         self.assertIn("my_module", result.output)
 
-    @patch("oduit.cli_typer.ModuleManager")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_list_depends_tree_without_odoo_series_option(
         self, mock_config_loader_class, mock_module_manager
     ):
@@ -114,8 +114,8 @@ class TestOdooSeriesOption(unittest.TestCase):
         self.assertIn("my_module", result.output)
 
     @patch.dict("os.environ", {"ODOO_VERSION": "15.0"})
-    @patch("oduit.cli_typer.ModuleManager")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_list_depends_tree_with_odoo_version_envvar(
         self, mock_config_loader_class, mock_module_manager
     ):
@@ -142,8 +142,8 @@ class TestOdooSeriesOption(unittest.TestCase):
         self.assertIn("my_module", result.output)
 
     @patch.dict("os.environ", {"ODOO_SERIES": "14.0"})
-    @patch("oduit.cli_typer.ModuleManager")
-    @patch("oduit.cli_typer.ConfigLoader")
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_list_depends_tree_with_odoo_series_envvar(
         self, mock_config_loader_class, mock_module_manager
     ):

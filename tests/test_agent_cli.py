@@ -7,7 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from oduit.api_models import ModelViewInventory, ModelViewRecord
-from oduit.cli_typer import app
+from oduit.cli.app import app
 from oduit.odoo_operations import OdooOperations
 
 
@@ -71,7 +71,7 @@ def test_agent_context_returns_structured_snapshot(tmp_path: Path) -> None:
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
         patch.object(
             OdooOperations,
             "get_odoo_version",
@@ -103,7 +103,7 @@ def test_agent_inspect_addon_returns_dependency_snapshot(tmp_path: Path) -> None
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
         result = runner.invoke(
             app, ["--env", "dev", "agent", "inspect-addon", "x_sale"]
         )
@@ -130,7 +130,7 @@ def test_agent_plan_update_returns_risk_summary(tmp_path: Path) -> None:
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
         result = runner.invoke(app, ["--env", "dev", "agent", "plan-update", "x_sale"])
 
     assert result.exit_code == 0
@@ -150,8 +150,8 @@ def test_agent_query_model_wraps_odoo_query(tmp_path: Path) -> None:
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.query_model.return_value = MagicMock(
@@ -206,7 +206,7 @@ def test_agent_query_model_invalid_domain_json_is_structured(tmp_path: Path) -> 
     config = _agent_config(tmp_path, str(tmp_path / "addons"))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli_typer.ConfigLoader", return_value=loader):
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
         result = runner.invoke(
             app,
             [
@@ -236,8 +236,8 @@ def test_agent_get_model_views_returns_primary_and_extension_views(
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.get_model_views.return_value = ModelViewInventory(
@@ -303,8 +303,8 @@ def test_agent_get_model_views_summary_omits_arch_db(tmp_path: Path) -> None:
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.get_model_views.return_value = ModelViewInventory(
@@ -354,8 +354,8 @@ def test_agent_get_model_views_query_failure_is_structured(tmp_path: Path) -> No
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.get_model_views.return_value = ModelViewInventory(
@@ -421,8 +421,8 @@ def test_agent_query_subcommands_use_odoo_query(
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         getattr(ops, ops_method).return_value = MagicMock(
@@ -453,8 +453,8 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.run_tests.return_value = {
@@ -531,8 +531,8 @@ def test_agent_test_summary_includes_error_output_excerpt_without_failures(
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.run_tests.return_value = {
@@ -581,8 +581,8 @@ def test_agent_create_addon_reports_source_mutation(tmp_path: Path) -> None:
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.create_addon.return_value = {
@@ -621,8 +621,8 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.inspect_addon.return_value = MagicMock(
@@ -706,8 +706,8 @@ def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> Non
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.inspect_addon.return_value = MagicMock(
@@ -770,8 +770,8 @@ def test_agent_test_summary_module_uses_fast_test_tags_semantics(
     loader = _loader_with_config(config, tmp_path)
 
     with (
-        patch("oduit.cli_typer.ConfigLoader", return_value=loader),
-        patch("oduit.cli_typer.OdooOperations") as mock_ops_class,
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
     ):
         ops = MagicMock()
         ops.run_tests.return_value = {
