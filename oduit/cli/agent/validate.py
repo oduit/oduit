@@ -185,14 +185,7 @@ def run_validate_addon_change_preflight(
     if target_module_duplicated:
         return sub_results, completed_steps, "duplicates", installed_state
 
-    state_result = ops.query_model(
-        "ir.module.module",
-        domain=[["name", "=", module]],
-        fields=["name", "state"],
-        limit=1,
-        database=None,
-        timeout=30.0,
-    )
+    state_result = ops.get_addon_install_state(module)
     if not state_result.success:
         sub_results["installed_state"] = agent_sub_result_fn(
             success=False,
@@ -205,13 +198,11 @@ def run_validate_addon_change_preflight(
         )
         return sub_results, completed_steps, "installed_state", installed_state
 
-    record = state_result.records[0] if state_result.records else {}
-    state = str(record.get("state", "uninstalled"))
     installed_state = {
         "module": module,
-        "record_found": bool(state_result.records),
-        "state": state,
-        "installed": state == "installed",
+        "record_found": state_result.record_found,
+        "state": state_result.state,
+        "installed": state_result.installed,
     }
     sub_results["installed_state"] = agent_sub_result_fn(
         success=True,

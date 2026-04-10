@@ -375,7 +375,6 @@ List available addons in the configured addons path.
 
 **Options:**
 
-- ``--type [all|installed|available]``: Type of addons to list (default: all)
 - ``--select-dir TEXT``: Filter addons by exact directory name match
 
 **Examples:**
@@ -384,9 +383,6 @@ List available addons in the configured addons path.
 
    # List all addons
    oduit --env dev list-addons
-
-   # List only installed addons (if supported)
-   oduit --env dev list-addons --type installed
 
    # List addons in a specific directory (exact name match)
    oduit --env dev list-addons --select-dir custom_addons
@@ -418,6 +414,43 @@ Valid filter fields: ``name``, ``version``, ``summary``, ``author``, ``website``
 
    # List only LGPL licensed addons
    oduit --env dev list-addons --include license:LGPL
+
+.. note::
+   ``list-addons`` is source inventory only. It scans the configured
+   ``addons_path`` and does not query database runtime module state.
+
+list-installed-addons
+^^^^^^^^^^^^^^^^^^^^^
+
+List installed addons from the active database runtime.
+
+.. code-block:: bash
+
+   oduit --env dev list-installed-addons [OPTIONS]
+
+**Options:**
+
+- ``--module TEXT`` / ``--modules TEXT``: Comma-separated addon names filter
+- ``--state TEXT``: Repeatable runtime state filter (defaults to ``installed``)
+- ``--separator TEXT``: Separator for text output
+- ``--include-state``: Print ``module:state`` in text mode
+
+**Examples:**
+
+.. code-block:: bash
+
+   # List installed addons from the active database
+   oduit --env dev list-installed-addons
+
+   # Filter to selected addons
+   oduit --env dev list-installed-addons --modules sale,stock
+
+   # Include the runtime state in text output
+   oduit --env dev list-installed-addons --state installed --state to_upgrade --include-state
+
+.. note::
+   ``list-installed-addons`` is runtime inventory. It requires working database
+   access and is separate from the source-only ``list-addons`` command.
 
    # Exclude addons depending on sale
    oduit --env dev list-addons --exclude depends:sale

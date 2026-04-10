@@ -53,6 +53,12 @@ def test_docs_do_not_reference_removed_or_stale_api_symbols() -> None:
             "DemoProcessManager.cleanup_demo_data() is not implemented"
         ),
         "embedded execution mode": "Embedded mode should not be advertised publicly",
+        "list-addons --type installed": (
+            "Use list-installed-addons for runtime installed-addon inventory"
+        ),
+        "``--type [all|installed|available]``": (
+            "list-addons no longer exposes a --type option"
+        ),
     }
 
     failures: list[str] = []
@@ -197,6 +203,23 @@ def test_readme_and_quickstart_show_agent_verification_loop() -> None:
         assert not missing, f"{path.relative_to(ROOT)} missing markers:\n" + "\n".join(
             missing
         )
+
+
+def test_runtime_addon_docs_use_explicit_installed_inventory_command() -> None:
+    targets = [
+        ROOT / "README.md",
+        ROOT / "docs" / "cli.rst",
+        ROOT / "docs" / "maintainer" / "public_api.md",
+    ]
+    missing = [
+        str(path.relative_to(ROOT))
+        for path in targets
+        if "list-installed-addons" not in path.read_text()
+    ]
+    assert not missing, (
+        "Installed-addon inventory docs should use the explicit runtime command:\n"
+        + "\n".join(missing)
+    )
 
 
 def test_public_api_inventory_lists_all_agent_commands() -> None:

@@ -92,6 +92,9 @@ from .agent.read_only import agent_list_addons_command as _agent_list_addons_com
 from .agent.read_only import (
     agent_list_duplicates_command as _agent_list_duplicates_command,
 )
+from .agent.read_only import (
+    agent_list_installed_addons_command as _agent_list_installed_addons_command,
+)
 from .agent.read_only import agent_locate_field_command as _agent_locate_field_command
 from .agent.read_only import agent_locate_model_command as _agent_locate_model_command
 from .agent.read_only import agent_plan_update_command as _agent_plan_update_command
@@ -142,6 +145,9 @@ from .commands.runtime import (
     get_odoo_version_command as _get_odoo_version_command_impl,
 )
 from .commands.runtime import install_command as _install_command_impl
+from .commands.runtime import (
+    list_installed_addons_command as _list_installed_addons_command_impl,
+)
 from .commands.runtime import run_command as _run_command_impl
 from .commands.runtime import shell_command as _shell_command_impl
 from .commands.runtime import test_command as _test_command_impl
@@ -432,6 +438,7 @@ register_app_commands(
     create_addon_command_impl=_create_addon_command_impl,
     print_manifest_command_impl=_print_manifest_command_impl,
     list_addons_command_impl=_list_addons_command_impl,
+    list_installed_addons_command_impl=_list_installed_addons_command_impl,
     list_manifest_values_command_impl=_list_manifest_values_command_impl,
     list_duplicates_command_impl=_list_duplicates_command_impl,
     list_depends_command_impl=_list_depends_command_impl,
@@ -509,6 +516,7 @@ register_agent_commands(
     get_model_views_command_impl=_agent_get_model_views_command,
     doctor_command_impl=_agent_doctor_command,
     list_addons_command_impl=_agent_list_addons_command,
+    list_installed_addons_command_impl=_agent_list_installed_addons_command,
     dependency_graph_command_impl=_agent_dependency_graph_command,
     inspect_addons_command_impl=_agent_inspect_addons_command,
     resolve_config_command_impl=_agent_resolve_config_command,

@@ -109,6 +109,50 @@ class AddonInspection(DictModel):
 
 
 @dataclass
+class AddonInstallState(DictModel):
+    """Typed runtime install-state lookup result for one addon."""
+
+    success: bool
+    operation: str
+    module: str
+    record_found: bool = False
+    state: str = "uninstalled"
+    installed: bool = False
+    database: str | None = None
+    error: str | None = None
+    error_type: str | None = None
+
+
+@dataclass
+class InstalledAddonRecord(DictModel):
+    """One runtime addon record read from ``ir.module.module``."""
+
+    module: str
+    state: str
+    installed: bool
+    shortdesc: str | None = None
+    application: bool | None = None
+    auto_install: bool | None = None
+
+
+@dataclass
+class InstalledAddonInventory(DictModel):
+    """Typed runtime addon inventory for one environment."""
+
+    success: bool
+    operation: str
+    addons: list[InstalledAddonRecord] = dataclass_field(default_factory=list)
+    total: int = 0
+    states: list[str] = dataclass_field(default_factory=list)
+    modules_filter: list[str] = dataclass_field(default_factory=list)
+    database: str | None = None
+    error: str | None = None
+    error_type: str | None = None
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
 class UpdatePlan(DictModel):
     """Typed read-only update planning payload."""
 

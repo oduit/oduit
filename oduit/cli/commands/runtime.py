@@ -17,6 +17,14 @@ from ...output import print_error, print_info, print_warning
 from ...utils import output_result_to_json
 
 
+def _parse_csv_items(raw_value: str | None) -> list[str] | None:
+    """Parse a comma-separated CLI option into a list of strings."""
+    if raw_value is None:
+        return None
+    items = [item.strip() for item in raw_value.split(",") if item.strip()]
+    return items or None
+
+
 def doctor_command(
     ctx: typer.Context,
     *,
@@ -37,6 +45,50 @@ def doctor_command(
         print_doctor_report_fn(report)
 
     if not report.get("success", False):
+        raise typer.Exit(1)
+
+
+def list_installed_addons_command(
+    ctx: typer.Context,
+    *,
+    modules: str | None,
+    state: list[str],
+    separator: str | None,
+    include_state: bool,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+) -> None:
+    """List runtime addon inventory from the active database."""
+    global_config, _ = resolve_command_env_config_fn(ctx)
+    odoo_operations = build_odoo_operations_fn(global_config)
+    result = odoo_operations.list_installed_addons(
+        modules=_parse_csv_items(modules),
+        states=state or None,
+    )
+
+    if global_config.format == OutputFormat.JSON:
+        print(
+            json.dumps(
+                output_result_to_json(
+                    result.to_dict(),
+                    result_type="installed_addon_inventory",
+                )
+            )
+        )
+    elif result.success:
+        output_items = [
+            f"{addon.module}:{addon.state}" if include_state else addon.module
+            for addon in result.addons
+        ]
+        if separator:
+            print(separator.join(output_items))
+        else:
+            for item in output_items:
+                print(item)
+    else:
+        print_error(result.error or "Runtime installed-addon query failed")
+
+    if not result.success:
         raise typer.Exit(1)
 
 

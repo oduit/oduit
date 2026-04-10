@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import typer
 from typer.testing import CliRunner
 
+from oduit.api_models import InstalledAddonInventory, InstalledAddonRecord
 from oduit.cli.app import app, create_global_config
 from oduit.cli_types import AddonTemplate, GlobalConfig, OutputFormat, ShellInterface
 
@@ -506,6 +507,173 @@ class TestCLICommands(unittest.TestCase):
         )
         self.assertIn("module1", result.output)
         self.assertIn("module2", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_list_installed_addons_command(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test list-installed-addons command."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.list_installed_addons.return_value = InstalledAddonInventory(
+            success=True,
+            operation="list_installed_addons",
+            addons=[
+                InstalledAddonRecord(
+                    module="base",
+                    state="installed",
+                    installed=True,
+                ),
+                InstalledAddonRecord(
+                    module="sale",
+                    state="installed",
+                    installed=True,
+                ),
+            ],
+            total=2,
+            states=["installed"],
+        )
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "list-installed-addons"])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.output.strip().splitlines(), ["base", "sale"])
+        mock_ops_instance.list_installed_addons.assert_called_once_with(
+            modules=None,
+            states=None,
+        )
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_list_installed_addons_include_state_and_separator(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test list-installed-addons text formatting helpers."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.list_installed_addons.return_value = InstalledAddonInventory(
+            success=True,
+            operation="list_installed_addons",
+            addons=[
+                InstalledAddonRecord(
+                    module="sale",
+                    state="installed",
+                    installed=True,
+                ),
+                InstalledAddonRecord(
+                    module="stock",
+                    state="to_upgrade",
+                    installed=False,
+                ),
+            ],
+            total=2,
+            states=["installed", "to_upgrade"],
+        )
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "list-installed-addons",
+                "--state",
+                "installed",
+                "--state",
+                "to_upgrade",
+                "--include-state",
+                "--separator",
+                ",",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.output.strip(), "sale:installed,stock:to_upgrade")
+        mock_ops_instance.list_installed_addons.assert_called_once_with(
+            modules=None,
+            states=["installed", "to_upgrade"],
+        )
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_list_installed_addons_json_output(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test list-installed-addons JSON output."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.list_installed_addons.return_value = InstalledAddonInventory(
+            success=True,
+            operation="list_installed_addons",
+            addons=[
+                InstalledAddonRecord(
+                    module="sale",
+                    state="installed",
+                    installed=True,
+                    shortdesc="Sales",
+                )
+            ],
+            total=1,
+            states=["installed"],
+            modules_filter=["sale"],
+        )
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "list-installed-addons",
+                "--modules",
+                "sale",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assert_common_json_envelope(
+            payload,
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        self.assertEqual(payload["type"], "installed_addon_inventory")
+        self.assertEqual(payload["operation"], "list_installed_addons")
+        self.assertEqual(payload["addons"][0]["module"], "sale")
+        self.assertEqual(payload["modules_filter"], ["sale"])
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_list_installed_addons_runtime_failure_exits_non_zero(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test list-installed-addons exits non-zero on runtime failure."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.list_installed_addons.return_value = InstalledAddonInventory(
+            success=False,
+            operation="list_installed_addons",
+            states=["installed"],
+            error="database unavailable",
+            error_type="QueryError",
+        )
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "list-installed-addons"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("database unavailable", result.output)
 
     @patch("oduit.cli.app.ModuleManager")
     @patch("oduit.cli.app.ConfigLoader")

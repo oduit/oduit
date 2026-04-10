@@ -28,6 +28,7 @@ from .manifest import (
 from .manifest_collection import ManifestCollection
 from .addons_path_manager import AddonsPathManager
 from .api_models import (
+    AddonInstallState,
     AddonInspection,
     AddonTestFile,
     AddonTestInventory,
@@ -38,6 +39,8 @@ from .api_models import (
     EnvironmentSource,
     FieldSourceCandidate,
     FieldSourceLocation,
+    InstalledAddonInventory,
+    InstalledAddonRecord,
     ModelFieldsResult,
     ModelSourceCandidate,
     ModelSourceLocation,
@@ -81,7 +84,10 @@ __all__ = [
     "OdooVersionInfo",
     "DatabaseSummary",
     "EnvironmentContext",
+    "AddonInstallState",
     "AddonInspection",
+    "InstalledAddonRecord",
+    "InstalledAddonInventory",
     "UpdatePlan",
     "ModelSourceCandidate",
     "ModelSourceLocation",

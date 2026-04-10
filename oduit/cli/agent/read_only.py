@@ -740,6 +740,50 @@ def agent_list_addons_command(
     agent_emit_payload_fn(payload)
 
 
+def agent_list_installed_addons_command(
+    ctx: typer.Context,
+    *,
+    modules: str | None,
+    state: list[str],
+    resolve_agent_ops_fn: Any,
+    parse_csv_items_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Return structured runtime installed-addon inventory."""
+    operation = "list_installed_addons"
+    result_type = "installed_addon_inventory"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.list_installed_addons(
+        modules=parse_csv_items_fn(modules),
+        states=state or None,
+    )
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        result.to_dict(),
+        success=result.success,
+        warnings=list(result.warnings),
+        remediation=(
+            list(result.remediation)
+            if result.remediation
+            else (
+                ["Verify database access and retry the runtime addon inventory query."]
+                if not result.success
+                else []
+            )
+        ),
+        read_only=True,
+        safety_level=safe_read_only,
+        error=result.error,
+        error_type=result.error_type,
+    )
+    agent_emit_payload_fn(payload)
+    if not result.success:
+        raise typer.Exit(1)
+
+
 def agent_dependency_graph_command(
     ctx: typer.Context,
     *,

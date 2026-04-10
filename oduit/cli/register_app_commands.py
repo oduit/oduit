@@ -6,6 +6,12 @@ import typer
 
 from ..cli_types import AddonTemplate, DevFeature, LogLevel, ShellInterface
 
+INSTALLED_ADDON_STATE_OPTION = typer.Option(
+    [],
+    "--state",
+    help="Repeatable runtime state filter (defaults to installed)",
+)
+
 
 def register_app_commands(  # noqa: C901
     *,
@@ -58,6 +64,7 @@ def register_app_commands(  # noqa: C901
     create_addon_command_impl: Any,
     print_manifest_command_impl: Any,
     list_addons_command_impl: Any,
+    list_installed_addons_command_impl: Any,
     list_manifest_values_command_impl: Any,
     list_duplicates_command_impl: Any,
     list_depends_command_impl: Any,
@@ -457,6 +464,38 @@ def register_app_commands(  # noqa: C901
             module_manager_cls=get_module_manager_cls(),
             apply_core_addon_filters_fn=apply_core_addon_filters_fn,
             apply_field_filters_fn=apply_field_filters_fn,
+        )
+
+    @app.command("list-installed-addons")
+    def list_installed_addons(
+        ctx: typer.Context,
+        modules: str | None = typer.Option(
+            None,
+            "--module",
+            "--modules",
+            help="Comma-separated addon names to inspect at runtime",
+        ),
+        state: list[str] = INSTALLED_ADDON_STATE_OPTION,
+        separator: str | None = typer.Option(
+            None,
+            "--separator",
+            help="Separator for text output (e.g., ',' for 'a,b,c')",
+        ),
+        include_state: bool = typer.Option(
+            False,
+            "--include-state",
+            help="Include module state in text output as 'module:state'",
+        ),
+    ) -> None:
+        """List installed addons from the active database."""
+        list_installed_addons_command_impl(
+            ctx,
+            modules=modules,
+            state=state,
+            separator=separator,
+            include_state=include_state,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
         )
 
     @app.command("list-manifest-values")

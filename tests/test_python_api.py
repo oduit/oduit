@@ -5,7 +5,10 @@ import pytest
 
 from oduit import (
     AddonInspection,
+    AddonInstallState,
     EnvironmentContext,
+    InstalledAddonInventory,
+    InstalledAddonRecord,
     ModelFieldsResult,
     ModuleNotFoundError,
     OdooOperations,
@@ -146,6 +149,180 @@ def test_query_model_returns_typed_result(tmp_path: Path) -> None:
     assert result.success is True
     assert result.count == 1
     assert result.records == [{"id": 7, "name": "Azure Interior"}]
+
+
+@pytest.mark.parametrize(
+    ("records", "record_found", "state", "installed"),
+    [
+        ([{"name": "sale", "state": "installed"}], True, "installed", True),
+        ([{"name": "sale", "state": "uninstalled"}], True, "uninstalled", False),
+        ([], False, "uninstalled", False),
+    ],
+)
+def test_get_addon_install_state_returns_typed_result(
+    tmp_path: Path,
+    records: list[dict[str, object]],
+    record_found: bool,
+    state: str,
+    installed: bool,
+) -> None:
+    ops = OdooOperations(_config(tmp_path, str(tmp_path / "addons")))
+    with patch("oduit.odoo_operations.OdooQuery") as mock_query_class:
+        query = MagicMock()
+        query.query_model.return_value = {
+            "success": True,
+            "operation": "query_model",
+            "model": "ir.module.module",
+            "records": records,
+            "database": "test_db",
+        }
+        mock_query_class.return_value = query
+
+        result = ops.get_addon_install_state("sale")
+
+    assert isinstance(result, AddonInstallState)
+    assert result.success is True
+    assert result.module == "sale"
+    assert result.record_found is record_found
+    assert result.state == state
+    assert result.installed is installed
+    query.query_model.assert_called_once_with(
+        "ir.module.module",
+        domain=[["name", "=", "sale"]],
+        fields=["name", "state"],
+        limit=1,
+        database=None,
+        timeout=30.0,
+    )
+
+
+def test_get_addon_install_state_propagates_query_failure(tmp_path: Path) -> None:
+    ops = OdooOperations(_config(tmp_path, str(tmp_path / "addons")))
+    with patch("oduit.odoo_operations.OdooQuery") as mock_query_class:
+        query = MagicMock()
+        query.query_model.return_value = {
+            "success": False,
+            "operation": "query_model",
+            "model": "ir.module.module",
+            "database": "other_db",
+            "error": "database unavailable",
+            "error_type": "QueryError",
+        }
+        mock_query_class.return_value = query
+
+        result = ops.get_addon_install_state(
+            "sale",
+            database="other_db",
+            timeout=12.0,
+        )
+
+    assert isinstance(result, AddonInstallState)
+    assert result.success is False
+    assert result.module == "sale"
+    assert result.error == "database unavailable"
+    assert result.error_type == "QueryError"
+    query.query_model.assert_called_once_with(
+        "ir.module.module",
+        domain=[["name", "=", "sale"]],
+        fields=["name", "state"],
+        limit=1,
+        database="other_db",
+        timeout=12.0,
+    )
+
+
+def test_list_installed_addons_defaults_to_installed_filter(tmp_path: Path) -> None:
+    ops = OdooOperations(_config(tmp_path, str(tmp_path / "addons")))
+    with patch("oduit.odoo_operations.OdooQuery") as mock_query_class:
+        query = MagicMock()
+        query.query_model.return_value = {
+            "success": True,
+            "operation": "query_model",
+            "model": "ir.module.module",
+            "records": [
+                {
+                    "name": "sale",
+                    "state": "installed",
+                    "shortdesc": "Sales",
+                    "application": True,
+                    "auto_install": False,
+                },
+                {
+                    "name": "base",
+                    "state": "installed",
+                    "shortdesc": "Base",
+                    "application": 1,
+                    "auto_install": 0,
+                },
+            ],
+            "database": "test_db",
+        }
+        mock_query_class.return_value = query
+
+        result = ops.list_installed_addons()
+
+    assert isinstance(result, InstalledAddonInventory)
+    assert result.success is True
+    assert result.states == ["installed"]
+    assert result.total == 2
+    assert [addon.module for addon in result.addons] == ["base", "sale"]
+    assert isinstance(result.addons[0], InstalledAddonRecord)
+    assert result.addons[0].application is True
+    assert result.addons[0].auto_install is False
+    query.query_model.assert_called_once_with(
+        "ir.module.module",
+        domain=[["state", "in", ["installed"]]],
+        fields=["name", "state", "shortdesc", "application", "auto_install"],
+        limit=500,
+        database=None,
+        timeout=30.0,
+    )
+
+
+def test_list_installed_addons_supports_module_and_state_filters(
+    tmp_path: Path,
+) -> None:
+    ops = OdooOperations(_config(tmp_path, str(tmp_path / "addons")))
+    with patch("oduit.odoo_operations.OdooQuery") as mock_query_class:
+        query = MagicMock()
+        query.query_model.return_value = {
+            "success": True,
+            "operation": "query_model",
+            "model": "ir.module.module",
+            "records": [
+                {
+                    "name": "sale",
+                    "state": "to_upgrade",
+                    "shortdesc": "Sales",
+                }
+            ],
+            "database": "alt_db",
+        }
+        mock_query_class.return_value = query
+
+        result = ops.list_installed_addons(
+            modules=["sale", "crm"],
+            states=["installed", "to_upgrade"],
+            database="alt_db",
+            timeout=9.0,
+        )
+
+    assert isinstance(result, InstalledAddonInventory)
+    assert result.success is True
+    assert result.states == ["installed", "to_upgrade"]
+    assert result.modules_filter == ["sale", "crm"]
+    assert result.addons[0].state == "to_upgrade"
+    query.query_model.assert_called_once_with(
+        "ir.module.module",
+        domain=[
+            ["state", "in", ["installed", "to_upgrade"]],
+            ["name", "in", ["sale", "crm"]],
+        ],
+        fields=["name", "state", "shortdesc", "application", "auto_install"],
+        limit=500,
+        database="alt_db",
+        timeout=9.0,
+    )
 
 
 @pytest.mark.parametrize(

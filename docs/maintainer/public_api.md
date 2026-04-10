@@ -16,7 +16,8 @@ contract changes such as new stable fields or failure codes.
 - `ManifestCollection`
 - `AddonsPathManager`
 - `EnvironmentSource`, `BinaryProbe`, `AddonsPathStatus`, `OdooVersionInfo`
-- `DatabaseSummary`, `EnvironmentContext`, `AddonInspection`, `UpdatePlan`
+- `DatabaseSummary`, `EnvironmentContext`, `AddonInstallState`, `AddonInspection`
+- `InstalledAddonRecord`, `InstalledAddonInventory`, `UpdatePlan`
 - `QueryModelResult`, `RecordReadResult`, `SearchCountResult`, `ModelFieldsResult`
 - `ModuleManager`
 - `ConfigError`
@@ -47,6 +48,7 @@ contract changes such as new stable fields or failure codes.
 - `print-config`
 - `create-addon`
 - `list-addons`
+- `list-installed-addons`
 - `print-manifest`
 - `list-manifest-values`
 - `list-depends`
@@ -75,6 +77,7 @@ contract changes such as new stable fields or failure codes.
 - `list-addon-models`
 - `list-addon-tests`
 - `list-addons`
+- `list-installed-addons`
 - `list-duplicates`
 - `locate-field`
 - `locate-model`
@@ -106,6 +109,8 @@ contract changes such as new stable fields or failure codes.
 - `get_environment_context()`
 - `inspect_addon()`
 - `plan_update()`
+- `get_addon_install_state()`
+- `list_installed_addons()`
 - `query_model()`
 - `read_record()`
 - `search_count()`

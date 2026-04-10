@@ -6,7 +6,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from oduit.api_models import ModelViewInventory, ModelViewRecord
+from oduit.api_models import (
+    AddonInstallState,
+    InstalledAddonInventory,
+    InstalledAddonRecord,
+    ModelViewInventory,
+    ModelViewRecord,
+)
 from oduit.cli.app import app
 from oduit.odoo_operations import OdooOperations
 
@@ -294,6 +300,89 @@ def test_agent_query_model_wraps_odoo_query(tmp_path: Path) -> None:
         database=None,
         timeout=30.0,
     )
+
+
+def test_agent_list_installed_addons_returns_structured_payload(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.list_installed_addons.return_value = InstalledAddonInventory(
+            success=True,
+            operation="list_installed_addons",
+            addons=[
+                InstalledAddonRecord(
+                    module="x_sale",
+                    state="installed",
+                    installed=True,
+                    shortdesc="Sales",
+                )
+            ],
+            total=1,
+            states=["installed"],
+            modules_filter=["x_sale"],
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "list-installed-addons",
+                "--modules",
+                "x_sale",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "installed_addon_inventory"
+    assert payload["operation"] == "list_installed_addons"
+    assert payload["addons"][0]["module"] == "x_sale"
+    assert payload["states"] == ["installed"]
+    assert payload["modules_filter"] == ["x_sale"]
+    ops.list_installed_addons.assert_called_once_with(
+        modules=["x_sale"],
+        states=None,
+    )
+
+
+def test_agent_list_installed_addons_surfaces_query_failure(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.list_installed_addons.return_value = InstalledAddonInventory(
+            success=False,
+            operation="list_installed_addons",
+            states=["installed"],
+            error="database unavailable",
+            error_type="QueryError",
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(app, ["--env", "dev", "agent", "list-installed-addons"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["type"] == "installed_addon_inventory"
+    assert payload["success"] is False
+    assert payload["error"] == "database unavailable"
+    assert payload["error_type"] == "QueryError"
 
 
 def test_agent_query_model_invalid_domain_json_is_structured(tmp_path: Path) -> None:
@@ -729,11 +818,13 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
             remediation=[],
         )
         ops.list_duplicates.return_value = {}
-        ops.query_model.return_value = MagicMock(
+        ops.get_addon_install_state.return_value = AddonInstallState(
             success=True,
-            records=[{"name": "x_sale", "state": "installed"}],
-            error=None,
-            error_type=None,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=True,
+            state="installed",
+            installed=True,
         )
         ops.update_module.return_value = {
             "success": True,
@@ -781,6 +872,7 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
     assert payload["mutation_action"]["action"] == "update"
     assert payload["sub_results"]["module_tests"]["success"] is True
     assert payload["sub_results"]["discovered_tests"]["data"]["executed"] is False
+    ops.get_addon_install_state.assert_called_once_with("x_sale")
     ops.update_module.assert_called_once()
     ops.run_tests.assert_called_once_with(
         module="x_sale",
@@ -814,11 +906,13 @@ def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> Non
             remediation=[],
         )
         ops.list_duplicates.return_value = {}
-        ops.query_model.return_value = MagicMock(
+        ops.get_addon_install_state.return_value = AddonInstallState(
             success=True,
-            records=[{"name": "x_sale", "state": "uninstalled"}],
-            error=None,
-            error_type=None,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=True,
+            state="uninstalled",
+            installed=False,
         )
         ops.install_module.return_value = {
             "success": True,
@@ -856,6 +950,7 @@ def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> Non
     payload = json.loads(result.output)
     assert payload["installed_state"]["installed"] is False
     assert payload["mutation_action"]["action"] == "install"
+    ops.get_addon_install_state.assert_called_once_with("x_sale")
     ops.install_module.assert_called_once()
     ops.update_module.assert_not_called()
 

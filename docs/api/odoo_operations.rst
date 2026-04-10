@@ -35,6 +35,8 @@ Usage Examples
    context = ops.get_environment_context(env_name="dev", config_source="env")
    addon = ops.inspect_addon("sale")
    plan = ops.plan_update("sale")
+   state = ops.get_addon_install_state("sale")
+   installed_addons = ops.list_installed_addons(modules=["sale"])
    partners = ops.query_model("res.partner", fields=["name", "email"], limit=5)
 
 Key Methods
@@ -50,6 +52,8 @@ Key Methods
 - ``get_environment_context()``: return typed environment facts for planning
 - ``inspect_addon()`` and ``plan_update()``: return typed addon inspection and
   update-planning models
+- ``get_addon_install_state()`` and ``list_installed_addons()``: typed runtime
+  addon install-state inspection helpers
 - ``query_model()``, ``read_record()``, ``search_count()``, ``get_model_fields()``:
   typed convenience wrappers around ``OdooQuery``
 - ``execute_python_code()``: execute arbitrary trusted Python through the Odoo
@@ -67,7 +71,8 @@ Safe vs Unsafe Paths
 --------------------
 
 - Prefer ``OdooOperations.get_environment_context()``, ``inspect_addon()``,
-  ``plan_update()``, and the query delegation helpers for inspection and planning
+  ``plan_update()``, ``get_addon_install_state()``, ``list_installed_addons()``,
+  and the query delegation helpers for inspection and planning
 - Prefer ``OdooQuery`` for direct structured read-only model access
 - Use ``execute_python_code()`` only for trusted shell-driven snippets and set
   ``shell_interface`` explicitly or in configuration

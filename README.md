@@ -14,7 +14,7 @@ intelligence:
 
 - `doctor` for environment diagnostics
 - `version` for Odoo version detection
-- `list-addons`, `print-manifest`, `list-manifest-values`
+- `list-addons`, `list-installed-addons`, `print-manifest`, `list-manifest-values`
 - `list-depends`, `install-order`, `impact-of-update`
 - structured JSON output for CI and editor integrations
 
@@ -50,6 +50,7 @@ Then run:
 oduit doctor
 oduit version
 oduit list-addons
+oduit list-installed-addons
 oduit install-order sale,purchase
 oduit impact-of-update sale
 ```
@@ -75,6 +76,7 @@ oduit --env dev version
 
 # Addon intelligence
 oduit --env dev list-addons
+oduit --env dev list-installed-addons
 oduit --env dev list-duplicates
 oduit --env dev print-manifest sale
 oduit --env dev list-manifest-values category
@@ -86,6 +88,7 @@ oduit --env dev impact-of-update sale
 oduit --env dev agent context
 oduit --env dev agent inspect-addon sale
 oduit --env dev agent plan-update sale
+oduit --env dev agent list-installed-addons --modules sale
 oduit --env dev agent get-model-fields res.partner --attributes string,type,required
 oduit --env dev agent list-addon-models my_partner
 oduit --env dev agent find-model-extensions res.partner --summary
@@ -158,6 +161,8 @@ db_result = ops.db_exists(suppress_output=True)
 context = ops.get_environment_context(env_name="dev", config_source="env")
 addon = ops.inspect_addon("sale")
 plan = ops.plan_update("sale")
+state = ops.get_addon_install_state("sale")
+installed_addons = ops.list_installed_addons(modules=["sale"])
 partners = ops.query_model("res.partner", fields=["name", "email"], limit=5)
 extensions = ops.find_model_extensions("res.partner")
 views = ops.get_model_views("res.partner", view_types=["form", "tree"])

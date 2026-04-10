@@ -16,6 +16,7 @@ from . import output as _output_module
 from .addons_path_manager import AddonsPathManager
 from .api_models import (
     AddonInspection,
+    AddonInstallState,
     AddonModelInventory,
     AddonsPathStatus,
     AddonTestInventory,
@@ -24,6 +25,8 @@ from .api_models import (
     EnvironmentContext,
     EnvironmentSource,
     FieldSourceLocation,
+    InstalledAddonInventory,
+    InstalledAddonRecord,
     InstalledModelField,
     InstalledViewExtension,
     ModelExtensionInventory,
@@ -1913,6 +1916,126 @@ class OdooOperations:
                 }
             )
         return inventory
+
+    @staticmethod
+    def _normalize_optional_bool(value: Any) -> bool | None:
+        """Normalize Odoo truthy values into optional booleans."""
+        if value is None:
+            return None
+        return bool(value)
+
+    @classmethod
+    def _normalize_installed_addon_record(
+        cls,
+        record: dict[str, Any],
+    ) -> InstalledAddonRecord:
+        """Normalize one ``ir.module.module`` record into the public shape."""
+        state = str(record.get("state") or "uninstalled")
+        return InstalledAddonRecord(
+            module=str(record.get("name") or ""),
+            state=state,
+            installed=state == "installed",
+            shortdesc=(
+                str(record["shortdesc"])
+                if isinstance(record.get("shortdesc"), str)
+                else None
+            ),
+            application=cls._normalize_optional_bool(record.get("application")),
+            auto_install=cls._normalize_optional_bool(record.get("auto_install")),
+        )
+
+    def get_addon_install_state(
+        self,
+        module: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> AddonInstallState:
+        """Return the runtime install state for one addon."""
+        result = self.query_model(
+            "ir.module.module",
+            domain=[["name", "=", module]],
+            fields=["name", "state"],
+            limit=1,
+            database=database,
+            timeout=timeout,
+        )
+        if not result.success:
+            return AddonInstallState(
+                success=False,
+                operation="get_addon_install_state",
+                module=module,
+                database=result.database,
+                error=result.error,
+                error_type=result.error_type,
+            )
+
+        record = result.records[0] if result.records else {}
+        state = str(record.get("state") or "uninstalled")
+        return AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module=module,
+            record_found=bool(result.records),
+            state=state,
+            installed=state == "installed",
+            database=result.database,
+        )
+
+    def list_installed_addons(
+        self,
+        *,
+        modules: list[str] | None = None,
+        states: list[str] | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> InstalledAddonInventory:
+        """Return runtime addon inventory from ``ir.module.module``."""
+        modules_filter = list(dict.fromkeys(modules or []))
+        states_filter = list(dict.fromkeys(states or ["installed"]))
+        domain: list[list[Any]] = [["state", "in", states_filter]]
+        if modules_filter:
+            domain.append(["name", "in", modules_filter])
+
+        result = self.query_model(
+            "ir.module.module",
+            domain=domain,
+            fields=["name", "state", "shortdesc", "application", "auto_install"],
+            limit=500,
+            database=database,
+            timeout=timeout,
+        )
+        if not result.success:
+            return InstalledAddonInventory(
+                success=False,
+                operation="list_installed_addons",
+                states=states_filter,
+                modules_filter=modules_filter,
+                database=result.database,
+                error=result.error,
+                error_type=result.error_type,
+                remediation=[
+                    "Verify database access and retry the runtime addon inventory "
+                    "query."
+                ],
+            )
+
+        addons = sorted(
+            (
+                self._normalize_installed_addon_record(record)
+                for record in result.records
+            ),
+            key=lambda addon: addon.module,
+        )
+        return InstalledAddonInventory(
+            success=True,
+            operation="list_installed_addons",
+            addons=addons,
+            total=len(addons),
+            states=states_filter,
+            modules_filter=modules_filter,
+            database=result.database,
+        )
 
     def dependency_graph(self, module_names: list[str]) -> dict[str, Any]:
         """Return dependency graph data for one or more addons."""

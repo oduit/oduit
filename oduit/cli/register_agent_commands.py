@@ -7,6 +7,12 @@ import typer
 
 from ..cli_types import AddonTemplate, LogLevel
 
+INSTALLED_ADDON_STATE_OPTION = typer.Option(
+    [],
+    "--state",
+    help="Repeatable runtime state filter (defaults to installed)",
+)
+
 
 def register_agent_commands(  # noqa: C901
     *,
@@ -59,6 +65,7 @@ def register_agent_commands(  # noqa: C901
     get_model_views_command_impl: Any,
     doctor_command_impl: Any,
     list_addons_command_impl: Any,
+    list_installed_addons_command_impl: Any,
     dependency_graph_command_impl: Any,
     inspect_addons_command_impl: Any,
     resolve_config_command_impl: Any,
@@ -392,6 +399,29 @@ def register_agent_commands(  # noqa: C901
             module_manager_cls=get_module_manager_cls(),
             apply_core_addon_filters_fn=apply_core_addon_filters_fn,
             apply_field_filters_fn=apply_field_filters_fn,
+        )
+
+    @agent_app.command("list-installed-addons")
+    def agent_list_installed_addons(
+        ctx: typer.Context,
+        modules: str | None = typer.Option(
+            None,
+            "--module",
+            "--modules",
+            help="Comma-separated addon names to inspect at runtime",
+        ),
+        state: list[str] = INSTALLED_ADDON_STATE_OPTION,
+    ) -> None:
+        """Return structured runtime installed-addon inventory."""
+        list_installed_addons_command_impl(
+            ctx,
+            modules=modules,
+            state=state,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            parse_csv_items_fn=parse_csv_items_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("dependency-graph")
