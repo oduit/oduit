@@ -10,15 +10,46 @@ import functools
 import json
 import os
 import re
-import shutil
 from dataclasses import replace
 from typing import Any, NoReturn
 
-import click
 import typer
 from manifestoo_core.odoo_series import OdooSeries
 
 from .addons_path_manager import AddonsPathManager
+from .cli.addon_filters import (
+    VALID_FILTER_FIELDS,
+    apply_core_addon_filters,
+    apply_field_filters,
+    build_addon_table,
+    get_addon_field_value,
+    get_addon_type,
+    parse_filter_option,
+)
+from .cli.app import agent_app, app
+from .cli.dependency_output import print_dependency_list, print_dependency_tree
+from .cli.doctor import (
+    build_doctor_check,
+    build_doctor_report,
+    format_doctor_value,
+    print_doctor_report,
+    probe_binary,
+    resolve_binary_candidate,
+)
+from .cli.errors import (
+    confirmation_required_error,
+    dependency_error_details,
+    print_command_error_result,
+)
+from .cli.init_env import (
+    build_initial_config,
+    check_environment_exists,
+    detect_binaries,
+    display_config_summary,
+    import_or_convert_config,
+    normalize_addons_path,
+    save_config_file,
+)
 from .cli_types import (
     AddonListType,
     AddonTemplate,
@@ -39,12 +70,7 @@ from .schemas import (
     CONTROLLED_SOURCE_MUTATION,
     SAFE_READ_ONLY,
 )
-from .utils import (
-    build_json_payload,
-    format_dependency_tree,
-    output_result_to_json,
-    validate_addon_name,
-)
+from .utils import output_result_to_json, validate_addon_name
 
 SHELL_INTERFACE_OPTION = typer.Option(
     "python",
@@ -167,77 +193,24 @@ def _build_doctor_check(
     remediation: str | None = None,
 ) -> dict[str, Any]:
     """Create a normalized doctor check entry."""
-    check: dict[str, Any] = {
-        "name": name,
-        "status": status,
-        "message": message,
-    }
-    if details:
-        check["details"] = details
-    if remediation:
-        check["remediation"] = remediation
-    return check
+    return build_doctor_check(name, status, message, details, remediation)
 
 
 def _resolve_binary_candidate(candidate: str) -> dict[str, Any]:
     """Resolve a binary candidate either from PATH or filesystem."""
-    is_path_like = os.path.isabs(candidate) or os.sep in candidate
-    resolved_path: str | None
-
-    if is_path_like:
-        resolved_path = os.path.abspath(candidate)
-        exists = os.path.exists(resolved_path)
-        executable = exists and os.access(resolved_path, os.X_OK)
-        return {
-            "value": candidate,
-            "resolved_path": resolved_path,
-            "exists": exists,
-            "executable": executable,
-        }
-
-    resolved_path = shutil.which(candidate)
-    return {
-        "value": candidate,
-        "resolved_path": resolved_path,
-        "exists": resolved_path is not None,
-        "executable": resolved_path is not None,
-    }
+    return resolve_binary_candidate(candidate)
 
 
 def _probe_binary(
     configured_value: str | None, auto_candidates: list[str]
 ) -> dict[str, Any]:
     """Probe a configured binary or try to auto-detect it."""
-    if configured_value:
-        result = _resolve_binary_candidate(configured_value)
-        result["configured"] = True
-        result["auto_detected"] = False
-        return result
-
-    for candidate in auto_candidates:
-        result = _resolve_binary_candidate(candidate)
-        if result["exists"]:
-            result["configured"] = False
-            result["auto_detected"] = True
-            return result
-
-    return {
-        "value": configured_value,
-        "resolved_path": None,
-        "exists": False,
-        "executable": False,
-        "configured": False,
-        "auto_detected": False,
-    }
+    return probe_binary(configured_value, auto_candidates)
 
 
 def _format_doctor_value(value: Any) -> str:
     """Format a doctor value for human-readable output."""
-    if isinstance(value, list):
-        return ", ".join(str(item) for item in value)
-    if isinstance(value, dict):
-        return ", ".join(f"{key}={val}" for key, val in value.items())
-    return str(value)
+    return format_doctor_value(value)
 
 
 def _print_command_error_result(
@@ -249,35 +222,21 @@ def _print_command_error_result(
     remediation: list[str] | None = None,
 ) -> None:
     """Print a command error in text or JSON mode."""
-    if global_config.format == OutputFormat.JSON:
-        payload = output_result_to_json(
-            {
-                "success": False,
-                "operation": operation,
-                "error": message,
-                "error_type": error_type,
-            },
-            additional_fields={
-                **(details or {}),
-                "remediation": remediation or [],
-            },
-        )
-        print(json.dumps(payload))
-    else:
-        print_error(message)
+    print_command_error_result(
+        global_config,
+        operation,
+        message,
+        error_type=error_type,
+        details=details,
+        remediation=remediation,
+    )
 
 
 def _dependency_error_details(
     module_manager: ModuleManager, message: str
 ) -> dict[str, Any]:
     """Build structured details for dependency-related CLI failures."""
-    cycle_path = module_manager.parse_cycle_error(message)
-    if not cycle_path:
-        return {}
-    return {
-        "cycle_path": cycle_path,
-        "cycle_length": len(cycle_path) - 1,
-    }
+    return dependency_error_details(module_manager, message)
 
 
 def _confirmation_required_error(
@@ -287,470 +246,22 @@ def _confirmation_required_error(
     remediation: list[str],
 ) -> None:
     """Fail fast when non-interactive mode forbids prompting."""
-    _print_command_error_result(
-        global_config,
-        operation,
-        message,
-        error_type="ConfirmationRequired",
-        remediation=remediation,
-    )
-    raise typer.Exit(1) from None
+    confirmation_required_error(global_config, operation, message, remediation)
 
 
 def _build_doctor_report(global_config: GlobalConfig) -> dict[str, Any]:
     """Build a diagnostics report for the active configuration."""
-    env_config = global_config.env_config or {}
-    checks: list[dict[str, Any]] = []
-    next_steps: list[str] = []
-
-    checks.append(
-        _build_doctor_check(
-            "config_source",
-            "ok",
-            f"Using {global_config.config_source or 'unknown'} configuration",
-            details={
-                "env_name": global_config.env_name,
-                "config_path": global_config.config_path,
-            },
-        )
-    )
-
-    python_info = _probe_binary(env_config.get("python_bin"), ["python3", "python"])
-    if python_info["exists"] and python_info["executable"]:
-        checks.append(
-            _build_doctor_check(
-                "python_bin",
-                "ok",
-                (
-                    f"python_bin is available at {python_info['resolved_path']}"
-                    if python_info["configured"]
-                    else f"python_bin auto-detected at {python_info['resolved_path']}"
-                ),
-                details=python_info,
-            )
-        )
-    else:
-        checks.append(
-            _build_doctor_check(
-                "python_bin",
-                "error",
-                "Configured python_bin is missing or not executable"
-                if python_info["configured"]
-                else "python_bin was not configured and could not be auto-detected",
-                details=python_info,
-                remediation=(
-                    "Set `python_bin` in `.oduit.toml` or install Python on PATH."
-                ),
-            )
-        )
-
-    odoo_info = _probe_binary(env_config.get("odoo_bin"), ["odoo", "odoo-bin"])
-    if odoo_info["exists"] and odoo_info["executable"]:
-        checks.append(
-            _build_doctor_check(
-                "odoo_bin",
-                "ok",
-                (
-                    f"odoo_bin is available at {odoo_info['resolved_path']}"
-                    if odoo_info["configured"]
-                    else f"odoo_bin auto-detected at {odoo_info['resolved_path']}"
-                ),
-                details=odoo_info,
-            )
-        )
-    else:
-        checks.append(
-            _build_doctor_check(
-                "odoo_bin",
-                "error",
-                "Configured odoo_bin does not exist or is not executable"
-                if odoo_info["configured"]
-                else "odoo_bin was not configured and could not be auto-detected",
-                details=odoo_info,
-                remediation=(
-                    "Set `odoo_bin` in `.oduit.toml` or add `odoo-bin` to PATH."
-                ),
-            )
-        )
-
-    coverage_info = _probe_binary(env_config.get("coverage_bin"), ["coverage"])
-    if coverage_info["exists"] and coverage_info["executable"]:
-        checks.append(
-            _build_doctor_check(
-                "coverage_bin",
-                "ok",
-                (
-                    f"coverage_bin is available at {coverage_info['resolved_path']}"
-                    if coverage_info["configured"]
-                    else (
-                        "coverage_bin auto-detected at "
-                        f"{coverage_info['resolved_path']}"
-                    )
-                ),
-                details=coverage_info,
-            )
-        )
-    else:
-        checks.append(
-            _build_doctor_check(
-                "coverage_bin",
-                "warning",
-                "coverage_bin is not configured and could not be auto-detected",
-                details=coverage_info,
-                remediation=(
-                    "Install `coverage` or set `coverage_bin` if you use "
-                    "coverage-enabled test runs."
-                ),
-            )
-        )
-
-    pairing_status = "ok" if python_info["exists"] and odoo_info["exists"] else "error"
-    checks.append(
-        _build_doctor_check(
-            "binary_pairing",
-            pairing_status,
-            "python_bin and odoo_bin are both available"
-            if pairing_status == "ok"
-            else "python_bin and odoo_bin are not both available",
-            details={
-                "python_bin": python_info.get("resolved_path")
-                or python_info.get("value"),
-                "odoo_bin": odoo_info.get("resolved_path") or odoo_info.get("value"),
-            },
-            remediation=(
-                "Ensure both `python_bin` and `odoo_bin` resolve correctly "
-                "before running Odoo commands."
-            )
-            if pairing_status == "error"
-            else None,
-        )
-    )
-
-    addons_path = env_config.get("addons_path")
-    module_manager: ModuleManager | None = None
-    if not addons_path:
-        checks.append(
-            _build_doctor_check(
-                "addons_path",
-                "error",
-                "addons_path is not configured",
-                remediation=(
-                    "Set `addons_path` in `.oduit.toml` or import an existing "
-                    "Odoo config with `oduit init`."
-                ),
-            )
-        )
-    else:
-        path_manager = AddonsPathManager(addons_path)
-        configured_paths = path_manager.get_configured_paths()
-        invalid_paths: list[str] = []
-        valid_paths: list[str] = []
-
-        for path in configured_paths:
-            absolute_path = os.path.abspath(path)
-            if not os.path.exists(absolute_path):
-                invalid_paths.append(path)
-            elif not os.path.isdir(absolute_path):
-                invalid_paths.append(path)
-            else:
-                valid_paths.append(absolute_path)
-
-        if invalid_paths:
-            checks.append(
-                _build_doctor_check(
-                    "addons_path",
-                    "error",
-                    f"Configured addons paths are invalid: {', '.join(invalid_paths)}",
-                    details={
-                        "configured_paths": configured_paths,
-                        "invalid_paths": invalid_paths,
-                    },
-                    remediation=(
-                        "Fix `addons_path` so every configured path exists and "
-                        "is a directory. Invalid paths: "
-                        f"{', '.join(invalid_paths)}"
-                    ),
-                )
-            )
-        else:
-            checks.append(
-                _build_doctor_check(
-                    "addons_path",
-                    "ok",
-                    f"Configured addons paths are valid ({len(valid_paths)} path(s))",
-                    details={"configured_paths": valid_paths},
-                )
-            )
-            module_manager = ModuleManager(addons_path)
-            modules = module_manager.find_modules(skip_invalid=True)
-            checks.append(
-                _build_doctor_check(
-                    "addons_scan",
-                    "ok",
-                    f"Discovered {len(modules)} addon(s)",
-                    details={"module_count": len(modules)},
-                )
-            )
-
-            base_paths = path_manager.get_base_addons_paths()
-            base_status = "ok" if base_paths else "warning"
-            checks.append(
-                _build_doctor_check(
-                    "base_addons",
-                    base_status,
-                    "Base Odoo addons were auto-discovered"
-                    if base_paths
-                    else "Base Odoo addons were not auto-discovered",
-                    details={"base_addons_paths": base_paths},
-                    remediation=(
-                        "Check whether `odoo_bin` and your addons layout match "
-                        "a standard Odoo checkout if base addons should be "
-                        "discoverable."
-                    )
-                    if not base_paths
-                    else None,
-                )
-            )
-
-            duplicate_modules = path_manager.find_duplicate_module_names()
-            if duplicate_modules:
-                checks.append(
-                    _build_doctor_check(
-                        "duplicate_addons",
-                        "warning",
-                        "Duplicate addon names found: "
-                        f"{', '.join(sorted(duplicate_modules))}",
-                        details={"duplicates": duplicate_modules},
-                        remediation=(
-                            "Remove or reorder duplicate addon paths to avoid "
-                            "ambiguous module resolution."
-                        ),
-                    )
-                )
-
-    ops = OdooOperations(env_config, verbose=False)
-    version_result = ops.get_odoo_version(suppress_output=True)
-    if version_result.get("success") and version_result.get("version"):
-        checks.append(
-            _build_doctor_check(
-                "odoo_version",
-                "ok",
-                f"Detected Odoo version {version_result['version']}",
-                details={"version": version_result.get("version")},
-            )
-        )
-        if module_manager is not None:
-            detected_series = (
-                global_config.odoo_series or module_manager.detect_odoo_series()
-            )
-            if detected_series and detected_series.value != version_result["version"]:
-                checks.append(
-                    _build_doctor_check(
-                        "odoo_series_mismatch",
-                        "warning",
-                        "Detected Odoo version does not match addon manifest series",
-                        details={
-                            "odoo_version": version_result["version"],
-                            "addons_series": detected_series.value,
-                        },
-                        remediation=(
-                            "Verify that `odoo_bin` and `addons_path` point to "
-                            "the same Odoo series."
-                        ),
-                    )
-                )
-    else:
-        checks.append(
-            _build_doctor_check(
-                "odoo_version",
-                "error",
-                "Failed to detect Odoo version",
-                details={
-                    "error": version_result.get("error"),
-                    "return_code": version_result.get("return_code"),
-                },
-                remediation=(
-                    "Check `odoo_bin` and run `oduit version` to inspect the "
-                    "failure directly."
-                ),
-            )
-        )
-
-    db_name = env_config.get("db_name")
-    if not db_name:
-        checks.append(
-            _build_doctor_check(
-                "db_config",
-                "warning",
-                "db_name is not configured",
-                remediation=(
-                    "Set `db_name` if this environment should target a database."
-                ),
-            )
-        )
-    else:
-        db_host = env_config.get("db_host") or "localhost"
-        db_user = env_config.get("db_user")
-        db_config_status = "ok" if db_user else "warning"
-        checks.append(
-            _build_doctor_check(
-                "db_config",
-                db_config_status,
-                f"Database configuration is present for '{db_name}'",
-                details={
-                    "db_name": db_name,
-                    "db_host": db_host,
-                    "db_user": db_user,
-                },
-                remediation=(
-                    "Set `db_user` if the default PostgreSQL user is not "
-                    "correct for this environment."
-                )
-                if not db_user
-                else None,
-            )
-        )
-
-        db_result = ops.db_exists(with_sudo=False, suppress_output=True)
-        if db_result.get("success") and db_result.get("exists"):
-            checks.append(
-                _build_doctor_check(
-                    "db_exists",
-                    "ok",
-                    f"Database '{db_name}' exists",
-                    details={"database": db_name},
-                )
-            )
-        elif db_result.get("success"):
-            checks.append(
-                _build_doctor_check(
-                    "db_exists",
-                    "warning",
-                    f"Database '{db_name}' does not exist",
-                    details={
-                        "database": db_name,
-                        "return_code": db_result.get("return_code"),
-                    },
-                    remediation=(
-                        "Create the database with `oduit --env "
-                        f"{global_config.env_name or 'dev'} create-db` if it "
-                        "should exist."
-                    ),
-                )
-            )
-        else:
-            checks.append(
-                _build_doctor_check(
-                    "db_exists",
-                    "error",
-                    "Database existence check failed",
-                    details={
-                        "database": db_name,
-                        "error": db_result.get("error"),
-                        "return_code": db_result.get("return_code"),
-                    },
-                    remediation=(
-                        "Verify PostgreSQL access and database credentials, "
-                        "then retry `oduit doctor`."
-                    ),
-                )
-            )
-
-    for check in checks:
-        remediation = check.get("remediation")
-        if remediation and remediation not in next_steps:
-            next_steps.append(remediation)
-
-    summary = {
-        "ok": sum(1 for check in checks if check["status"] == "ok"),
-        "warning": sum(1 for check in checks if check["status"] == "warning"),
-        "error": sum(1 for check in checks if check["status"] == "error"),
-    }
-
-    warning_messages = [
-        check["message"] for check in checks if check.get("status") == "warning"
-    ]
-    error_checks = [check for check in checks if check.get("status") == "error"]
-    error_message = None
-    error_type = None
-    if error_checks:
-        error_message = (
-            f"Doctor found {len(error_checks)} failing check(s): "
-            + ", ".join(check["name"] for check in error_checks)
-        )
-        error_type = "DoctorCheckError"
-
-    return build_json_payload(
-        "doctor_report",
-        {
-            "operation": "doctor",
-            "success": summary["error"] == 0,
-            "source": {
-                "kind": global_config.config_source,
-                "env_name": global_config.env_name,
-                "config_path": global_config.config_path,
-            },
-            "checks": checks,
-            "summary": summary,
-            "next_steps": next_steps,
-            "warnings": warning_messages,
-            "errors": [
-                {
-                    "check": check["name"],
-                    "message": check["message"],
-                }
-                for check in error_checks
-            ],
-            "remediation": next_steps,
-            "error": error_message,
-            "error_type": error_type,
-            "read_only": True,
-            "safety_level": "safe_read_only",
-        },
-        success=summary["error"] == 0,
+    return build_doctor_report(
+        global_config,
+        addons_path_manager_cls=AddonsPathManager,
+        module_manager_cls=ModuleManager,
+        odoo_operations_cls=OdooOperations,
     )
 
 
 def _print_doctor_report(report: dict[str, Any]) -> None:
     """Render a doctor report in text mode."""
-    labels = {
-        "ok": "OK",
-        "warning": "WARNING",
-        "error": "ERROR",
-    }
-
-    source = report.get("source", {})
-    source_kind = source.get("kind") or "unknown"
-    config_path = source.get("config_path")
-    source_line = f"Config source: {source_kind}"
-    if config_path:
-        source_line += f" ({config_path})"
-    typer.echo(source_line)
-    typer.echo("")
-
-    for check in report.get("checks", []):
-        status = labels.get(check.get("status", "ok"), "OK")
-        typer.echo(f"[{status}] {check['message']}")
-        details = check.get("details")
-        if details:
-            for key, value in details.items():
-                if value in (None, "", [], {}):
-                    continue
-                typer.echo(f"  {key}: {_format_doctor_value(value)}")
-
-    summary = report.get("summary", {})
-    typer.echo("")
-    typer.echo(
-        "Summary: "
-        f"{summary.get('ok', 0)} OK, "
-        f"{summary.get('warning', 0)} WARNING, "
-        f"{summary.get('error', 0)} ERROR"
-    )
-
-    if report.get("next_steps"):
-        typer.echo("Next steps:")
-        for step in report["next_steps"]:
-            typer.echo(f"- {step}")
+    print_doctor_report(report)
 
 
 def create_global_config(
@@ -842,21 +353,7 @@ def with_config(func: Any) -> Any:
     return wrapper
 
 
-# Create the main Typer app
-app = typer.Typer(
-    name="oduit",
-    help="Odoo CLI tool for starting odoo-bin and running tasks",
-    epilog="""
-Examples:
-  oduit --env dev run                        # Run Odoo server
-  oduit --env dev shell                      # Start Odoo shell
-  oduit --env dev test --test-tags /sale     # Test with module filter
-  oduit run                                  # Run with local .oduit.toml
-    """,
-    no_args_is_help=False,  # Allow no args for interactive mode
-)
-agent_app = typer.Typer(help="Agent-first structured inspection and planning commands")
-app.add_typer(agent_app, name="agent")
+# App objects are defined in oduit.cli.app and re-exported here.
 
 
 def _agent_emit_payload(payload: dict[str, Any]) -> None:
@@ -2497,14 +1994,7 @@ def create_addon(
 
 def _get_addon_type(addon_name: str, odoo_series: OdooSeries | None) -> str:
     """Determine the addon type (CE, EE, or Custom)."""
-    from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
-
-    if odoo_series:
-        if is_core_ce_addon(addon_name, odoo_series):
-            return "Odoo CE (Community)"
-        elif is_core_ee_addon(addon_name, odoo_series):
-            return "Odoo EE (Enterprise)"
-    return "Custom"
+    return get_addon_type(addon_name, odoo_series)
 
 
 def _build_addon_table(
@@ -2513,67 +2003,7 @@ def _build_addon_table(
     addon_type: str,
 ) -> Any:
     """Build a Rich table with addon information."""
-    from rich.table import Table
-
-    table = Table(
-        title=f"Addon: {addon_name}",
-        show_header=True,
-        header_style="bold cyan",
-    )
-    table.add_column("Field", style="cyan", no_wrap=True)
-    table.add_column("Value", style="green")
-
-    # Add rows for each important field
-    table.add_row("Technical Name", addon_name)
-    table.add_row("Display Name", manifest.name)
-    table.add_row("Version", manifest.version)
-    table.add_row("Addon Type", addon_type)
-
-    if manifest.summary:
-        table.add_row("Summary", manifest.summary)
-    if manifest.author:
-        table.add_row("Author", manifest.author)
-    if manifest.website:
-        table.add_row("Website", manifest.website)
-    if manifest.license:
-        table.add_row("License", manifest.license)
-
-    # Get category from raw data
-    raw_data = manifest.get_raw_data()
-    if "category" in raw_data:
-        table.add_row("Category", str(raw_data["category"]))
-
-    table.add_row("Installable", "Yes" if manifest.installable else "No")
-    table.add_row("Auto Install", "Yes" if manifest.auto_install else "No")
-
-    deps_str = (
-        ", ".join(manifest.codependencies) if manifest.codependencies else "(none)"
-    )
-    table.add_row("Dependencies", deps_str)
-
-    if manifest.python_dependencies:
-        table.add_row("Python Dependencies", ", ".join(manifest.python_dependencies))
-    if manifest.binary_dependencies:
-        table.add_row("Binary Dependencies", ", ".join(manifest.binary_dependencies))
-
-    table.add_row("Module Path", manifest.module_path)
-
-    return table
-
-
-# Valid filter fields for --include and --exclude options
-VALID_FILTER_FIELDS = [
-    "name",
-    "version",
-    "summary",
-    "author",
-    "website",
-    "license",
-    "category",
-    "module_path",
-    "depends",
-    "addon_type",
-]
+    return build_addon_table(addon_name, manifest, addon_type)
 
 
 def _get_addon_field_value(
@@ -2582,52 +2012,8 @@ def _get_addon_field_value(
     module_manager: ModuleManager,
     odoo_series: OdooSeries | None = None,
 ) -> str:
-    """Get the value of a specific field for an addon.
-
-    Args:
-        addon_name: Name of the addon
-        field: Field name to retrieve
-        module_manager: ModuleManager instance
-        odoo_series: Optional Odoo series for addon_type detection
-
-    Returns:
-        String value of the field, or empty string if not found
-    """
-    # Handle module_path separately as it's not in manifest
-    if field == "module_path":
-        path = module_manager.find_module_path(addon_name)
-        return path if path else ""
-
-    # Handle addon_type separately
-    if field == "addon_type":
-        if odoo_series is None:
-            odoo_series = module_manager.detect_odoo_series()
-        return _get_addon_type(addon_name, odoo_series)
-
-    manifest = module_manager.get_manifest(addon_name)
-    if not manifest:
-        return ""
-
-    # Map field names to manifest properties
-    if field == "name":
-        return manifest.name
-    elif field == "version":
-        return manifest.version
-    elif field == "summary":
-        return manifest.summary
-    elif field == "author":
-        return manifest.author
-    elif field == "website":
-        return manifest.website
-    elif field == "license":
-        return manifest.license
-    elif field == "depends":
-        return ",".join(manifest.codependencies)
-    elif field == "category":
-        raw_data = manifest.get_raw_data()
-        return str(raw_data.get("category", ""))
-
-    return ""
+    """Get the value of a specific field for an addon."""
+    return get_addon_field_value(addon_name, field, module_manager, odoo_series)
 
 
 def _filter_addons_by_field(
@@ -2638,38 +2024,17 @@ def _filter_addons_by_field(
     is_include: bool,
     odoo_series: OdooSeries | None = None,
 ) -> list[str]:
-    """Filter addons by a specific field value.
+    """Filter addons by a specific field value."""
+    from .cli.addon_filters import filter_addons_by_field
 
-    Args:
-        addons: List of addon names to filter
-        module_manager: ModuleManager instance
-        field: Field name to filter on
-        filter_value: Value to match (case-insensitive substring match)
-        is_include: If True, include matching addons; if False, exclude them
-        odoo_series: Optional Odoo series for addon_type detection
-
-    Returns:
-        Filtered list of addon names
-    """
-    filtered_addons = []
-    filter_lower = filter_value.lower()
-
-    for addon in addons:
-        field_value = _get_addon_field_value(addon, field, module_manager, odoo_series)
-        field_value_lower = field_value.lower() if field_value else ""
-
-        matches = filter_lower in field_value_lower
-
-        if is_include:
-            # Include only if it matches
-            if matches:
-                filtered_addons.append(addon)
-        else:
-            # Exclude if it matches (include if it doesn't match)
-            if not matches:
-                filtered_addons.append(addon)
-
-    return filtered_addons
+    return filter_addons_by_field(
+        addons,
+        module_manager,
+        field,
+        filter_value,
+        is_include,
+        odoo_series,
+    )
 
 
 def _apply_core_addon_filters(
@@ -2678,36 +2043,13 @@ def _apply_core_addon_filters(
     exclude_enterprise_addons: bool,
     odoo_series: OdooSeries | None,
 ) -> list[str]:
-    """Apply CE/EE core addon exclusion filters.
-
-    Args:
-        addons: List of addon names to filter
-        exclude_core_addons: Whether to exclude CE core addons
-        exclude_enterprise_addons: Whether to exclude EE addons
-        odoo_series: Odoo series for detection
-
-    Returns:
-        Filtered list of addon names
-
-    Raises:
-        ValueError: If Odoo series cannot be detected
-    """
-    from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
-
-    if not odoo_series:
-        raise ValueError(
-            "Could not detect Odoo series. "
-            "Please specify --odoo-series to use exclusion filters"
-        )
-
-    filtered_addons = []
-    for addon in addons:
-        if exclude_core_addons and is_core_ce_addon(addon, odoo_series):
-            continue
-        if exclude_enterprise_addons and is_core_ee_addon(addon, odoo_series):
-            continue
-        filtered_addons.append(addon)
-    return filtered_addons
+    """Apply CE/EE core addon exclusion filters."""
+    return apply_core_addon_filters(
+        addons,
+        exclude_core_addons,
+        exclude_enterprise_addons,
+        odoo_series,
+    )
 
 
 def _apply_field_filters(
@@ -2717,56 +2059,14 @@ def _apply_field_filters(
     exclude_filter: list[tuple[str, str]],
     odoo_series: OdooSeries | None,
 ) -> list[str]:
-    """Apply include/exclude field filters to addon list.
-
-    Args:
-        addons: List of addon names to filter
-        module_manager: ModuleManager instance
-        include_filter: List of (field, value) tuples for include filters
-        exclude_filter: List of (field, value) tuples for exclude filters
-        odoo_series: Odoo series for addon_type detection
-
-    Returns:
-        Filtered list of addon names
-
-    Raises:
-        ValueError: If field is invalid
-    """
-    # Apply include filters (skip if empty list)
-    if include_filter:
-        for field, value in include_filter:
-            if field not in VALID_FILTER_FIELDS:
-                raise ValueError(
-                    f"Invalid field '{field}'. "
-                    f"Valid fields: {', '.join(VALID_FILTER_FIELDS)}"
-                )
-            addons = _filter_addons_by_field(
-                addons,
-                module_manager,
-                field,
-                value,
-                is_include=True,
-                odoo_series=odoo_series,
-            )
-
-    # Apply exclude filters (skip if empty list)
-    if exclude_filter:
-        for field, value in exclude_filter:
-            if field not in VALID_FILTER_FIELDS:
-                raise ValueError(
-                    f"Invalid field '{field}'. "
-                    f"Valid fields: {', '.join(VALID_FILTER_FIELDS)}"
-                )
-            addons = _filter_addons_by_field(
-                addons,
-                module_manager,
-                field,
-                value,
-                is_include=False,
-                odoo_series=odoo_series,
-            )
-
-    return addons
+    """Apply include/exclude field filters to addon list."""
+    return apply_field_filters(
+        addons,
+        module_manager,
+        include_filter,
+        exclude_filter,
+        odoo_series,
+    )
 
 
 @app.command("print-manifest")
@@ -2854,28 +2154,10 @@ def print_manifest(
 
 
 def _parse_filter_option(
-    ctx: click.Context, param: click.Parameter, value: tuple[str, ...]
+    ctx: Any, param: Any, value: tuple[str, ...]
 ) -> list[tuple[str, str]]:
-    """Parse filter option values into list of (field, value) tuples.
-
-    Args:
-        ctx: Click context
-        param: Click parameter
-        value: Tuple of strings from multiple --include/--exclude options
-
-    Returns:
-        List of (field, value) tuples
-    """
-    if not value:
-        return []
-
-    # value comes as flat tuple: ('field1', 'value1', 'field2', 'value2', ...)
-    # We need to pair them up
-    result: list[tuple[str, str]] = []
-    for i in range(0, len(value), 2):
-        if i + 1 < len(value):
-            result.append((value[i], value[i + 1]))
-    return result
+    """Parse filter option values into list of (field, value) tuples."""
+    return parse_filter_option(ctx, param, value)
 
 
 @app.command("list-addons")
@@ -3194,31 +2476,7 @@ def _print_dependency_tree(
     odoo_series: OdooSeries | None = None,
 ) -> None:
     """Print dependency tree for a list of modules."""
-    if odoo_series is None:
-        odoo_series = module_manager.detect_odoo_series()
-
-    for i, module_name in enumerate(module_list):
-        dep_tree = module_manager.get_dependency_tree(module_name, max_depth=tree_depth)
-        lines = format_dependency_tree(
-            module_name,
-            dep_tree,
-            module_manager,
-            "",
-            True,
-            set(),
-            odoo_series,
-            is_root=True,
-        )
-        for module_part, version_part in lines:
-            typer.echo(module_part, nl=False)
-            if version_part == " ⬆":
-                typer.secho(version_part, fg="bright_black")
-            elif version_part:
-                typer.secho(version_part, fg="bright_black")
-            else:
-                typer.echo("")
-        if i < len(module_list) - 1:
-            typer.echo()
+    print_dependency_tree(module_list, module_manager, tree_depth, odoo_series)
 
 
 def _print_dependency_list(
@@ -3231,27 +2489,15 @@ def _print_dependency_list(
     sorting: str = "alphabetical",
 ) -> None:
     """Print flat list of dependencies."""
-    if depth is not None and depth >= 0:
-        dependencies = module_manager.get_dependencies_at_depth(
-            module_list, max_depth=tree_depth
-        )
-    else:
-        dependencies = module_manager.get_direct_dependencies(*module_list)
-
-    try:
-        sorted_dependencies = module_manager.sort_modules(dependencies, sorting)
-    except ValueError as e:
-        print_error(f"Sorting failed: {e}")
-        sorted_dependencies = dependencies
-
-    if separator:
-        if sorted_dependencies:
-            print(separator.join(sorted_dependencies))
-    elif sorted_dependencies:
-        for dep in sorted_dependencies:
-            print(f"{dep}")
-    else:
-        print(f"No external dependencies for {source_desc}")
+    print_dependency_list(
+        module_list,
+        module_manager,
+        tree_depth,
+        depth,
+        separator,
+        source_desc,
+        sorting,
+    )
 
 
 @app.command("list-depends")
@@ -3694,13 +2940,7 @@ def list_missing(
 
 def _check_environment_exists(config_loader: ConfigLoader, env_name: str) -> None:
     """Check if environment already exists and exit if it does."""
-    try:
-        existing_envs = config_loader.get_available_environments()
-        if env_name in existing_envs:
-            print_error(f"Environment '{env_name}' already exists")
-            raise typer.Exit(1) from None
-    except FileNotFoundError:
-        pass
+    check_environment_exists(config_loader, env_name)
 
 
 def _detect_binaries(
@@ -3713,28 +2953,7 @@ def _detect_binaries(
     Returns:
         Tuple of (python_bin, odoo_bin, coverage_bin)
     """
-    if python_bin is None:
-        python_bin = shutil.which("python3") or shutil.which("python")
-        if python_bin is None:
-            print_error("Python binary not found in PATH")
-            raise typer.Exit(1) from None
-
-    if odoo_bin is None:
-        odoo_bin = shutil.which("odoo") or shutil.which("odoo-bin")
-        if odoo_bin is None:
-            print_warning(
-                "Odoo binary not found in PATH, you may need to specify --odoo-bin"
-            )
-
-    if coverage_bin is None:
-        coverage_bin = shutil.which("coverage")
-        if coverage_bin is None:
-            print_warning(
-                "Coverage binary not found in PATH, "
-                "you may need to specify --coverage-bin"
-            )
-
-    return python_bin, odoo_bin, coverage_bin
+    return detect_binaries(python_bin, odoo_bin, coverage_bin)
 
 
 def _build_initial_config(
@@ -3743,15 +2962,7 @@ def _build_initial_config(
     coverage_bin: str | None,
 ) -> dict[str, Any]:
     """Build initial flat configuration dictionary."""
-    env_config: dict[str, Any] = {
-        "python_bin": python_bin,
-        "coverage_bin": coverage_bin,
-    }
-
-    if odoo_bin:
-        env_config["odoo_bin"] = odoo_bin
-
-    return env_config
+    return build_initial_config(python_bin, odoo_bin, coverage_bin)
 
 
 def _import_or_convert_config(
@@ -3763,48 +2974,19 @@ def _import_or_convert_config(
     coverage_bin: str | None,
 ) -> dict[str, Any]:
     """Import config from .conf file or convert flat config to sectioned format."""
-    if from_conf:
-        if not os.path.exists(from_conf):
-            print_error(f"Odoo configuration file not found: {from_conf}")
-            raise typer.Exit(1) from None
-
-        try:
-            env_config = config_loader.import_odoo_conf(from_conf, sectioned=True)
-
-            if "binaries" not in env_config:
-                env_config["binaries"] = {}
-
-            binaries_section = env_config.get("binaries")
-            if isinstance(binaries_section, dict):
-                if python_bin:
-                    binaries_section["python_bin"] = python_bin
-                if odoo_bin:
-                    binaries_section["odoo_bin"] = odoo_bin
-                if coverage_bin:
-                    binaries_section["coverage_bin"] = coverage_bin
-
-            print_info(f"Imported configuration from: {from_conf}")
-        except Exception as e:
-            print_error(f"Failed to import Odoo configuration: {e}")
-            raise typer.Exit(1) from None
-    else:
-        from .config_provider import ConfigProvider
-
-        provider = ConfigProvider(env_config)
-        env_config = provider.to_sectioned_dict()
-
-    return env_config
+    return import_or_convert_config(
+        env_config,
+        from_conf,
+        config_loader,
+        python_bin,
+        odoo_bin,
+        coverage_bin,
+    )
 
 
 def _normalize_addons_path(env_config: dict[str, Any]) -> None:
     """Convert addons_path from comma-separated string to list in-place."""
-    odoo_params_section = env_config.get("odoo_params")
-    if isinstance(odoo_params_section, dict) and "addons_path" in odoo_params_section:
-        addons_path_value = odoo_params_section["addons_path"]
-        if isinstance(addons_path_value, str):
-            odoo_params_section["addons_path"] = [
-                p.strip() for p in addons_path_value.split(",")
-            ]
+    normalize_addons_path(env_config)
 
 
 def _save_config_file(
@@ -3813,42 +2995,12 @@ def _save_config_file(
     config_loader: ConfigLoader,
 ) -> None:
     """Save configuration to TOML file."""
-    tomllib, tomli_w = config_loader._import_toml_libs()
-    if tomli_w is None:
-        print_error(
-            "TOML writing support not available. Install with: pip install tomli-w"
-        )
-        raise typer.Exit(1) from None
-
-    os.makedirs(config_loader.config_dir, exist_ok=True)
-
-    with open(config_path, "wb") as f:
-        tomli_w.dump(env_config, f)
+    save_config_file(config_path, env_config, config_loader)
 
 
 def _display_config_summary(env_config: dict[str, Any]) -> None:
     """Display configuration summary to user."""
-    print_info("\nConfiguration summary:")
-
-    binaries = env_config.get("binaries")
-    if isinstance(binaries, dict):
-        if binaries.get("python_bin"):
-            print_info(f"  python_bin: {binaries['python_bin']}")
-        if binaries.get("odoo_bin"):
-            print_info(f"  odoo_bin: {binaries['odoo_bin']}")
-        if binaries.get("coverage_bin"):
-            print_info(f"  coverage_bin: {binaries['coverage_bin']}")
-
-    params = env_config.get("odoo_params")
-    if isinstance(params, dict):
-        if params.get("db_name"):
-            print_info(f"  db_name: {params['db_name']}")
-        if params.get("addons_path"):
-            addons = params["addons_path"]
-            if isinstance(addons, list):
-                print_info(f"  addons_path: {', '.join(addons)}")
-            else:
-                print_info(f"  addons_path: {addons}")
+    display_config_summary(env_config)
 
 
 @app.command("init")
