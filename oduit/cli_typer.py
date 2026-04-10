@@ -6,7 +6,6 @@
 
 """New Typer-based CLI implementation for oduit."""
 
-import functools
 import os
 from typing import Any, NoReturn
 
@@ -21,7 +20,6 @@ from .cli.addon_filters import (
     build_addon_table,
     get_addon_field_value,
     get_addon_type,
-    parse_filter_option,
 )
 from .cli.agent import validate as _agent_validate_impl
 from .cli.agent.mutate import (
@@ -62,9 +60,6 @@ from .cli.agent.payloads import (
 )
 from .cli.agent.payloads import (
     redact_config as _redact_config_impl,
-)
-from .cli.agent.payloads import (
-    redact_config_value as _redact_config_value_impl,
 )
 from .cli.agent.payloads import (
     strip_arch_from_model_views as _strip_arch_from_model_views_impl,
@@ -133,19 +128,7 @@ from .cli.agent.services import (
     agent_sub_result as _agent_sub_result_impl,
 )
 from .cli.agent.services import (
-    build_addon_inspection_data as _build_addon_inspection_data_impl,
-)
-from .cli.agent.services import (
     build_agent_test_summary_details as _build_agent_test_summary_details_impl,
-)
-from .cli.agent.services import (
-    build_environment_context_data as _build_environment_context_data_impl,
-)
-from .cli.agent.services import (
-    build_update_plan_data as _build_update_plan_data_impl,
-)
-from .cli.agent.services import (
-    get_agent_addon_type as _get_agent_addon_type_impl,
 )
 from .cli.agent.services import (
     parse_filter_values as _parse_filter_values_impl,
@@ -210,12 +193,8 @@ from .cli.commands.runtime import test_command as _test_command_impl
 from .cli.commands.runtime import update_command as _update_command_impl
 from .cli.dependency_output import print_dependency_list, print_dependency_tree
 from .cli.doctor import (
-    build_doctor_check,
     build_doctor_report,
-    format_doctor_value,
     print_doctor_report,
-    probe_binary,
-    resolve_binary_candidate,
 )
 from .cli.errors import (
     confirmation_required_error,
@@ -235,7 +214,6 @@ from .cli.init_env import (
     init_env_command as _init_env_command_impl,
 )
 from .cli_types import (
-    AddonListType,
     AddonTemplate,
     DevFeature,
     GlobalConfig,
@@ -264,10 +242,6 @@ SHELL_INTERFACE_OPTION = typer.Option(
 
 ADDON_TEMPLATE_OPTION = typer.Option(
     AddonTemplate.BASIC, "--template", help="Addon template to use"
-)
-
-ADDON_LIST_TYPE_OPTION = typer.Option(
-    AddonListType.ALL, "--type", help="Type of addons to list"
 )
 
 LOG_LEVEL_OPTION = typer.Option(
@@ -367,34 +341,6 @@ def _resolve_config_source(
         source = "demo"
 
     return source, config_path
-
-
-def _build_doctor_check(
-    name: str,
-    status: str,
-    message: str,
-    details: dict[str, Any] | None = None,
-    remediation: str | None = None,
-) -> dict[str, Any]:
-    """Create a normalized doctor check entry."""
-    return build_doctor_check(name, status, message, details, remediation)
-
-
-def _resolve_binary_candidate(candidate: str) -> dict[str, Any]:
-    """Resolve a binary candidate either from PATH or filesystem."""
-    return resolve_binary_candidate(candidate)
-
-
-def _probe_binary(
-    configured_value: str | None, auto_candidates: list[str]
-) -> dict[str, Any]:
-    """Probe a configured binary or try to auto-detect it."""
-    return probe_binary(configured_value, auto_candidates)
-
-
-def _format_doctor_value(value: Any) -> str:
-    """Format a doctor value for human-readable output."""
-    return format_doctor_value(value)
 
 
 def _print_command_error_result(
@@ -510,31 +456,6 @@ def create_global_config(
         config_source=config_source,
         config_path=config_path,
     )
-
-
-def with_config(func: Any) -> Any:
-    """Decorator to inject global configuration into command functions."""
-
-    @functools.wraps(func)
-    def wrapper(ctx: typer.Context) -> Any:
-        if ctx.obj is None:
-            print_error("No global configuration found")
-            raise typer.Exit(1) from None
-
-        if isinstance(ctx.obj, dict):
-            try:
-                global_config = create_global_config(**ctx.obj)
-            except typer.Exit:
-                raise
-            except Exception as e:
-                print_error(f"Failed to create global config: {e}")
-                raise typer.Exit(1) from e
-        else:
-            global_config = ctx.obj
-
-        return func(global_config)
-
-    return wrapper
 
 
 def _resolve_command_global_config(ctx: typer.Context) -> GlobalConfig:
@@ -737,11 +658,6 @@ def _require_agent_addons_path(
     )
 
 
-def _redact_config_value(key: str, value: Any) -> Any:
-    """Redact sensitive configuration values in structured outputs."""
-    return _redact_config_value_impl(key, value)
-
-
 def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
     """Return a recursively redacted configuration dictionary."""
     return _redact_config_impl(config)
@@ -898,13 +814,6 @@ def _build_validate_addon_change_discovery_result(
         agent_sub_result_fn=agent_sub_result_fn,
         module_not_found_error_cls=module_not_found_error_cls,
         config_error_cls=config_error_cls,
-    )
-
-
-def _get_agent_addon_type(addon_name: str, odoo_series: OdooSeries | None) -> str:
-    """Return a machine-oriented addon classification."""
-    return _get_agent_addon_type_impl(
-        addon_name, odoo_series, get_addon_type_fn=_get_addon_type
     )
 
 
@@ -1362,27 +1271,6 @@ def _get_addon_field_value(
     return get_addon_field_value(addon_name, field, module_manager, odoo_series)
 
 
-def _filter_addons_by_field(
-    addons: list[str],
-    module_manager: ModuleManager,
-    field: str,
-    filter_value: str,
-    is_include: bool,
-    odoo_series: OdooSeries | None = None,
-) -> list[str]:
-    """Filter addons by a specific field value."""
-    from .cli.addon_filters import filter_addons_by_field
-
-    return filter_addons_by_field(
-        addons,
-        module_manager,
-        field,
-        filter_value,
-        is_include,
-        odoo_series,
-    )
-
-
 def _apply_core_addon_filters(
     addons: list[str],
     exclude_core_addons: bool,
@@ -1435,17 +1323,9 @@ def print_manifest(
     )
 
 
-def _parse_filter_option(
-    ctx: Any, param: Any, value: tuple[str, ...]
-) -> list[tuple[str, str]]:
-    """Parse filter option values into list of (field, value) tuples."""
-    return parse_filter_option(ctx, param, value)
-
-
 @app.command("list-addons")
 def list_addons(
     ctx: typer.Context,
-    type: AddonListType = ADDON_LIST_TYPE_OPTION,
     select_dir: str | None = typer.Option(
         None,
         "--select-dir",
@@ -1482,7 +1362,6 @@ def list_addons(
     """
     _list_addons_command_impl(
         ctx,
-        type=type,
         select_dir=select_dir,
         separator=separator,
         exclude_core_addons=exclude_core_addons,
@@ -1896,46 +1775,6 @@ def get_odoo_version_cmd(
         ctx,
         resolve_command_env_config_fn=_resolve_command_env_config,
         build_odoo_operations_fn=_build_odoo_operations,
-    )
-
-
-def _build_environment_context_data(global_config: GlobalConfig) -> dict[str, Any]:
-    """Build a one-shot environment snapshot for agent workflows."""
-    return _build_environment_context_data_impl(
-        global_config,
-        build_doctor_report_fn=_build_doctor_report,
-        addons_path_manager_cls=AddonsPathManager,
-        module_manager_cls=ModuleManager,
-        probe_binary_fn=_probe_binary,
-        odoo_operations_cls=OdooOperations,
-    )
-
-
-def _build_addon_inspection_data(
-    module_manager: ModuleManager,
-    module_name: str,
-    odoo_series: OdooSeries | None,
-) -> tuple[dict[str, Any], list[str], list[str]]:
-    """Aggregate addon inspection data for a single module."""
-    return _build_addon_inspection_data_impl(
-        module_manager,
-        module_name,
-        odoo_series,
-        get_agent_addon_type_fn=_get_agent_addon_type,
-    )
-
-
-def _build_update_plan_data(
-    global_config: GlobalConfig,
-    module_name: str,
-) -> tuple[dict[str, Any], list[str], list[str]]:
-    """Build a read-only update plan for a module."""
-    return _build_update_plan_data_impl(
-        global_config,
-        module_name,
-        module_manager_cls=ModuleManager,
-        addons_path_manager_cls=AddonsPathManager,
-        build_addon_inspection_data_fn=_build_addon_inspection_data,
     )
 
 

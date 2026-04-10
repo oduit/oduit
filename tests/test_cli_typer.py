@@ -475,6 +475,13 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn("sale", result.output)
         self.assertIn("purchase", result.output)
 
+    def test_list_addons_help_does_not_expose_dead_type_option(self):
+        """Test list-addons help omits unsupported --type option."""
+        result = self.runner.invoke(app, ["list-addons", "--help"])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertNotIn("--type", result.output)
+
     @patch("oduit.cli_typer.ModuleManager")
     @patch("oduit.cli_typer.ConfigLoader")
     def test_list_addons_with_select_dir(

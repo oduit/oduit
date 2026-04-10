@@ -27,14 +27,6 @@ class AddonTemplate(str, Enum):
     WEBSITE = "website"
 
 
-class AddonListType(str, Enum):
-    """Types of addons to list."""
-
-    ALL = "all"
-    INSTALLED = "installed"
-    AVAILABLE = "available"
-
-
 class ShellInterface(str, Enum):
     """Available shell interfaces."""
 

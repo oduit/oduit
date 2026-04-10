@@ -5,7 +5,7 @@ from typing import Any
 
 import typer
 
-from ...cli_types import AddonListType, AddonTemplate, OutputFormat
+from ...cli_types import AddonTemplate, OutputFormat
 from ...module_manager import ModuleManager
 from ...output import print_error, print_info
 from ...utils import output_result_to_json
@@ -117,7 +117,6 @@ def print_manifest_command(
 def list_addons_command(
     ctx: typer.Context,
     *,
-    type: AddonListType,
     select_dir: str | None,
     separator: str | None,
     exclude_core_addons: bool,
@@ -131,7 +130,6 @@ def list_addons_command(
     apply_field_filters_fn: Any = None,
 ) -> None:
     """List available addons."""
-    del type
     global_config, env_config = resolve_command_env_config_fn(ctx)
     include_filter = _parse_filter_pairs(include, "include")
     exclude_filter = _parse_filter_pairs(exclude, "exclude")
