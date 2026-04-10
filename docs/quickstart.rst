@@ -87,6 +87,9 @@ Operations
 Agent Inspection
 ~~~~~~~~~~~~~~~~
 
+For the full coding-agent workflow and JSON contract, see
+:doc:`agent_contract`.
+
 .. code-block:: bash
 
    oduit --env dev agent inspect-addon sale

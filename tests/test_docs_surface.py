@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from oduit.cli_typer import agent_app
+
 ROOT = Path(__file__).resolve().parent.parent
 DOC_FILES = [
     ROOT / "README.md",
@@ -7,6 +9,7 @@ DOC_FILES = [
     ROOT / "examples" / "code_executor_example.py",
     ROOT / "examples" / "execute_python_example.py",
     ROOT / "examples" / "module_manifest_example.py",
+    *sorted((ROOT / "docs").rglob("*.md")),
     *sorted((ROOT / "docs").rglob("*.rst")),
 ]
 
@@ -117,3 +120,45 @@ def test_execute_python_code_docs_note_shell_interface_requirement() -> None:
             )
 
     assert not failures, "\n".join(failures)
+
+
+def test_agent_contract_page_covers_required_topics() -> None:
+    content = (ROOT / "docs" / "agent_contract.rst").read_text()
+    required_markers = [
+        "Using oduit from a coding agent",
+        "single source of truth",
+        "Recommended Command Sequence",
+        "Mutation Policy",
+        "Payload Expectations",
+        "Failure Handling",
+        "oduit --env dev agent context",
+        "oduit --env dev agent inspect-addon my_partner",
+        "oduit --env dev agent plan-update my_partner",
+        (
+            "oduit --env dev agent test-summary --allow-mutation --module "
+            "my_partner --test-tags /my_partner"
+        ),
+    ]
+
+    failures = [marker for marker in required_markers if marker not in content]
+    assert not failures, "Missing markers in docs/agent_contract.rst:\n" + "\n".join(
+        failures
+    )
+
+
+def test_public_api_inventory_lists_all_agent_commands() -> None:
+    content = (ROOT / "docs" / "maintainer" / "public_api.md").read_text().splitlines()
+    section_header = "## `oduit agent` subcommands in `oduit.cli_typer`"
+    start_index = content.index(section_header) + 1
+    documented_commands: set[str] = set()
+
+    for line in content[start_index:]:
+        if line.startswith("## "):
+            break
+        if line.startswith("- `") and line.endswith("`"):
+            documented_commands.add(line[3:-1])
+
+    actual_commands = {
+        command.name for command in agent_app.registered_commands if command.name
+    }
+    assert documented_commands == actual_commands

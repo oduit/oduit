@@ -105,62 +105,20 @@ oduit --env dev create-addon my_custom_module
 oduit --env dev export-lang sale --language de_DE
 ```
 
-## JSON Output Contract
+## Coding Agents
 
-Commands run with `--json` emit versioned payloads for automation.
+`oduit agent ...` is the primary documented automation surface for external
+coding agents.
 
-The `oduit agent ...` command group always emits JSON and is the preferred
-surface for coding-agent inspection and planning workflows.
+Use [`docs/agent_contract.rst`](docs/agent_contract.rst) as the canonical guide
+for:
 
-Within `schema_version = 1.x`, `data` is the canonical payload container and
-flattened command-specific fields remain part of the public compatibility
-contract.
+- command sequence
+- mutation policy
+- payload expectations
+- failure handling
 
-Guaranteed keys for result payloads:
-
-- `schema_version`
-- `type`
-- `success`
-- `read_only`
-- `safety_level`
-- `warnings`
-- `errors`
-- `remediation`
-- `data`
-- `meta`
-
-Common keys when they apply:
-
-- `operation`
-- `command`
-- `return_code`
-- `stdout` / `stderr`
-- `error` / `error_type`
-
-Example:
-
-```json
-{
-  "schema_version": "1.0",
-  "type": "result",
-  "success": true,
-  "operation": "get_odoo_version",
-  "read_only": true,
-  "safety_level": "safe_read_only",
-  "warnings": [],
-  "errors": [],
-  "remediation": [],
-  "data": {
-    "version": "17.0",
-    "return_code": 0
-  },
-  "meta": {
-    "timestamp": "2026-04-09T12:00:00"
-  },
-  "version": "17.0",
-  "return_code": 0
-}
-```
+Agent commands always emit JSON and do not require the global `--json` flag.
 
 ## Python API
 
@@ -195,32 +153,6 @@ The preferred Python surface is:
 Use `execute_python_code()` only for trusted shell-driven execution paths, with
 an explicit `shell_interface` argument or `shell_interface` configured in the
 environment. Use `OdooCodeExecutor` only for trusted arbitrary execution paths.
-
-## Coding-Agent Workflow
-
-For a change like "add `email3` to `res.partner` in `my_partner`", the shortest
-reliable flow is:
-
-```bash
-oduit --env dev agent context
-oduit --env dev agent inspect-addon my_partner
-oduit --env dev agent get-model-fields res.partner --attributes string,type,required
-oduit --env dev agent get-model-views res.partner --types form,tree --summary
-oduit --env dev agent locate-model res.partner --module my_partner
-oduit --env dev agent locate-field res.partner email3 --module my_partner
-oduit --env dev agent plan-update my_partner
-oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
-oduit --env dev agent update-module my_partner --allow-mutation
-oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
-```
-
-For cross-addon inspection, the agent surface can also answer questions like:
-
-```bash
-oduit --env dev agent list-addon-models crm
-oduit --env dev agent find-model-extensions crm.stage --summary
-oduit --env dev agent get-model-views crm.stage --types form,tree
-```
 
 ### Addon Intelligence
 

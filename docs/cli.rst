@@ -854,8 +854,9 @@ The ``oduit agent`` command group is the preferred automation surface for
 inspection and planning. These commands always emit structured JSON and do not
 require the global ``--json`` flag.
 
-For ``1.x``, ``data`` is the canonical payload container and flattened
-command-specific fields remain part of the public compatibility contract.
+Use :doc:`agent_contract` for the canonical command sequence, mutation policy,
+payload expectations, and failure handling. This section is the command
+reference.
 
 context
 ^^^^^^^
@@ -1006,8 +1007,8 @@ command and requires ``--allow-mutation``.
 
    oduit --env dev agent test-summary --allow-mutation --module sale --test-tags /sale
 
-Controlled mutation commands require ``--allow-mutation`` and support
-``--dry-run`` planning where implemented.
+Controlled mutation commands require ``--allow-mutation``. See
+:doc:`agent_contract` for the mutation rules and ``--dry-run`` expectations.
 
 .. code-block:: bash
 
@@ -1034,64 +1035,7 @@ Other read helpers follow the same pattern:
    oduit --env dev agent get-model-fields res.partner --attributes string,type
    oduit --env dev agent get-model-views res.partner --types form,tree --summary
 
-End-to-End Model and View Inspection
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The agent surface can inspect a model from source and database in a few
-steps. The following workflow uses ``crm.stage`` (a standard Odoo model) as
-the example target.
-
-**1. Discover which models an addon declares:**
-
-.. code-block:: bash
-
-   # List all models in the crm addon
-   oduit --env dev agent list-addon-models crm
-
-**2. Find where a model is declared and extended across addons:**
-
-.. code-block:: bash
-
-   # Source-level and installed extension overview
-   oduit --env dev agent find-model-extensions crm.stage --summary
-
-   # Full detail including field metadata and view extensions
-   oduit --env dev agent find-model-extensions crm.stage
-
-This returns base declaration, source-level ``_inherit`` extensions with
-added fields and methods, XML view extension files, and installed runtime
-extension fields from ``ir.model.fields``.
-
-**3. Fetch the database views for a model:**
-
-.. code-block:: bash
-
-   # Compact metadata only (no arch_db)
-   oduit --env dev agent get-model-views crm.stage --types form,tree --summary
-
-   # Full view arch from the database
-   oduit --env dev agent get-model-views crm.stage --types form,tree
-
-**4. Inspect runtime field metadata:**
-
-.. code-block:: bash
-
-   oduit --env dev agent get-model-fields crm.stage --attributes string,type,required
-
-**5. Drill into source locations if you need to edit:**
-
-.. code-block:: bash
-
-   oduit --env dev agent locate-model crm.stage --module crm
-   oduit --env dev agent locate-field crm.stage name --module crm
-
-**6. Plan and execute a safe update:**
-
-.. code-block:: bash
-
-   oduit --env dev agent plan-update crm
-   oduit --env dev agent update-module crm --allow-mutation
-   oduit --env dev agent test-summary --allow-mutation --module crm --test-tags /crm
+For the recommended end-to-end coding-agent loop, use :doc:`agent_contract`.
 
 Common Workflows
 ----------------

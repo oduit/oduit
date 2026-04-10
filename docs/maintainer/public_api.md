@@ -3,6 +3,10 @@
 This file is the maintainer-facing inventory of the current public surface.
 Use it when updating README, CLI docs, and API examples.
 
+Use `docs/agent_contract.rst` as the canonical workflow and payload reference
+for external coding agents. Keep the inventory below in sync with
+`oduit agent --help`.
+
 ## Top-level exports from `oduit.__init__`
 
 - `ConfigLoader`
@@ -56,13 +60,29 @@ Use it when updating README, CLI docs, and API examples.
 ## `oduit agent` subcommands in `oduit.cli_typer`
 
 - `context`
+- `create-addon`
+- `dependency-graph`
+- `doctor`
+- `export-lang`
+- `find-model-extensions`
+- `get-model-fields`
+- `get-model-views`
 - `inspect-addon`
+- `inspect-addons`
+- `install-module`
+- `list-addon-models`
+- `list-addon-tests`
+- `list-addons`
+- `list-duplicates`
+- `locate-field`
+- `locate-model`
 - `plan-update`
-- `test-summary`
 - `query-model`
 - `read-record`
+- `resolve-config`
 - `search-count`
-- `get-model-fields`
+- `test-summary`
+- `update-module`
 
 ## `OdooOperations` methods
 
