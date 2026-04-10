@@ -300,6 +300,7 @@ class ModelSourceCandidate(DictModel):
     declared_model: str
     confidence: float
     line_hint: int | None = None
+    reason: str | None = None
 
 
 @dataclass
@@ -326,6 +327,7 @@ class FieldSourceCandidate(DictModel):
     declared_model: str
     confidence: float
     line_hint: int | None = None
+    reason: str | None = None
 
 
 @dataclass
@@ -337,8 +339,15 @@ class FieldSourceLocation(DictModel):
     module: str
     addon_root: str
     exists: bool
+    source_exists: bool = False
+    runtime_exists: bool | None = None
+    runtime_only: bool = False
+    runtime_source_modules: list[str] = dataclass_field(default_factory=list)
     candidates: list[FieldSourceCandidate] = dataclass_field(default_factory=list)
     insertion_candidate: ModelSourceCandidate | None = None
+    insertion_line_range: list[int] | None = None
+    insertion_reason: str | None = None
+    insertion_confidence: float | None = None
     related_files: list[str] = dataclass_field(default_factory=list)
     scanned_python_files: list[str] = dataclass_field(default_factory=list)
     rationale: str | None = None
@@ -355,6 +364,8 @@ class AddonTestFile(DictModel):
     references_model: bool = False
     references_field: bool = False
     confidence: float = 0.0
+    ranking_signals: list[str] = dataclass_field(default_factory=list)
+    related_paths: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -366,6 +377,21 @@ class AddonTestInventory(DictModel):
     model: str | None = None
     field: str | None = None
     tests: list[AddonTestFile] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class RecommendedTestPlan(DictModel):
+    """Changed-file to test recommendation plan for coding-agent workflows."""
+
+    module: str
+    addon_root: str
+    paths: list[str] = dataclass_field(default_factory=list)
+    tests: list[AddonTestFile] = dataclass_field(default_factory=list)
+    suggested_test_tags: list[str] = dataclass_field(default_factory=list)
+    full_addon_suite_recommended: bool = False
+    rationale: list[str] = dataclass_field(default_factory=list)
     warnings: list[str] = dataclass_field(default_factory=list)
     remediation: list[str] = dataclass_field(default_factory=list)
 

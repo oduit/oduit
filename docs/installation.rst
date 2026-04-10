@@ -4,9 +4,9 @@ Installation
 Requirements
 ------------
 
-* Python 3.9 or higher
-* PyYAML
-* Odoo instance (for operation)
+* Python 3.10 or higher
+* An Odoo instance for runtime commands such as ``run``, ``install``,
+  ``update``, ``test``, and database-backed ``oduit agent`` queries
 
 Install from PyPI
 -----------------
@@ -27,16 +27,13 @@ Install from Source
 Development Installation
 ------------------------
 
-For development, install with additional dependencies:
+For local development, install the package in editable mode:
 
 .. code-block:: bash
 
    git clone https://github.com/oduit/oduit.git
    cd oduit
-   pip install -e ".[dev]"
-
-   # Install pre-commit hooks
-   pre-commit install
+   pip install -e .
 
 Dependencies
 ------------
@@ -44,11 +41,10 @@ Dependencies
 Core dependencies:
 
 * ``PyYAML`` - For YAML configuration parsing
-* ``typing-extensions`` - For enhanced type hints
+* ``tomli`` on Python versions earlier than 3.11
+* ``tomli-w`` for writing TOML configuration
+* ``typer`` for the CLI
+* ``manifestoo-core`` for Odoo addon metadata and series support
 
-Development dependencies:
-
-* ``pytest`` - Testing framework
-* ``ruff`` - Linting and formatting
-* ``pre-commit`` - Git hooks for code quality
-* ``sphinx`` - Documentation generation
+Contributor workflows in this repository use tools such as ``pytest``, ``ruff``,
+``mypy``, ``pre-commit``, and ``sphinx``.

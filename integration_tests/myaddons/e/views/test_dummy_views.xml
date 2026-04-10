@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="view_test_dummy_form_inherit" model="ir.ui.view">
+        <field name="name">test.dummy.form.inherit.integration</field>
+        <field name="model">test.dummy</field>
+        <field name="inherit_id" ref="c.view_test_dummy_form" />
+        <field name="arch" type="xml">
+            <xpath expr="//group" position="inside">
+                <field name="integration_note" />
+            </xpath>
+        </field>
+    </record>
+</odoo>

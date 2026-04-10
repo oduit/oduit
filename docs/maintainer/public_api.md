@@ -6,6 +6,8 @@ Use it when updating README, CLI docs, and API examples.
 Use `docs/agent_contract.rst` as the canonical workflow and payload reference
 for external coding agents. Keep the inventory below in sync with
 `oduit agent --help`.
+Use `docs/maintainer/agent_contract_changes.md` to record machine-facing
+contract changes such as new stable fields or failure codes.
 
 ## Top-level exports from `oduit.__init__`
 
@@ -77,7 +79,9 @@ for external coding agents. Keep the inventory below in sync with
 - `locate-field`
 - `locate-model`
 - `plan-update`
+- `prepare-addon-change`
 - `query-model`
+- `recommend-tests`
 - `read-record`
 - `resolve-config`
 - `search-count`

@@ -20,6 +20,7 @@ from .api_models import (
     ModelExtensionSource,
     ModelSourceCandidate,
     ModelSourceLocation,
+    RecommendedTestPlan,
     ViewExtensionSource,
 )
 
@@ -318,6 +319,15 @@ def _base_confidence(path: Path) -> float:
     return score
 
 
+def _candidate_reason(match_kind: str, model: str) -> str:
+    reasons = {
+        "inherit": f"Class inherits `{model}` directly in addon source.",
+        "name": f"Class declares `{model}` as its primary model.",
+        "inherits": f"Class delegates to `{model}` through `_inherits`.",
+    }
+    return reasons.get(match_kind, f"Class is associated with `{model}`.")
+
+
 def locate_model_sources(
     addon_root: str, module: str, model: str
 ) -> ModelSourceLocation:
@@ -360,6 +370,7 @@ def locate_model_sources(
                 declared_model=declared_model,
                 confidence=round(min(confidence, 0.99), 2),
                 line_hint=class_scan.lineno,
+                reason=_candidate_reason(match_kind, model),
             )
         )
 
@@ -402,11 +413,13 @@ def locate_field_sources(
     scan = _scan_python_sources(addon_root)
     model_location = locate_model_sources(addon_root, module, model)
     field_candidates: list[FieldSourceCandidate] = []
+    matching_scans: dict[str, _ClassScan] = {}
 
     matching_paths = {candidate.path for candidate in model_location.candidates}
     for class_scan in scan.classes:
         if class_scan.path not in matching_paths:
             continue
+        matching_scans[class_scan.path] = class_scan
         line_hint = class_scan.field_lines.get(field_name)
         if line_hint is None:
             continue
@@ -427,6 +440,7 @@ def locate_field_sources(
                     2,
                 ),
                 line_hint=line_hint,
+                reason=f"Exact field definition for `{field_name}` found in source.",
             )
         )
 
@@ -435,11 +449,36 @@ def locate_field_sources(
     )
     insertion_candidate = None
     rationale = None
+    insertion_line_range = None
+    insertion_reason = None
+    insertion_confidence = None
     if not field_candidates and model_location.candidates:
         insertion_candidate = model_location.candidates[0]
+        insertion_confidence = insertion_candidate.confidence
+        insertion_scan = matching_scans.get(insertion_candidate.path)
+        if insertion_scan is not None:
+            field_lines = sorted(
+                line for line in insertion_scan.field_lines.values() if line is not None
+            )
+            method_lines = sorted(
+                line
+                for line in insertion_scan.method_lines.values()
+                if line is not None
+            )
+            start_line = field_lines[-1] + 1 if field_lines else insertion_scan.lineno
+            end_line = method_lines[0] - 1 if method_lines else None
+            if start_line is not None:
+                insertion_line_range = (
+                    [start_line, end_line] if end_line is not None else [start_line]
+                )
         rationale = (
             "No existing field definition was found; the highest-confidence model "
             "extension file is the best insertion point."
+        )
+        insertion_reason = (
+            f"Use `{insertion_candidate.path}` because it has the strongest model "
+            "match "
+            "for this addon change."
         )
 
     remediation = []
@@ -452,8 +491,12 @@ def locate_field_sources(
         module=module,
         addon_root=addon_root,
         exists=bool(field_candidates),
+        source_exists=bool(field_candidates),
         candidates=field_candidates,
         insertion_candidate=insertion_candidate,
+        insertion_line_range=insertion_line_range,
+        insertion_reason=insertion_reason,
+        insertion_confidence=insertion_confidence,
         related_files=sorted(matching_paths),
         scanned_python_files=scan.scanned_files,
         rationale=rationale,
@@ -541,15 +584,120 @@ def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
     )
 
 
-def list_addon_tests(
+def _path_tokens(path: Path) -> set[str]:
+    tokens: set[str] = set()
+    for part in path.with_suffix("").parts:
+        normalized = part.replace("-", "_").lower()
+        tokens.update(token for token in normalized.split("_") if len(token) >= 3)
+    return tokens
+
+
+def _normalize_changed_paths(root: Path, paths: list[str] | None) -> list[str]:
+    if not paths:
+        return []
+
+    normalized: list[str] = []
+    for raw_path in paths:
+        candidate = Path(raw_path)
+        if candidate.is_absolute():
+            try:
+                relative = candidate.relative_to(root)
+            except ValueError:
+                relative = candidate
+        else:
+            relative = candidate
+        normalized.append(str(relative))
+    return sorted(dict.fromkeys(normalized))
+
+
+def _build_test_entry(
+    *,
+    path: Path,
+    module: str,
+    content: str,
+    test_type: str,
+    model: str | None,
+    field_name: str | None,
+    changed_paths: list[str] | None,
+) -> AddonTestFile:
+    lower_content = content.lower()
+    lower_path = str(path).lower()
+    references_model = bool(model and model in content)
+    references_field = bool(field_name and field_name in content)
+    ranking_signals: list[str] = []
+    related_paths: list[str] = []
+    confidence = 0.22
+
+    if "tests" in path.parts:
+        confidence += 0.22
+        ranking_signals.append("lives in the addon test tree")
+    if path.name.startswith("test_"):
+        confidence += 0.05
+        ranking_signals.append("uses standard test naming")
+    if module.lower() in lower_path:
+        confidence += 0.04
+        ranking_signals.append("path includes the addon name")
+    if references_model:
+        confidence += 0.25
+        ranking_signals.append(f"references model `{model}`")
+    if references_field:
+        confidence += 0.15
+        ranking_signals.append(f"references field `{field_name}`")
+    if model:
+        model_hint = model.replace(".", "_").lower()
+        if model_hint in path.stem.lower():
+            confidence += 0.08
+            ranking_signals.append("filename resembles the target model")
+    if field_name and field_name.lower() in lower_path:
+        confidence += 0.08
+        ranking_signals.append("filename resembles the target field")
+
+    for changed_path in changed_paths or []:
+        changed = Path(changed_path)
+        top_level = changed.parts[0] if changed.parts else ""
+        if top_level == "models" and test_type == "python":
+            confidence += 0.08
+            ranking_signals.append("python tests are preferred for model changes")
+            related_paths.append(changed_path)
+        if top_level in {"views", "static"} and test_type in {"xml", "tour", "js"}:
+            confidence += 0.08
+            ranking_signals.append("UI-oriented tests are preferred for view changes")
+            related_paths.append(changed_path)
+
+        matched_tokens = sorted(
+            token
+            for token in _path_tokens(changed)
+            if token in lower_content or token in lower_path
+        )
+        if matched_tokens:
+            confidence += min(len(matched_tokens) * 0.04, 0.16)
+            ranking_signals.append(
+                "mentions changed path tokens: " + ", ".join(matched_tokens[:4])
+            )
+            related_paths.append(changed_path)
+
+    return AddonTestFile(
+        path=str(path),
+        test_type=test_type,
+        references_model=references_model,
+        references_field=references_field,
+        confidence=round(min(confidence, 0.99), 2),
+        ranking_signals=sorted(dict.fromkeys(ranking_signals)),
+        related_paths=sorted(dict.fromkeys(related_paths)),
+    )
+
+
+def _collect_addon_tests(
     addon_root: str,
     module: str,
     model: str | None = None,
     field_name: str | None = None,
-) -> AddonTestInventory:
+    changed_paths: list[str] | None = None,
+) -> tuple[list[AddonTestFile], list[str]]:
     root = Path(addon_root)
     tests: list[AddonTestFile] = []
     warnings: list[str] = []
+    normalized_paths = _normalize_changed_paths(root, changed_paths)
     patterns = [
         "tests/**/*.py",
         "tests/**/*.yml",
@@ -584,26 +732,34 @@ def list_addon_tests(
                 warnings.append(f"Failed to read {path_str}: {exc}")
                 content = ""
 
-            references_model = bool(model and model in content)
-            references_field = bool(field_name and field_name in content)
-            confidence = 0.3
-            if "tests" in path.parts:
-                confidence += 0.3
-            if references_model:
-                confidence += 0.25
-            if references_field:
-                confidence += 0.15
             tests.append(
-                AddonTestFile(
-                    path=path_str,
+                _build_test_entry(
+                    path=path,
+                    module=module,
+                    content=content,
                     test_type=test_type,
-                    references_model=references_model,
-                    references_field=references_field,
-                    confidence=round(min(confidence, 0.99), 2),
+                    model=model,
+                    field_name=field_name,
+                    changed_paths=normalized_paths,
                 )
             )
 
     tests.sort(key=lambda item: (-item.confidence, item.path))
+    return tests, warnings
+
+
+def list_addon_tests(
+    addon_root: str,
+    module: str,
+    model: str | None = None,
+    field_name: str | None = None,
+) -> AddonTestInventory:
+    tests, warnings = _collect_addon_tests(
+        addon_root,
+        module,
+        model=model,
+        field_name=field_name,
+    )
     remediation = (
         []
         if tests
@@ -620,6 +776,55 @@ def list_addon_tests(
         model=model,
         field=field_name,
         tests=tests,
+        warnings=warnings,
+        remediation=remediation,
+    )
+
+
+def recommend_tests(
+    addon_root: str,
+    module: str,
+    paths: list[str],
+) -> RecommendedTestPlan:
+    normalized_paths = _normalize_changed_paths(Path(addon_root), paths)
+    tests, warnings = _collect_addon_tests(
+        addon_root,
+        module,
+        changed_paths=normalized_paths,
+    )
+    high_impact_dirs = {"models", "views", "security", "data"}
+    full_addon_suite_recommended = not tests or any(
+        Path(path).parts and Path(path).parts[0] in high_impact_dirs
+        for path in normalized_paths
+    )
+    rationale = []
+    if normalized_paths:
+        rationale.append(
+            "Changed paths were matched against test filenames and content."
+        )
+    if full_addon_suite_recommended:
+        rationale.append(
+            "A full addon suite is recommended because the changed paths affect "
+            "high-impact addon areas or no explicit tests were found."
+        )
+    remediation = (
+        []
+        if tests
+        else [
+            (
+                f"No explicit tests were matched for `{module}`; run the addon suite "
+                "and inspect nearby test directories manually."
+            ),
+        ]
+    )
+    return RecommendedTestPlan(
+        module=module,
+        addon_root=addon_root,
+        paths=normalized_paths,
+        tests=tests,
+        suggested_test_tags=[f"/{module}"],
+        full_addon_suite_recommended=full_addon_suite_recommended,
+        rationale=list(dict.fromkeys(rationale)),
         warnings=warnings,
         remediation=remediation,
     )

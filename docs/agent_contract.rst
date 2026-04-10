@@ -20,8 +20,9 @@ Default to the read-only inspection and planning commands:
 * ``context``
 * ``inspect-addon`` and ``inspect-addons``
 * ``plan-update``
+* ``prepare-addon-change``
 * ``locate-model`` and ``locate-field``
-* ``list-addon-tests`` and ``list-addon-models``
+* ``list-addon-tests``, ``recommend-tests``, and ``list-addon-models``
 * ``find-model-extensions`` and ``get-model-views``
 * ``doctor``, ``list-addons``, ``dependency-graph``, ``resolve-config``, and
   ``list-duplicates``
@@ -66,6 +67,18 @@ this loop:
    .. code-block:: bash
 
       oduit --env dev agent plan-update my_partner
+
+   Or bundle the common read-only planning context into one payload:
+
+   .. code-block:: bash
+
+      oduit --env dev agent prepare-addon-change my_partner --model res.partner --field email3 --types form,tree
+
+   After editing specific files, map them back to focused tests:
+
+   .. code-block:: bash
+
+      oduit --env dev agent recommend-tests --module my_partner --paths models/res_partner.py,views/res_partner_views.xml
 
 4. Apply the mutation explicitly.
 
@@ -134,6 +147,8 @@ When available, commands also include:
 * ``operation``
 * ``error``
 * ``error_type``
+* ``error_code``
+* ``generated_at``
 * command-specific fields such as ``module``, ``count``, or ``candidates``
 
 ``data`` is the canonical command payload container.
@@ -150,6 +165,18 @@ Compatibility Policy
 * breaking changes require a schema-version bump
 * new consumers should prefer reading ``data`` first
 * existing consumers may continue using flattened top-level fields in ``2.x``
+
+Stability Tiers
+---------------
+
+* **stable:** ``schema_version``, ``type``, ``operation``, ``success``,
+  ``read_only``, ``safety_level``, ``warnings``, ``errors``, ``remediation``,
+  ``error``, ``error_type``, ``error_code``, ``data``, ``meta``
+* **soft-stable:** additive flattened command-specific fields and optional
+  metadata such as ``generated_at``, ``duration``, ``config_source``,
+  ``database``, and ``resolved_addons_path``
+* **experimental:** newly introduced command-specific fields not yet called out
+  in the public docs
 
 Safety Levels
 -------------
@@ -178,6 +205,8 @@ Published JSON Schema artifacts live under ``schemas/``:
 * ``schemas/agent/model-extension-inventory.schema.json``
 * ``schemas/agent/model-view-inventory.schema.json``
 * ``schemas/agent/addon-change-validation.schema.json``
+* ``schemas/agent/addon-change-context.schema.json``
+* ``schemas/agent/recommended-test-plan.schema.json``
 
 Failure Handling
 ----------------
@@ -187,6 +216,7 @@ Failure Handling
   command exits non-zero.
 * Prefer ``error`` for the human-readable summary.
 * Prefer ``error_type`` for the stable failure category.
+* Prefer ``error_code`` for the stable machine-branching key.
 * Prefer ``errors`` for structured details.
 * Prefer ``remediation`` for next actions the caller can take.
 * ``ConfirmationRequired`` means a controlled runtime or source mutation was
@@ -197,6 +227,14 @@ Failure Handling
   active ``addons_path``.
 * ``ValidationError`` means an input format such as ``--domain-json`` or a
   repeated filter option could not be parsed safely.
+
+Example failure codes:
+
+* ``config.addons_path_missing``
+* ``module.not_found``
+* ``mutation.confirmation_required``
+* ``runtime.test_failure``
+* ``runtime.install_dependency_error``
 
 When ``success = false``, do not guess about the next step. Inspect the
 structured payload, follow ``remediation``, reconcile state if needed, and then

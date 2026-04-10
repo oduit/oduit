@@ -101,6 +101,7 @@ COMMON_ENVELOPE_KEYS = {
     "remediation",
     "error",
     "error_type",
+    "error_code",
     "data",
     "meta",
 }
@@ -155,6 +156,7 @@ class ResultMeta:
     def to_dict(self, include_null_values: bool = False) -> dict[str, Any]:
         payload = {
             "timestamp": self.timestamp,
+            "generated_at": self.timestamp,
             "duration": self.duration,
         }
         if not include_null_values:
@@ -176,6 +178,7 @@ class ResultEnvelope:
     remediation: list[str] = field(default_factory=list)
     error: str | None = None
     error_type: str | None = None
+    error_code: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
     meta: ResultMeta = field(default_factory=ResultMeta)
     schema_version: str = JSON_SCHEMA_VERSION
@@ -197,6 +200,7 @@ class ResultEnvelope:
             "remediation": self.remediation,
             "error": self.error,
             "error_type": self.error_type,
+            "error_code": self.error_code,
             "data": self.data,
             "meta": self.meta.to_dict(include_null_values=include_null_values),
         }
@@ -210,6 +214,7 @@ class ResultEnvelope:
         duration = payload["meta"].get("duration")
         if timestamp is not None:
             payload["timestamp"] = timestamp
+            payload["generated_at"] = timestamp
         if duration is not None:
             payload["duration"] = duration
 

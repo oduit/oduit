@@ -131,6 +131,9 @@ def test_agent_contract_page_covers_required_topics() -> None:
         "Mutation Policy",
         "Payload Expectations",
         "Failure Handling",
+        "Stability Tiers",
+        "error_code",
+        "generated_at",
         '"schema_version": "2.0"',
         "controlled_runtime_mutation",
         "controlled_source_mutation",
@@ -150,6 +153,52 @@ def test_agent_contract_page_covers_required_topics() -> None:
     )
 
 
+def test_installation_docs_match_packaging_metadata() -> None:
+    content = (ROOT / "docs" / "installation.rst").read_text()
+    assert "Python 3.10 or higher" in content
+    assert 'pip install -e ".[dev]"' not in content
+    assert "typing-extensions" not in content
+    for marker in ("PyYAML", "tomli", "tomli-w", "typer", "manifestoo-core"):
+        assert marker in content
+
+
+def test_cli_api_docs_mark_canonical_and_compatibility_modules() -> None:
+    cli_app_content = (ROOT / "docs" / "api" / "cli_app.rst").read_text()
+    cli_typer_content = (ROOT / "docs" / "api" / "cli_typer.rst").read_text()
+    api_index_content = (ROOT / "docs" / "api.rst").read_text()
+
+    assert "canonical Typer composition root" in cli_app_content
+    assert "compatibility facade" in cli_typer_content
+    assert "canonical CLI composition root" in api_index_content
+
+
+def test_readme_and_quickstart_show_agent_verification_loop() -> None:
+    targets = [
+        ROOT / "README.md",
+        ROOT / "docs" / "quickstart.rst",
+    ]
+    required_markers = [
+        "oduit --env dev agent context",
+        (
+            "oduit --env dev agent get-model-fields res.partner --attributes "
+            "string,type,required"
+        ),
+        "oduit --env dev agent locate-model res.partner --module my_partner",
+        "oduit --env dev agent validate-addon-change my_partner --allow-mutation",
+        (
+            "oduit --env dev agent test-summary --allow-mutation --module "
+            "my_partner --test-tags /my_partner"
+        ),
+    ]
+
+    for path in targets:
+        content = path.read_text()
+        missing = [marker for marker in required_markers if marker not in content]
+        assert not missing, f"{path.relative_to(ROOT)} missing markers:\n" + "\n".join(
+            missing
+        )
+
+
 def test_public_api_inventory_lists_all_agent_commands() -> None:
     content = (ROOT / "docs" / "maintainer" / "public_api.md").read_text().splitlines()
     section_header = "## `oduit agent` subcommands in `oduit.cli.app`"
@@ -166,3 +215,16 @@ def test_public_api_inventory_lists_all_agent_commands() -> None:
         command.name for command in agent_app.registered_commands if command.name
     }
     assert documented_commands == actual_commands
+
+
+def test_agent_contract_change_log_exists() -> None:
+    content = (ROOT / "docs" / "maintainer" / "agent_contract_changes.md").read_text()
+    required_markers = [
+        "Agent Contract Changes",
+        "2.x stability policy",
+        "error_code",
+        "generated_at",
+        "runtime.test_failure",
+    ]
+    missing = [marker for marker in required_markers if marker not in content]
+    assert not missing, "\n".join(missing)

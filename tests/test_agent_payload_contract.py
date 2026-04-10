@@ -95,6 +95,8 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "environment-context.schema.json",
         SCHEMAS / "agent" / "addon-inspection.schema.json",
         SCHEMAS / "agent" / "update-plan.schema.json",
+        SCHEMAS / "agent" / "addon-change-context.schema.json",
+        SCHEMAS / "agent" / "recommended-test-plan.schema.json",
         SCHEMAS / "agent" / "query-result.schema.json",
         SCHEMAS / "agent" / "model-source-location.schema.json",
         SCHEMAS / "agent" / "field-source-location.schema.json",
@@ -181,6 +183,25 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
             },
         ),
         patch(
+            "oduit.cli.app.OdooOperations.get_model_fields",
+            return_value=MagicMock(
+                success=True,
+                error=None,
+                error_type=None,
+                to_dict=lambda: {
+                    "success": True,
+                    "operation": "get_model_fields",
+                    "model": "res.partner",
+                    "attributes": ["string", "type", "required"],
+                    "field_names": ["email3", "name"],
+                    "field_definitions": {
+                        "email3": {"type": "char", "required": False},
+                        "name": {"type": "char", "required": True},
+                    },
+                },
+            ),
+        ),
+        patch(
             "oduit.cli.app.OdooOperations.get_model_views",
             return_value=ModelViewInventory(
                 model="res.partner",
@@ -213,6 +234,39 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                 runner.invoke(
                     app,
                     ["--env", "dev", "agent", "plan-update", "my_partner"],
+                ).output
+            ),
+            "addon-change-context.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "prepare-addon-change",
+                        "my_partner",
+                        "--model",
+                        "res.partner",
+                        "--field",
+                        "email3",
+                        "--types",
+                        "form",
+                    ],
+                ).output
+            ),
+            "recommended-test-plan.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "recommend-tests",
+                        "--module",
+                        "my_partner",
+                        "--paths",
+                        "models/res_partner.py,tests/test_partner.py",
+                    ],
                 ).output
             ),
             "model-source-location.schema.json": json.loads(

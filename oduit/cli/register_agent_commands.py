@@ -49,9 +49,11 @@ def register_agent_commands(  # noqa: C901
     context_command_impl: Any,
     inspect_addon_command_impl: Any,
     plan_update_command_impl: Any,
+    prepare_addon_change_command_impl: Any,
     locate_model_command_impl: Any,
     locate_field_command_impl: Any,
     list_addon_tests_command_impl: Any,
+    recommend_tests_command_impl: Any,
     list_addon_models_command_impl: Any,
     find_model_extensions_command_impl: Any,
     get_model_views_command_impl: Any,
@@ -123,6 +125,56 @@ def register_agent_commands(  # noqa: C901
             safe_read_only=safe_read_only,
         )
 
+    @agent_app.command("prepare-addon-change")
+    def agent_prepare_addon_change(
+        ctx: typer.Context,
+        module: str = typer.Argument(help="Addon to prepare a change for"),
+        model: str | None = typer.Option(None, "--model", help="Optional model hint"),
+        field_name: str | None = typer.Option(
+            None,
+            "--field",
+            help="Optional field hint",
+        ),
+        attributes: str | None = typer.Option(
+            "string,type,required",
+            "--attributes",
+            help="Comma-separated field metadata attributes for runtime inspection",
+        ),
+        types: str | None = typer.Option(
+            None,
+            "--types",
+            help="Comma-separated view types, e.g. form,tree,kanban,search",
+        ),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Query timeout in seconds"
+        ),
+    ) -> None:
+        """Bundle the common read-only planning steps for one addon change."""
+        prepare_addon_change_command_impl(
+            ctx,
+            module=module,
+            model=model,
+            field_name=field_name,
+            attributes=attributes,
+            types=types,
+            database=database,
+            timeout=timeout,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            parse_csv_items_fn=parse_csv_items_fn,
+            parse_view_types_fn=parse_view_types_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_sub_result_fn=agent_sub_result_fn,
+            odoo_operations_cls=get_odoo_operations_cls(),
+            module_not_found_error_cls=module_not_found_error_cls,
+            config_error_cls=config_error_cls,
+            safe_read_only=safe_read_only,
+        )
+
     @agent_app.command("locate-model")
     def agent_locate_model(
         ctx: typer.Context,
@@ -181,6 +233,30 @@ def register_agent_commands(  # noqa: C901
             model=model,
             field_name=field_name,
             resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            module_not_found_error_cls=module_not_found_error_cls,
+            config_error_cls=config_error_cls,
+        )
+
+    @agent_app.command("recommend-tests")
+    def agent_recommend_tests(
+        ctx: typer.Context,
+        module: str = typer.Option(..., "--module", help="Addon to inspect"),
+        paths: str = typer.Option(
+            ...,
+            "--paths",
+            help="Comma-separated changed paths relative to the addon root",
+        ),
+    ) -> None:
+        """Map changed addon files to recommended tests and test tags."""
+        recommend_tests_command_impl(
+            ctx,
+            module=module,
+            paths=paths,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            parse_csv_items_fn=parse_csv_items_fn,
             agent_fail_fn=agent_fail_fn,
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,

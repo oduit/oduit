@@ -24,6 +24,9 @@ Core Modules
 Command Line Interface
 ----------------------
 
+``oduit.cli.app`` is the canonical CLI composition root. ``oduit.cli_typer`` is
+documented below only as a compatibility facade for older imports.
+
 .. toctree::
    :maxdepth: 2
 

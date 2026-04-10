@@ -69,6 +69,7 @@ from .source_locator import (
     list_model_extensions,
     locate_field_sources,
     locate_model_sources,
+    recommend_tests,
 )
 from .utils import validate_addon_name
 
@@ -1759,6 +1760,20 @@ class OdooOperations:
                 f"Module '{module_name}' was not found in addons_path"
             )
         return list_addon_models(addon_root, module_name)
+
+    def recommend_tests(
+        self,
+        module_name: str,
+        paths: list[str],
+    ) -> dict[str, Any]:
+        """Return changed-file to test recommendations for one addon."""
+        module_manager = self._get_module_manager()
+        addon_root = module_manager.find_module_path(module_name)
+        if addon_root is None:
+            raise ModuleNotFoundError(
+                f"Module '{module_name}' was not found in addons_path"
+            )
+        return recommend_tests(addon_root, module_name, paths).to_dict()
 
     def find_model_extensions(
         self,

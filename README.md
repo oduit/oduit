@@ -86,6 +86,7 @@ oduit --env dev impact-of-update sale
 oduit --env dev agent context
 oduit --env dev agent inspect-addon sale
 oduit --env dev agent plan-update sale
+oduit --env dev agent get-model-fields res.partner --attributes string,type,required
 oduit --env dev agent list-addon-models my_partner
 oduit --env dev agent find-model-extensions res.partner --summary
 oduit --env dev agent get-model-views res.partner --types form,tree --summary
@@ -94,6 +95,8 @@ oduit --env dev agent locate-field res.partner email3 --module my_partner
 oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
 oduit --env dev agent resolve-config
 oduit --env dev agent query-model res.partner --fields name,email --limit 5
+oduit --env dev agent validate-addon-change my_partner --allow-mutation --update --discover-tests
+oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
 
 # Operations
 oduit --env dev install sale
@@ -122,6 +125,19 @@ Agent commands always emit JSON and do not require the global `--json` flag.
 Structured payloads include an explicit `schema_version`, currently `2.0`.
 For one-shot verification after an addon change, prefer
 `oduit --env <env> agent validate-addon-change <module> --allow-mutation`.
+
+Recommended command sequence for an addon field change:
+
+```bash
+oduit --env dev agent context
+oduit --env dev agent inspect-addon my_partner
+oduit --env dev agent get-model-fields res.partner --attributes string,type,required
+oduit --env dev agent locate-model res.partner --module my_partner
+oduit --env dev agent locate-field res.partner email3 --module my_partner
+oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
+oduit --env dev agent validate-addon-change my_partner --allow-mutation --install-if-needed --update --discover-tests
+oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
+```
 
 ## Python API
 

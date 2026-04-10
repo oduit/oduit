@@ -56,6 +56,9 @@ from .agent.payloads import redact_config as _redact_config_impl
 from .agent.payloads import (
     strip_arch_from_model_views as _strip_arch_from_model_views_impl,
 )
+from .agent.planning import (
+    agent_prepare_addon_change_command as _agent_prepare_addon_change_command,
+)
 from .agent.query import (
     agent_get_model_fields_command as _agent_get_model_fields_command,
 )
@@ -92,6 +95,9 @@ from .agent.read_only import (
 from .agent.read_only import agent_locate_field_command as _agent_locate_field_command
 from .agent.read_only import agent_locate_model_command as _agent_locate_model_command
 from .agent.read_only import agent_plan_update_command as _agent_plan_update_command
+from .agent.read_only import (
+    agent_recommend_tests_command as _agent_recommend_tests_command,
+)
 from .agent.read_only import (
     agent_resolve_config_command as _agent_resolve_config_command,
 )
@@ -493,9 +499,11 @@ register_agent_commands(
     context_command_impl=_agent_context_command,
     inspect_addon_command_impl=_agent_inspect_addon_command,
     plan_update_command_impl=_agent_plan_update_command,
+    prepare_addon_change_command_impl=_agent_prepare_addon_change_command,
     locate_model_command_impl=_agent_locate_model_command,
     locate_field_command_impl=_agent_locate_field_command,
     list_addon_tests_command_impl=_agent_list_addon_tests_command,
+    recommend_tests_command_impl=_agent_recommend_tests_command,
     list_addon_models_command_impl=_agent_list_addon_models_command,
     find_model_extensions_command_impl=_agent_find_model_extensions_command,
     get_model_views_command_impl=_agent_get_model_views_command,

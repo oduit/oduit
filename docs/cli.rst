@@ -22,34 +22,20 @@ After installation, the ``oduit`` command will be available in your terminal.
 Configuration
 -------------
 
-The CLI can use either:
+The CLI prefers sectioned TOML configuration:
 
-1. **Environment configuration** from ``~/.config/oduit/<env>.yaml`` or ``~/.config/oduit/<env>.toml``
+1. **Environment configuration** from ``~/.config/oduit/<env>.toml``
 2. **Local project configuration** from ``.oduit.toml`` in the current directory
+
+Compatibility support for ``~/.config/oduit/<env>.yaml`` still exists, but new
+configs and new docs examples should use TOML.
 
 Environment Configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Create a configuration file for your environment:
+Create a configuration file for your environment.
 
-**YAML format** (``~/.config/oduit/dev.yaml``):
-
-.. code-block:: yaml
-
-   binaries:
-     python_bin: "/usr/bin/python3"
-     odoo_bin: "/opt/odoo/odoo-bin"
-     coverage_bin: "/usr/bin/coverage"
-
-   odoo_params:
-     db_name: "mydb"
-     addons_path: "/opt/odoo/addons"
-     config_file: "/etc/odoo/odoo.conf"
-     http_port: 8069
-     workers: 4
-     dev: true
-
-**TOML format** (``~/.config/oduit/dev.toml``):
+**Preferred TOML format** (``~/.config/oduit/dev.toml``):
 
 .. code-block:: toml
 
@@ -65,6 +51,23 @@ Create a configuration file for your environment:
    http_port = 8069
    workers = 4
    dev = true
+
+**Compatibility YAML format** (``~/.config/oduit/dev.yaml``):
+
+.. code-block:: yaml
+
+   binaries:
+     python_bin: "/usr/bin/python3"
+     odoo_bin: "/opt/odoo/odoo-bin"
+     coverage_bin: "/usr/bin/coverage"
+
+   odoo_params:
+     db_name: "mydb"
+     addons_path: "/opt/odoo/addons"
+     config_file: "/etc/odoo/odoo.conf"
+     http_port: 8069
+     workers: 4
+     dev: true
 
 Local Project Configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -894,6 +897,21 @@ Build a read-only update plan with impact and risk metadata.
 
    oduit --env dev agent plan-update sale
 
+prepare-addon-change
+^^^^^^^^^^^^^^^^^^^^
+
+Bundle the common read-only planning steps for one addon change into a single
+structured payload.
+
+.. code-block:: bash
+
+   oduit --env dev agent prepare-addon-change my_partner --model res.partner --field email3
+   oduit --env dev agent prepare-addon-change my_partner --model res.partner --field email3 --types form,tree
+
+This command aggregates environment context, addon inspection, update planning,
+source-location hints, addon model inventory, addon test inventory, and
+best-effort runtime metadata queries for the requested model.
+
 list-addon-models
 ^^^^^^^^^^^^^^^^^
 
@@ -951,6 +969,15 @@ references.
 .. code-block:: bash
 
    oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
+
+recommend-tests
+^^^^^^^^^^^^^^^
+
+Map changed addon files to recommended tests and suggested ``--test-tags``.
+
+.. code-block:: bash
+
+   oduit --env dev agent recommend-tests --module my_partner --paths models/res_partner.py,views/res_partner_views.xml
 
 doctor
 ^^^^^^

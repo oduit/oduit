@@ -163,3 +163,75 @@ def test_agent_workflow_for_partner_field_change(tmp_path: Path) -> None:
     assert plan_payload["module"] == "my_partner"
     assert tests_payload["success"] is True
     assert tests_payload["selected_modules"] == ["my_partner"]
+
+
+def test_prepare_addon_change_matches_partner_field_planning_flow(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = _make_addon(addons_dir, "my_partner")
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "res_partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    name2 = fields.Char()\n"
+    )
+    (addon_dir / "tests").mkdir()
+    (addon_dir / "tests" / "test_partner.py").write_text(
+        "MODEL = 'res.partner'\nFIELD = 'email3'\n"
+    )
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.app.OdooOperations.get_model_fields",
+            return_value=MagicMock(
+                success=True,
+                error=None,
+                error_type=None,
+                to_dict=lambda: {
+                    "success": True,
+                    "operation": "get_model_fields",
+                    "model": "res.partner",
+                    "field_names": ["name", "email"],
+                    "field_definitions": {"name": {"type": "char"}},
+                },
+            ),
+        ),
+    ):
+        payload = json.loads(
+            runner.invoke(
+                app,
+                [
+                    "--env",
+                    "dev",
+                    "agent",
+                    "prepare-addon-change",
+                    "my_partner",
+                    "--model",
+                    "res.partner",
+                    "--field",
+                    "email3",
+                ],
+            ).output
+        )
+
+    assert payload["success"] is True
+    assert payload["steps"]["locate_model"]["data"]["candidates"][0]["path"].endswith(
+        "models/res_partner.py"
+    )
+    assert payload["steps"]["locate_field"]["data"]["insertion_candidate"][
+        "path"
+    ].endswith("models/res_partner.py")
+    assert payload["steps"]["list_addon_tests"]["data"]["tests"][0]["path"].endswith(
+        "tests/test_partner.py"
+    )
+    assert payload["recommended_next_steps"][-2].startswith(
+        "Run `oduit --env dev agent validate-addon-change my_partner"
+    )

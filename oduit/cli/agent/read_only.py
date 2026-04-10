@@ -238,12 +238,56 @@ def agent_locate_field_command(
             ],
         )
 
+    warnings = list(location.warnings)
+    remediation = list(location.remediation)
+    runtime_exists: bool | None = None
+    runtime_source_modules: list[str] = []
+    runtime_result = ops.get_model_fields(
+        model,
+        attributes=["modules"],
+        database=None,
+        timeout=30.0,
+    )
+    if runtime_result.success:
+        runtime_exists = field_name in runtime_result.field_names
+        runtime_modules = runtime_result.field_definitions.get(field_name, {}).get(
+            "modules"
+        )
+        if isinstance(runtime_modules, str) and runtime_modules.strip():
+            runtime_source_modules = sorted(
+                {item.strip() for item in runtime_modules.split(",") if item.strip()}
+            )
+    else:
+        warnings.append(
+            "Runtime field metadata was unavailable; static source guidance is "
+            "still provided."
+        )
+        remediation.append(
+            "Verify database access if you need to know whether the field already "
+            "exists at runtime."
+        )
+
+    payload_data = {
+        **location.to_dict(),
+        "source_exists": location.exists,
+        "runtime_exists": runtime_exists,
+        "runtime_only": bool(runtime_exists and not location.exists),
+        "runtime_source_modules": runtime_source_modules,
+        "insertion_file": (
+            location.insertion_candidate.path if location.insertion_candidate else None
+        ),
+        "insertion_class": (
+            location.insertion_candidate.class_name
+            if location.insertion_candidate
+            else None
+        ),
+    }
     payload = agent_payload_fn(
         operation,
         result_type,
-        location.to_dict(),
-        warnings=list(location.warnings),
-        remediation=list(location.remediation),
+        payload_data,
+        warnings=list(dict.fromkeys(warnings)),
+        remediation=list(dict.fromkeys(remediation)),
     )
     agent_emit_payload_fn(payload)
 
@@ -296,6 +340,71 @@ def agent_list_addon_tests_command(
         inventory.to_dict(),
         warnings=list(inventory.warnings),
         remediation=list(inventory.remediation),
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_recommend_tests_command(
+    ctx: typer.Context,
+    *,
+    module: str,
+    paths: str,
+    resolve_agent_ops_fn: Any,
+    parse_csv_items_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    module_not_found_error_cls: Any,
+    config_error_cls: Any,
+) -> None:
+    """Map changed addon files to recommended tests and test tags."""
+    operation = "recommend_tests"
+    result_type = "recommended_test_plan"
+    changed_paths = parse_csv_items_fn(paths) or []
+    if not changed_paths:
+        agent_fail_fn(
+            operation,
+            result_type,
+            "At least one changed path is required",
+            error_type="ValidationError",
+            remediation=[
+                "Pass `--paths` as a comma-separated list such as "
+                "`models/res_partner.py,views/res_partner_views.xml`.",
+            ],
+        )
+
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    try:
+        plan = ops.recommend_tests(module, changed_paths)
+    except module_not_found_error_cls as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ModuleNotFoundError",
+            details={"module": module},
+            remediation=[
+                "Verify that the addon exists in the configured addons paths.",
+            ],
+        )
+    except config_error_cls as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ConfigError",
+            details={"module": module},
+            remediation=[
+                "Set `addons_path` in the selected environment before retrying.",
+            ],
+        )
+
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        plan,
+        warnings=list(plan.get("warnings", [])),
+        remediation=list(plan.get("remediation", [])),
     )
     agent_emit_payload_fn(payload)
 

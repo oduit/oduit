@@ -115,7 +115,24 @@ def test_agent_locate_field_reports_existing_field_and_insertion_candidate(
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.app.OdooOperations.get_model_fields",
+            side_effect=[
+                MagicMock(
+                    success=True,
+                    field_names=["email3"],
+                    field_definitions={"email3": {"modules": "my_partner"}},
+                ),
+                MagicMock(
+                    success=True,
+                    field_names=[],
+                    field_definitions={},
+                ),
+            ],
+        ),
+    ):
         existing = runner.invoke(
             app,
             [
@@ -147,12 +164,17 @@ def test_agent_locate_field_reports_existing_field_and_insertion_candidate(
     missing_payload = json.loads(missing.output)
     assert existing.exit_code == 0
     assert existing_payload["exists"] is True
+    assert existing_payload["source_exists"] is True
     assert existing_payload["candidates"][0]["field_name"] == "email3"
+    assert existing_payload["candidates"][0]["reason"]
     assert missing.exit_code == 0
     assert missing_payload["exists"] is False
     assert missing_payload["insertion_candidate"]["path"].endswith(
         "models/res_partner.py"
     )
+    assert missing_payload["insertion_line_range"]
+    assert missing_payload["insertion_reason"]
+    assert missing_payload["runtime_exists"] is False
 
 
 def test_agent_list_addon_tests_ranks_references_and_handles_invalid_python(
@@ -214,8 +236,67 @@ def test_agent_list_addon_tests_ranks_references_and_handles_invalid_python(
     assert tests_payload["tests"][0]["path"].endswith("tests/test_partner.py")
     assert tests_payload["tests"][0]["references_model"] is True
     assert tests_payload["tests"][0]["references_field"] is True
+    assert tests_payload["tests"][0]["ranking_signals"]
     assert locate_result.exit_code == 0
     assert locate_payload["warnings"]
+
+
+def test_agent_recommend_tests_maps_changed_files_to_ranked_tests(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = _make_addon(addons_dir, "my_partner")
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "res_partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    email3 = fields.Char()\n"
+    )
+    (addon_dir / "views").mkdir()
+    (addon_dir / "views" / "res_partner_views.xml").write_text(
+        "<odoo><record model='ir.ui.view' id='res_partner_view'/></odoo>"
+    )
+    (addon_dir / "tests").mkdir()
+    (addon_dir / "tests" / "test_partner.py").write_text(
+        "MODEL = 'res.partner'\nPATH = 'models/res_partner.py'\n"
+    )
+    (addon_dir / "tests" / "test_views.js").write_text(
+        "const viewPath = 'views/res_partner_views.xml';\n"
+    )
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "recommend-tests",
+                "--module",
+                "my_partner",
+                "--paths",
+                "models/res_partner.py,views/res_partner_views.xml",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "recommended_test_plan"
+    assert payload["module"] == "my_partner"
+    assert payload["paths"] == [
+        "models/res_partner.py",
+        "views/res_partner_views.xml",
+    ]
+    assert payload["tests"][0]["ranking_signals"]
+    assert payload["suggested_test_tags"] == ["/my_partner"]
+    assert payload["full_addon_suite_recommended"] is True
 
 
 def test_agent_list_addon_models_returns_static_inventory(tmp_path: Path) -> None:

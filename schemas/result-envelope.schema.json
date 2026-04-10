@@ -64,6 +64,9 @@
     "error_type": {
       "type": "string"
     },
+    "error_code": {
+      "type": "string"
+    },
     "data": {
       "type": "object"
     },
@@ -74,12 +77,18 @@
         "timestamp": {
           "type": "string"
         },
+        "generated_at": {
+          "type": "string"
+        },
         "duration": {
           "type": "number"
         }
       }
     },
     "timestamp": {
+      "type": "string"
+    },
+    "generated_at": {
       "type": "string"
     },
     "duration": {

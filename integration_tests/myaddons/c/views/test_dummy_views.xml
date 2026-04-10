@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="view_test_dummy_form" model="ir.ui.view">
+        <field name="name">test.dummy.form</field>
+        <field name="model">test.dummy</field>
+        <field name="arch" type="xml">
+            <form string="Dummy">
+                <sheet>
+                    <group>
+                        <field name="name" />
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

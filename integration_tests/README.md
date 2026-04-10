@@ -27,9 +27,10 @@ This directory contains integration tests that run against a real Odoo instance.
 The `myaddons/` directory contains test modules:
 
 - **Module a**: Has dependencies on modules b and c
-- **Module b**: Has a dependency on `crm` and contains a failing test
-- **Module c**: Has a dependency on `mail`, simple module
+- **Module b**: Extends the fixture graph with a failing test suite for negative runtime cases
+- **Module c**: Declares the `test.dummy` model and a base form view
 - **Module d**: Has a missing dependency (`nonexistent_module_will_fail`) to test installation failure
+- **Module e**: Extends `test.dummy`, inherits the base view from module c, and provides a passing addon test suite
 
 ## Running Tests
 
@@ -59,6 +60,8 @@ pytest -m "not integration"
 4. **test_module_with_missing_dependency**: Tests handling of modules with unmet dependencies (module d)
 5. **test_module_test_failure**: Verifies oduit detects failing unit tests in module b
 6. **test_run_module_tests_success**: Tests successful test execution
+7. **test_agent_prepare_addon_change_and_validate_success**: Runs the real agent workflow against module e
+8. **test_agent_validate_addon_change_reports_dependency_failure**: Verifies structured agent failures for module d
 
 ## CI/CD
 

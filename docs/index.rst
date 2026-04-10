@@ -14,8 +14,9 @@ Highlights
 * addon intelligence commands such as ``list-addons``, ``list-depends``,
   ``install-order``, and ``impact-of-update``
 * ``oduit agent`` as the primary automation surface for coding agents,
-  including model and view inspection such as ``find-model-extensions`` and
-  ``get-model-views``
+  including discovery, location, and verification flows such as
+  ``get-model-fields``, ``locate-model``, ``validate-addon-change``, and
+  ``test-summary``
 * Python APIs for operations, addon analysis, typed planning models, and safe
   read-only queries
 

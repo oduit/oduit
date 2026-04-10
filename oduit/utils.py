@@ -17,6 +17,44 @@ from .schemas import (
 )
 
 
+def infer_error_code(error_type: str | None, error: str | None) -> str | None:
+    """Infer a stable machine-facing error code from the payload error fields."""
+    if not error_type and not error:
+        return None
+
+    normalized_error = (error or "").lower()
+    if error_type == "ConfigError":
+        if "addons_path" in normalized_error:
+            return "config.addons_path_missing"
+        if "environment" in normalized_error or "configuration" in normalized_error:
+            return "config.environment_missing"
+        return "config.invalid"
+    if error_type == "ModuleNotFoundError":
+        return "module.not_found"
+    if error_type == "DuplicateModuleError":
+        return "module.duplicate_name"
+    if error_type == "ConfirmationRequired":
+        return "mutation.confirmation_required"
+    if error_type == "ValidationError":
+        if "json" in normalized_error:
+            return "input.invalid_json"
+        return "input.invalid"
+    if error_type in {"QueryError", "ConnectionError"}:
+        return "runtime.query_failed"
+    if error_type == "TestFailure":
+        return "runtime.test_failure"
+    if error_type == "ModuleOperationError":
+        return "runtime.module_operation_failed"
+    if error_type == "CommandError":
+        if "json" in normalized_error:
+            return "input.invalid_json"
+        if "dependency" in normalized_error:
+            return "runtime.install_dependency_error"
+        if "failed test" in normalized_error or "test failure" in normalized_error:
+            return "runtime.test_failure"
+    return f"error.{(error_type or 'unknown').lower()}"
+
+
 def build_json_payload(
     payload_type: str,
     data: dict[str, Any] | None = None,
@@ -34,10 +72,15 @@ def build_json_payload(
     errors = list(payload_data.pop("errors", []))
     error = payload_data.get("error")
     error_type = payload_data.get("error_type")
+    error_code = payload_data.get("error_code") or infer_error_code(error_type, error)
     read_only = payload_data.get("read_only")
     safety_level = payload_data.get("safety_level")
     meta = ResultMeta(
-        timestamp=payload_data.get("timestamp") or datetime.now().isoformat(),
+        timestamp=(
+            payload_data.get("timestamp")
+            or payload_data.get("generated_at")
+            or datetime.now().isoformat()
+        ),
         duration=payload_data.get("duration"),
     )
 
@@ -48,7 +91,13 @@ def build_json_payload(
     }
 
     if error and not errors:
-        errors = [{"message": error, "error_type": error_type}]
+        errors = [
+            {
+                "message": error,
+                "error_type": error_type,
+                "error_code": error_code,
+            }
+        ]
 
     return ResultEnvelope(
         payload_type=payload_type,
@@ -65,6 +114,7 @@ def build_json_payload(
         remediation=remediation,
         error=error,
         error_type=error_type,
+        error_code=error_code,
         data=command_data,
         meta=meta,
     ).to_dict(include_null_values=include_null_values)

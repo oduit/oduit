@@ -144,6 +144,101 @@ def test_agent_plan_update_returns_risk_summary(tmp_path: Path) -> None:
     assert payload["recommended_sequence"]
 
 
+def test_prepare_addon_change_bundles_read_only_planning_steps(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "res_partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    name2 = fields.Char()\n"
+    )
+    (addon_dir / "tests").mkdir()
+    (addon_dir / "tests" / "test_partner.py").write_text(
+        "MODEL = 'res.partner'\nFIELD = 'email3'\n"
+    )
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.app.OdooOperations.get_model_fields",
+            return_value=MagicMock(
+                success=True,
+                error=None,
+                error_type=None,
+                to_dict=lambda: {
+                    "success": True,
+                    "operation": "get_model_fields",
+                    "model": "res.partner",
+                    "attributes": ["string", "type", "required"],
+                    "field_names": ["name", "email"],
+                    "field_definitions": {"name": {"type": "char"}},
+                },
+            ),
+        ),
+        patch(
+            "oduit.cli.app.OdooOperations.get_model_views",
+            return_value=ModelViewInventory(
+                model="res.partner",
+                requested_types=["form"],
+                primary_views=[
+                    ModelViewRecord(
+                        id=7,
+                        name="res.partner.form",
+                        view_type="form",
+                        mode="primary",
+                        priority=16,
+                    )
+                ],
+                view_counts={"total": 1, "primary": 1, "extension": 0, "form": 1},
+            ),
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "prepare-addon-change",
+                "my_partner",
+                "--model",
+                "res.partner",
+                "--field",
+                "email3",
+                "--types",
+                "form",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_change_context"
+    assert payload["operation"] == "prepare_addon_change"
+    assert payload["module"] == "my_partner"
+    assert payload["model"] == "res.partner"
+    assert payload["field"] == "email3"
+    assert payload["steps"]["context"]["success"] is True
+    assert payload["steps"]["inspect_addon"]["success"] is True
+    assert payload["steps"]["plan_update"]["success"] is True
+    assert payload["steps"]["locate_model"]["success"] is True
+    assert payload["steps"]["list_addon_tests"]["data"]["tests"][0]["path"].endswith(
+        "tests/test_partner.py"
+    )
+    assert payload["steps"]["get_model_fields"]["data"]["field_names"] == [
+        "name",
+        "email",
+    ]
+    assert payload["recommended_next_steps"]
+
+
 def test_agent_query_model_wraps_odoo_query(tmp_path: Path) -> None:
     runner = CliRunner()
     config = _agent_config(tmp_path, str(tmp_path / "addons"))
@@ -225,6 +320,7 @@ def test_agent_query_model_invalid_domain_json_is_structured(tmp_path: Path) -> 
     assert payload["type"] == "query_result"
     assert payload["success"] is False
     assert payload["error_type"] == "CommandError"
+    assert payload["error_code"] == "input.invalid_json"
     assert "must be valid JSON" in payload["error"]
 
 
@@ -510,6 +606,8 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
     assert payload["operation"] == "test_summary"
     assert payload["read_only"] is False
     assert payload["safety_level"] == "controlled_runtime_mutation"
+    assert payload["error_code"] == "runtime.test_failure"
+    assert payload["generated_at"] == payload["timestamp"]
     assert payload["selected_modules"] == ["x_sale"]
     assert payload["failed_tests"] == 1
     assert payload["error_tests"] == 1

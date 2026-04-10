@@ -84,18 +84,23 @@ Operations
    oduit --env dev test --test-tags /sale
    oduit --env dev shell
 
-Agent Inspection
-~~~~~~~~~~~~~~~~
+Agent Workflow
+~~~~~~~~~~~~~~
 
-For the full coding-agent workflow and JSON contract, see
+``oduit agent ...`` is the primary automation surface for external coding
+agents. For the full workflow and JSON contract, see
 :doc:`agent_contract`.
 
 .. code-block:: bash
 
-   oduit --env dev agent inspect-addon sale
-   oduit --env dev agent list-addon-models my_partner
-   oduit --env dev agent find-model-extensions res.partner --summary
-   oduit --env dev agent get-model-views res.partner --types form,tree --summary
+   oduit --env dev agent context
+   oduit --env dev agent inspect-addon my_partner
+   oduit --env dev agent get-model-fields res.partner --attributes string,type,required
+   oduit --env dev agent locate-model res.partner --module my_partner
+   oduit --env dev agent locate-field res.partner email3 --module my_partner
+   oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
+   oduit --env dev agent validate-addon-change my_partner --allow-mutation --install-if-needed --update --discover-tests
+   oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
 
 Python API
 ----------
