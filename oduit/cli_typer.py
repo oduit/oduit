@@ -9,8 +9,6 @@
 import functools
 import json
 import os
-import re
-from dataclasses import replace
 from typing import Any, NoReturn
 
 import typer
@@ -25,6 +23,142 @@ from .cli.addon_filters import (
     get_addon_field_value,
     get_addon_type,
     parse_filter_option,
+)
+from .cli.agent import validate as _agent_validate_impl
+from .cli.agent.mutate import (
+    agent_create_addon_command as _agent_create_addon_command,
+)
+from .cli.agent.mutate import (
+    agent_export_lang_command as _agent_export_lang_command,
+)
+from .cli.agent.mutate import (
+    agent_install_module_command as _agent_install_module_command,
+)
+from .cli.agent.mutate import (
+    agent_test_summary_command as _agent_test_summary_command,
+)
+from .cli.agent.mutate import (
+    agent_update_module_command as _agent_update_module_command,
+)
+from .cli.agent.payloads import (
+    agent_emit_payload as _agent_emit_payload_impl,
+)
+from .cli.agent.payloads import (
+    agent_fail as _agent_fail_impl,
+)
+from .cli.agent.payloads import (
+    agent_payload as _agent_payload_impl,
+)
+from .cli.agent.payloads import (
+    build_error_output_excerpt as _build_error_output_excerpt_impl,
+)
+from .cli.agent.payloads import (
+    parse_csv_items as _parse_csv_items_impl,
+)
+from .cli.agent.payloads import (
+    parse_json_list_option as _parse_json_list_option_impl,
+)
+from .cli.agent.payloads import (
+    parse_view_types as _parse_view_types_impl,
+)
+from .cli.agent.payloads import (
+    redact_config as _redact_config_impl,
+)
+from .cli.agent.payloads import (
+    redact_config_value as _redact_config_value_impl,
+)
+from .cli.agent.payloads import (
+    strip_arch_from_model_views as _strip_arch_from_model_views_impl,
+)
+from .cli.agent.query import (
+    agent_get_model_fields_command as _agent_get_model_fields_command,
+)
+from .cli.agent.query import (
+    agent_query_model_command as _agent_query_model_command,
+)
+from .cli.agent.query import (
+    agent_read_record_command as _agent_read_record_command,
+)
+from .cli.agent.query import (
+    agent_search_count_command as _agent_search_count_command,
+)
+from .cli.agent.read_only import (
+    agent_context_command as _agent_context_command,
+)
+from .cli.agent.read_only import (
+    agent_dependency_graph_command as _agent_dependency_graph_command,
+)
+from .cli.agent.read_only import (
+    agent_doctor_command as _agent_doctor_command,
+)
+from .cli.agent.read_only import (
+    agent_find_model_extensions_command as _agent_find_model_extensions_command,
+)
+from .cli.agent.read_only import (
+    agent_get_model_views_command as _agent_get_model_views_command,
+)
+from .cli.agent.read_only import (
+    agent_inspect_addon_command as _agent_inspect_addon_command,
+)
+from .cli.agent.read_only import (
+    agent_inspect_addons_command as _agent_inspect_addons_command,
+)
+from .cli.agent.read_only import (
+    agent_list_addon_models_command as _agent_list_addon_models_command,
+)
+from .cli.agent.read_only import (
+    agent_list_addon_tests_command as _agent_list_addon_tests_command,
+)
+from .cli.agent.read_only import (
+    agent_list_addons_command as _agent_list_addons_command,
+)
+from .cli.agent.read_only import (
+    agent_list_duplicates_command as _agent_list_duplicates_command,
+)
+from .cli.agent.read_only import (
+    agent_locate_field_command as _agent_locate_field_command,
+)
+from .cli.agent.read_only import (
+    agent_locate_model_command as _agent_locate_model_command,
+)
+from .cli.agent.read_only import (
+    agent_plan_update_command as _agent_plan_update_command,
+)
+from .cli.agent.read_only import (
+    agent_resolve_config_command as _agent_resolve_config_command,
+)
+from .cli.agent.services import (
+    agent_require_mutation as _agent_require_mutation_impl,
+)
+from .cli.agent.services import (
+    agent_sub_result as _agent_sub_result_impl,
+)
+from .cli.agent.services import (
+    build_addon_inspection_data as _build_addon_inspection_data_impl,
+)
+from .cli.agent.services import (
+    build_agent_test_summary_details as _build_agent_test_summary_details_impl,
+)
+from .cli.agent.services import (
+    build_environment_context_data as _build_environment_context_data_impl,
+)
+from .cli.agent.services import (
+    build_update_plan_data as _build_update_plan_data_impl,
+)
+from .cli.agent.services import (
+    get_agent_addon_type as _get_agent_addon_type_impl,
+)
+from .cli.agent.services import (
+    parse_filter_values as _parse_filter_values_impl,
+)
+from .cli.agent.services import (
+    require_agent_addons_path as _require_agent_addons_path_impl,
+)
+from .cli.agent.services import (
+    resolve_agent_global_config as _resolve_agent_global_config_impl,
+)
+from .cli.agent.services import (
+    resolve_agent_ops as _resolve_agent_ops_impl,
 )
 from .cli.app import agent_app, app
 from .cli.dependency_output import print_dependency_list, print_dependency_tree
@@ -358,7 +492,7 @@ def with_config(func: Any) -> Any:
 
 def _agent_emit_payload(payload: dict[str, Any]) -> None:
     """Print a structured agent payload."""
-    print(json.dumps(payload))
+    _agent_emit_payload_impl(payload)
 
 
 def _agent_fail(
@@ -372,23 +506,17 @@ def _agent_fail(
     safety_level: str = SAFE_READ_ONLY,
 ) -> NoReturn:
     """Emit a structured agent error payload and exit."""
-    payload = output_result_to_json(
-        {
-            "success": False,
-            "operation": operation,
-            "error": message,
-            "error_type": error_type,
-        },
-        additional_fields={
-            **(details or {}),
-            "remediation": remediation or [],
-            "read_only": read_only,
-            "safety_level": safety_level,
-        },
-        result_type=result_type,
+    _agent_fail_impl(
+        operation,
+        result_type,
+        message,
+        error_type=error_type,
+        details=details,
+        remediation=remediation,
+        read_only=read_only,
+        safety_level=safety_level,
+        emit_payload_fn=_agent_emit_payload,
     )
-    _agent_emit_payload(payload)
-    raise typer.Exit(1) from None
 
 
 def _agent_payload(
@@ -408,56 +536,30 @@ def _agent_payload(
     exclude_fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a structured agent payload using the shared JSON envelope."""
-    return output_result_to_json(
-        {
-            "success": success,
-            "operation": operation,
-            "error": error,
-            "error_type": error_type,
-            **data,
-        },
-        additional_fields={
-            "warnings": warnings or [],
-            "errors": errors or [],
-            "remediation": remediation or [],
-            "read_only": read_only,
-            "safety_level": safety_level,
-        },
-        exclude_fields=exclude_fields,
+    return _agent_payload_impl(
+        operation,
+        result_type,
+        data,
+        success=success,
+        warnings=warnings,
+        errors=errors,
+        remediation=remediation,
+        read_only=read_only,
+        safety_level=safety_level,
+        error=error,
+        error_type=error_type,
         include_null_values=include_null_values,
-        result_type=result_type,
+        exclude_fields=exclude_fields,
     )
-
-
-_ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _build_error_output_excerpt(
     result: dict[str, Any], *, max_lines: int = 80, max_chars: int = 12000
 ) -> list[str]:
     """Return a bounded tail excerpt from captured process output."""
-    for stream_name in ("stderr", "stdout"):
-        stream_value = result.get(stream_name)
-        if not isinstance(stream_value, str) or not stream_value.strip():
-            continue
-
-        cleaned_lines = [
-            _ANSI_ESCAPE_PATTERN.sub("", line.rstrip())
-            for line in stream_value.splitlines()
-            if line.strip()
-        ]
-        if not cleaned_lines:
-            continue
-
-        excerpt_lines = cleaned_lines[-max_lines:]
-        excerpt_text = "\n".join(excerpt_lines)
-        if len(excerpt_text) > max_chars:
-            excerpt_text = excerpt_text[-max_chars:]
-            excerpt_lines = excerpt_text.splitlines()
-
-        return excerpt_lines
-
-    return []
+    return _build_error_output_excerpt_impl(
+        result, max_lines=max_lines, max_chars=max_chars
+    )
 
 
 def _resolve_agent_global_config(
@@ -466,135 +568,34 @@ def _resolve_agent_global_config(
     result_type: str,
 ) -> GlobalConfig:
     """Resolve configuration for agent commands without emitting text output."""
-    configure_output(format_type=OutputFormat.JSON.value, non_interactive=True)
-    if ctx.obj is None:
-        _agent_fail(
-            operation,
-            result_type,
-            "No global configuration found",
-            remediation=[
-                "Pass `--env <name>` or run the command from a directory "
-                "with `.oduit.toml`.",
-            ],
-        )
-
-    if isinstance(ctx.obj, GlobalConfig):
-        return replace(
-            ctx.obj,
-            format=OutputFormat.JSON,
-            verbose=False,
-            non_interactive=True,
-        )
-
-    options = dict(ctx.obj)
-    env = options.get("env")
-    no_http = bool(options.get("no_http", False))
-    odoo_series = options.get("odoo_series")
-    config_loader = ConfigLoader()
-
-    env_config = None
-    env_name = None
-    try:
-        if env is None:
-            if not config_loader.has_local_config():
-                _agent_fail(
-                    operation,
-                    result_type,
-                    "No environment specified and no .oduit.toml found in "
-                    "current directory",
-                    error_type="ConfigError",
-                    remediation=[
-                        "Pass `--env <name>` to select a named environment.",
-                        "Or create a local `.oduit.toml` file in the current "
-                        "directory.",
-                    ],
-                )
-            env_config = config_loader.load_local_config()
-            env_name = "local"
-        else:
-            env_name = str(env).strip()
-            env_config = config_loader.load_config(env_name)
-    except (FileNotFoundError, ImportError, ValueError) as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ConfigError",
-            remediation=[
-                "Verify the requested environment exists and the config file is valid.",
-            ],
-        )
-    except Exception as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            f"Error loading environment '{env_name or 'local'}': {exc}",
-            error_type="ConfigError",
-            remediation=[
-                "Check the environment configuration and try again.",
-            ],
-        )
-
-    config_source, config_path = _resolve_config_source(config_loader, env, env_config)
-    return GlobalConfig(
-        env=env,
-        non_interactive=True,
-        format=OutputFormat.JSON,
-        verbose=False,
-        no_http=no_http,
-        env_config=env_config,
-        env_name=env_name,
-        odoo_series=odoo_series,
-        config_source=config_source,
-        config_path=config_path,
+    return _resolve_agent_global_config_impl(
+        ctx,
+        operation,
+        result_type,
+        configure_output_fn=configure_output,
+        fail_fn=_agent_fail,
+        config_loader_cls=ConfigLoader,
+        resolve_config_source_fn=_resolve_config_source,
     )
 
 
 def _parse_csv_items(raw_value: str | None) -> list[str] | None:
     """Parse a comma-separated CLI option into a list of strings."""
-    if raw_value is None:
-        return None
-    items = [item.strip() for item in raw_value.split(",") if item.strip()]
-    return items or None
+    return _parse_csv_items_impl(raw_value)
 
 
 def _parse_view_types(
     raw_value: str | None, operation: str, result_type: str
 ) -> list[str] | None:
     """Parse and validate requested Odoo view types."""
-    values = _parse_csv_items(raw_value)
-    if values is None:
-        return None
-
-    valid_view_types = {"form", "tree", "kanban", "search", "calendar", "graph"}
-    invalid = [value for value in values if value not in valid_view_types]
-    if invalid:
-        _agent_fail(
-            operation,
-            result_type,
-            f"Unsupported view type(s): {', '.join(invalid)}",
-            error_type="ValidationError",
-            remediation=[
-                "Use supported view types only: form, tree, kanban, search, "
-                "calendar, graph.",
-            ],
-        )
-    return values
+    return _parse_view_types_impl(
+        raw_value, operation, result_type, fail_fn=_agent_fail
+    )
 
 
 def _strip_arch_from_model_views(data: dict[str, Any]) -> dict[str, Any]:
     """Remove nested ``arch_db`` fields from model view payloads."""
-    result = dict(data)
-    for field_name in ("primary_views", "extension_views"):
-        views = result.get(field_name)
-        if not isinstance(views, list):
-            continue
-        result[field_name] = [
-            {key: value for key, value in view.items() if key != "arch_db"}
-            for view in views
-            if isinstance(view, dict)
-        ]
-    return result
+    return _strip_arch_from_model_views_impl(data)
 
 
 def _parse_json_list_option(
@@ -604,36 +605,13 @@ def _parse_json_list_option(
     result_type: str,
 ) -> list[Any]:
     """Parse a JSON-encoded list option or emit a structured error."""
-    if raw_value is None:
-        return []
-
-    parsed: Any = None
-    try:
-        parsed = json.loads(raw_value)
-    except json.JSONDecodeError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            f"{option_name} must be valid JSON: {exc.msg}",
-            details={option_name: raw_value},
-            remediation=[
-                f"Pass `{option_name}` as a JSON array, for example "
-                f'\'["name", "=", "Acme"]\'.',
-            ],
-        )
-
-    if not isinstance(parsed, list):
-        _agent_fail(
-            operation,
-            result_type,
-            f"{option_name} must decode to a JSON array",
-            details={option_name: raw_value},
-            remediation=[
-                f"Pass `{option_name}` as a JSON array value.",
-            ],
-        )
-
-    return parsed
+    return _parse_json_list_option_impl(
+        raw_value,
+        option_name,
+        operation,
+        result_type,
+        fail_fn=_agent_fail,
+    )
 
 
 def _resolve_agent_ops(
@@ -642,31 +620,21 @@ def _resolve_agent_ops(
     result_type: str,
 ) -> tuple[GlobalConfig, OdooOperations]:
     """Resolve agent config and instantiate operations."""
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(
-            operation,
-            result_type,
-            "No environment configuration available",
-            error_type="ConfigError",
-        )
-    assert global_config.env_config is not None
-    return global_config, OdooOperations(global_config.env_config, verbose=False)
+    return _resolve_agent_ops_impl(
+        ctx,
+        operation,
+        result_type,
+        resolve_agent_global_config_fn=_resolve_agent_global_config,
+        fail_fn=_agent_fail,
+        odoo_operations_cls=OdooOperations,
+    )
 
 
 def _parse_filter_values(
     raw_values: list[str], option_name: str
 ) -> list[tuple[str, str]]:
     """Parse repeated FIELD:VALUE filter options."""
-    filters: list[tuple[str, str]] = []
-    for raw_value in raw_values:
-        if ":" not in raw_value:
-            raise ValueError(
-                f"Invalid {option_name} filter '{raw_value}'. Use FIELD:VALUE format."
-            )
-        field, value = raw_value.split(":", 1)
-        filters.append((field.strip(), value.strip()))
-    return filters
+    return _parse_filter_values_impl(raw_values, option_name)
 
 
 def _require_agent_addons_path(
@@ -675,40 +643,19 @@ def _require_agent_addons_path(
     result_type: str,
 ) -> str:
     """Return ``addons_path`` or emit a structured config error."""
-    addons_path = env_config.get("addons_path")
-    if isinstance(addons_path, str) and addons_path.strip():
-        return addons_path
-
-    _agent_fail(
-        operation,
-        result_type,
-        "addons_path is required for this agent command",
-        error_type="ConfigError",
-        remediation=[
-            "Set `addons_path` in the selected environment before retrying.",
-        ],
+    return _require_agent_addons_path_impl(
+        env_config, operation, result_type, fail_fn=_agent_fail
     )
 
 
 def _redact_config_value(key: str, value: Any) -> Any:
     """Redact sensitive configuration values in structured outputs."""
-    sensitive_markers = ("password", "secret", "token", "api_key", "key")
-    normalized_key = key.lower()
-    if any(marker in normalized_key for marker in sensitive_markers):
-        return "***redacted***"
-    if isinstance(value, dict):
-        return {
-            inner_key: _redact_config_value(inner_key, inner_value)
-            for inner_key, inner_value in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_config_value(key, item) for item in value]
-    return value
+    return _redact_config_value_impl(key, value)
 
 
 def _redact_config(config: dict[str, Any]) -> dict[str, Any]:
     """Return a recursively redacted configuration dictionary."""
-    return {key: _redact_config_value(key, value) for key, value in config.items()}
+    return _redact_config_impl(config)
 
 
 def _agent_require_mutation(
@@ -719,22 +666,13 @@ def _agent_require_mutation(
     safety_level: str,
 ) -> None:
     """Enforce an explicit allow-mutation gate for agent mutation commands."""
-    if allow_mutation:
-        return
-    _agent_fail(
+    _agent_require_mutation_impl(
+        allow_mutation,
         operation,
         result_type,
-        f"{action} requires --allow-mutation",
-        error_type="ConfirmationRequired",
-        remediation=[
-            (
-                f"Retry `{action}` with `--allow-mutation` after reviewing "
-                "the plan output."
-            ),
-            "Use a read-only planning command first if you need impact analysis.",
-        ],
-        read_only=False,
-        safety_level=safety_level,
+        action,
+        safety_level,
+        fail_fn=_agent_fail,
     )
 
 
@@ -752,18 +690,18 @@ def _agent_sub_result(
     skipped: bool = False,
 ) -> dict[str, Any]:
     """Build a normalized sub-result for aggregate agent payloads."""
-    return {
-        "success": success,
-        "read_only": read_only,
-        "safety_level": safety_level,
-        "warnings": warnings or [],
-        "errors": errors or [],
-        "remediation": remediation or [],
-        "error": error,
-        "error_type": error_type,
-        "skipped": skipped,
-        "data": data or {},
-    }
+    return _agent_sub_result_impl(
+        success=success,
+        data=data,
+        warnings=warnings,
+        errors=errors,
+        remediation=remediation,
+        error=error,
+        error_type=error_type,
+        read_only=read_only,
+        safety_level=safety_level,
+        skipped=skipped,
+    )
 
 
 def _build_agent_test_summary_details(
@@ -777,73 +715,16 @@ def _build_agent_test_summary_details(
     test_tags: str | None,
 ) -> tuple[dict[str, Any], list[str], list[str]]:
     """Normalize ``run_tests()`` output for agent-facing summaries."""
-    selected_modules = list(
-        dict.fromkeys(value for value in [module, install, update, coverage] if value)
+    return _build_agent_test_summary_details_impl(
+        result,
+        module=module,
+        install=install,
+        update=update,
+        coverage=coverage,
+        test_file=test_file,
+        test_tags=test_tags,
+        build_error_output_excerpt_fn=_build_error_output_excerpt,
     )
-    failures = list(result.get("failures", []))
-    error_output_excerpt = (
-        _build_error_output_excerpt(result) if not result.get("success", False) else []
-    )
-    traceback_summary = [
-        {
-            "test_name": failure.get("test_name"),
-            "file": failure.get("file"),
-            "line": failure.get("line"),
-            "function_name": failure.get("function_name"),
-            "source_line": failure.get("source_line"),
-            "broken_line_count": failure.get("broken_line_count", 0),
-            "failure_excerpt": failure.get("failure_excerpt"),
-            "error_message": failure.get("error_message"),
-        }
-        for failure in failures
-    ]
-    suggested_next_steps: list[str] = []
-    if failures:
-        suggested_next_steps.append(
-            "Inspect the first failure traceback and reproduce it locally."
-        )
-    if selected_modules:
-        suggested_next_steps.append(
-            f"Retest the selected module set: {', '.join(selected_modules)}."
-        )
-    if coverage:
-        suggested_next_steps.append(
-            "Review the generated coverage report to identify untested files."
-        )
-
-    data = {
-        "selected_modules": selected_modules,
-        "selection": {
-            "module": module,
-            "install": install,
-            "update": update,
-            "coverage": coverage,
-            "test_file": test_file,
-            "test_tags": test_tags,
-        },
-        "total_tests": result.get("total_tests", 0),
-        "passed_tests": result.get("passed_tests", 0),
-        "failed_tests": result.get("failed_tests", 0),
-        "error_tests": result.get("error_tests", 0),
-        "failure_details": failures,
-        "error_output_excerpt": error_output_excerpt,
-        "traceback_summary": traceback_summary,
-        "coverage_summary": {
-            "requested": bool(coverage),
-            "module": coverage,
-            "available": bool(coverage),
-        },
-        "per_file_coverage": result.get("per_file_coverage", []),
-        "suggested_next_steps": suggested_next_steps,
-        "return_code": result.get("return_code"),
-        "command": result.get("command"),
-    }
-    warnings = (
-        ["Per-file coverage entries are not currently normalized by run_tests()."]
-        if coverage
-        else []
-    )
-    return data, warnings, suggested_next_steps
 
 
 def _build_validate_addon_change_payload(
@@ -868,61 +749,29 @@ def _build_validate_addon_change_payload(
     str | None,
 ]:
     """Assemble the aggregate payload data for addon-change validation."""
-    warnings: list[str] = []
-    errors: list[dict[str, Any]] = []
-    remediation: list[str] = []
-    error = None
-    error_type = None
-
-    for step_name, step in sub_results.items():
-        for warning in step.get("warnings", []):
-            if warning not in warnings:
-                warnings.append(warning)
-
-        for item in step.get("remediation", []):
-            if item not in remediation:
-                remediation.append(item)
-
-        if not step.get("success", False):
-            step_error = step.get("error") or f"{step_name} failed"
-            step_error_type = step.get("error_type") or "CommandError"
-            errors.append(
-                {
-                    "step": step_name,
-                    "message": step_error,
-                    "error_type": step_error_type,
-                }
-            )
-            if error is None:
-                error = step_error
-                error_type = step_error_type
-
-    success = failed_step is None and not errors
-    payload_data = {
-        "module": module,
-        "requested_actions": {
-            "install_if_needed": install_if_needed,
-            "update": update,
-            "test_tags": resolved_test_tags,
-            "discover_tests": discover_tests,
-        },
-        "installed_state": installed_state,
-        "mutation_action": mutation_action,
-        "sub_results": sub_results,
-        "verification_summary": {
-            "completed_steps": completed_steps,
-            "failed_step": failed_step,
-            "blocking_issues": errors,
-            "warnings": warnings,
-        },
-    }
-    return payload_data, success, warnings, errors, remediation, error, error_type
+    return _agent_validate_impl.build_validate_addon_change_payload(
+        module,
+        install_if_needed=install_if_needed,
+        update=update,
+        resolved_test_tags=resolved_test_tags,
+        discover_tests=discover_tests,
+        installed_state=installed_state,
+        mutation_action=mutation_action,
+        sub_results=sub_results,
+        completed_steps=completed_steps,
+        failed_step=failed_step,
+    )
 
 
 def _run_validate_addon_change_preflight(
     ops: OdooOperations,
     global_config: GlobalConfig,
     module: str,
+    *,
+    agent_sub_result_fn: Any = _agent_sub_result,
+    build_doctor_report_fn: Any = _build_doctor_report,
+    module_not_found_error_cls: Any = OduitModuleNotFoundError,
+    config_error_cls: Any = ConfigError,
 ) -> tuple[
     dict[str, dict[str, Any]],
     list[str],
@@ -930,131 +779,15 @@ def _run_validate_addon_change_preflight(
     dict[str, Any] | None,
 ]:
     """Run inspect, doctor, duplicate, and installed-state checks."""
-    sub_results: dict[str, dict[str, Any]] = {}
-    completed_steps: list[str] = []
-    failed_step: str | None = None
-    installed_state: dict[str, Any] | None = None
-
-    try:
-        inspection = ops.inspect_addon(module, odoo_series=global_config.odoo_series)
-        sub_results["inspection"] = _agent_sub_result(
-            success=True,
-            data=inspection.to_dict(),
-            warnings=list(inspection.warnings),
-            remediation=list(inspection.remediation),
-        )
-        completed_steps.append("inspection")
-    except OduitModuleNotFoundError as exc:
-        failed_step = "inspection"
-        sub_results["inspection"] = _agent_sub_result(
-            success=False,
-            data={"module": module},
-            error=str(exc),
-            error_type="ModuleNotFoundError",
-            remediation=[
-                "Verify that the addon exists in the configured addons paths.",
-                "Run `oduit agent context` to inspect the resolved addons paths.",
-            ],
-        )
-        return sub_results, completed_steps, failed_step, installed_state
-
-    doctor_report = _build_doctor_report(global_config)
-    sub_results["doctor"] = _agent_sub_result(
-        success=doctor_report.get("success", False),
-        data={
-            "source": doctor_report.get("source", {}),
-            "checks": doctor_report.get("checks", []),
-            "summary": doctor_report.get("summary", {}),
-            "next_steps": doctor_report.get("next_steps", []),
-        },
-        warnings=list(doctor_report.get("warnings", [])),
-        errors=list(doctor_report.get("errors", [])),
-        remediation=list(doctor_report.get("remediation", [])),
-        error=doctor_report.get("error"),
-        error_type=doctor_report.get("error_type"),
+    return _agent_validate_impl.run_validate_addon_change_preflight(
+        ops,
+        global_config,
+        module,
+        agent_sub_result_fn=agent_sub_result_fn,
+        build_doctor_report_fn=build_doctor_report_fn,
+        module_not_found_error_cls=module_not_found_error_cls,
+        config_error_cls=config_error_cls,
     )
-    completed_steps.append("doctor")
-    if not doctor_report.get("success", False):
-        return sub_results, completed_steps, "doctor", installed_state
-
-    try:
-        duplicates = ops.list_duplicates()
-    except ConfigError as exc:
-        sub_results["duplicates"] = _agent_sub_result(
-            success=False,
-            error=str(exc),
-            error_type="ConfigError",
-            remediation=[
-                "Set `addons_path` in the selected environment before retrying.",
-            ],
-        )
-        return sub_results, completed_steps, "duplicates", installed_state
-
-    duplicate_warning = (
-        ["Duplicate addon names can make module resolution ambiguous."]
-        if duplicates
-        else []
-    )
-    duplicate_remediation = (
-        ["Remove or reorder duplicate addon paths before mutating modules."]
-        if duplicates
-        else []
-    )
-    target_module_duplicated = module in duplicates
-    sub_results["duplicates"] = _agent_sub_result(
-        success=not target_module_duplicated,
-        data={
-            "duplicate_modules": duplicates,
-            "duplicate_count": len(duplicates),
-            "target_module_duplicated": target_module_duplicated,
-        },
-        warnings=duplicate_warning,
-        remediation=duplicate_remediation,
-        error=(
-            f"Module '{module}' is duplicated across addons paths"
-            if target_module_duplicated
-            else None
-        ),
-        error_type="DuplicateModuleError" if target_module_duplicated else None,
-    )
-    completed_steps.append("duplicates")
-    if target_module_duplicated:
-        return sub_results, completed_steps, "duplicates", installed_state
-
-    state_result = ops.query_model(
-        "ir.module.module",
-        domain=[["name", "=", module]],
-        fields=["name", "state"],
-        limit=1,
-        database=None,
-        timeout=30.0,
-    )
-    if not state_result.success:
-        sub_results["installed_state"] = _agent_sub_result(
-            success=False,
-            data={"module": module},
-            error=state_result.error,
-            error_type=state_result.error_type,
-            remediation=[
-                "Verify database access and retry the module-state lookup.",
-            ],
-        )
-        return sub_results, completed_steps, "installed_state", installed_state
-
-    record = state_result.records[0] if state_result.records else {}
-    state = str(record.get("state", "uninstalled"))
-    installed_state = {
-        "module": module,
-        "record_found": bool(state_result.records),
-        "state": state,
-        "installed": state == "installed",
-    }
-    sub_results["installed_state"] = _agent_sub_result(
-        success=True,
-        data=installed_state,
-    )
-    completed_steps.append("installed_state")
-    return sub_results, completed_steps, None, installed_state
 
 
 def _build_validate_addon_change_discovery_result(
@@ -1063,89 +796,27 @@ def _build_validate_addon_change_discovery_result(
     *,
     discover_tests: bool,
     failed_step: str | None,
+    agent_sub_result_fn: Any = _agent_sub_result,
+    module_not_found_error_cls: Any = OduitModuleNotFoundError,
+    config_error_cls: Any = ConfigError,
 ) -> tuple[dict[str, Any], str | None, bool]:
     """Build the optional discovered-test sub-result."""
-    if not discover_tests:
-        return (
-            _agent_sub_result(
-                success=True,
-                data={
-                    "module": module,
-                    "requested": False,
-                    "executed": False,
-                },
-                skipped=True,
-            ),
-            failed_step,
-            False,
-        )
-
-    if failed_step is not None:
-        return (
-            _agent_sub_result(
-                success=True,
-                data={
-                    "module": module,
-                    "executed": False,
-                    "reason": "skipped_after_failed_required_step",
-                },
-                skipped=True,
-            ),
-            failed_step,
-            False,
-        )
-
-    try:
-        inventory = ops.list_addon_tests(module)
-    except (OduitModuleNotFoundError, ConfigError) as exc:
-        return (
-            _agent_sub_result(
-                success=False,
-                data={"module": module},
-                error=str(exc),
-                error_type=(
-                    "ModuleNotFoundError"
-                    if isinstance(exc, OduitModuleNotFoundError)
-                    else "ConfigError"
-                ),
-                remediation=[
-                    "Verify the addon path and test discovery inputs before retrying.",
-                ],
-            ),
-            "discovered_tests",
-            False,
-        )
-
-    discovery_remediation = list(inventory.remediation)
-    discovery_remediation.append(
-        "Run a specific discovered test file only when you need narrower "
-        "reproduction than the full module suite."
-    )
-    return (
-        _agent_sub_result(
-            success=True,
-            data={
-                **inventory.to_dict(),
-                "executed": False,
-                "execution_strategy": "inventory_only",
-                "reason": "full_module_suite_already_ran",
-            },
-            warnings=list(inventory.warnings),
-            remediation=list(dict.fromkeys(discovery_remediation)),
-        ),
-        None,
-        True,
+    return _agent_validate_impl.build_validate_addon_change_discovery_result(
+        ops,
+        module,
+        discover_tests=discover_tests,
+        failed_step=failed_step,
+        agent_sub_result_fn=agent_sub_result_fn,
+        module_not_found_error_cls=module_not_found_error_cls,
+        config_error_cls=config_error_cls,
     )
 
 
 def _get_agent_addon_type(addon_name: str, odoo_series: OdooSeries | None) -> str:
     """Return a machine-oriented addon classification."""
-    addon_type = _get_addon_type(addon_name, odoo_series)
-    if addon_type == "Odoo CE (Community)":
-        return "core_ce"
-    if addon_type == "Odoo EE (Enterprise)":
-        return "core_ee"
-    return "custom"
+    return _get_agent_addon_type_impl(
+        addon_name, odoo_series, get_addon_type_fn=_get_addon_type
+    )
 
 
 @app.callback(invoke_without_command=True)
@@ -3163,84 +2834,14 @@ def get_odoo_version_cmd(
 
 def _build_environment_context_data(global_config: GlobalConfig) -> dict[str, Any]:
     """Build a one-shot environment snapshot for agent workflows."""
-    env_config = global_config.env_config or {}
-    doctor_report = _build_doctor_report(global_config)
-    addons_path = str(env_config.get("addons_path", ""))
-    path_manager = AddonsPathManager(addons_path) if addons_path else None
-    configured_paths = path_manager.get_configured_paths() if path_manager else []
-    base_paths = path_manager.get_base_addons_paths() if path_manager else []
-    all_paths = path_manager.get_all_paths() if path_manager else []
-    valid_paths: list[str] = []
-    invalid_paths: list[str] = []
-    for path in configured_paths:
-        absolute_path = os.path.abspath(path)
-        if os.path.isdir(absolute_path):
-            valid_paths.append(absolute_path)
-        else:
-            invalid_paths.append(path)
-
-    duplicate_modules = (
-        path_manager.find_duplicate_module_names() if path_manager else {}
+    return _build_environment_context_data_impl(
+        global_config,
+        build_doctor_report_fn=_build_doctor_report,
+        addons_path_manager_cls=AddonsPathManager,
+        module_manager_cls=ModuleManager,
+        probe_binary_fn=_probe_binary,
+        odoo_operations_cls=OdooOperations,
     )
-    module_manager = (
-        ModuleManager(addons_path) if addons_path and not invalid_paths else None
-    )
-    available_module_count = 0
-    detected_series = None
-    if module_manager is not None:
-        available_module_count = len(module_manager.find_modules(skip_invalid=True))
-        detected_series = (
-            global_config.odoo_series or module_manager.detect_odoo_series()
-        )
-
-    python_info = _probe_binary(env_config.get("python_bin"), ["python3", "python"])
-    odoo_info = _probe_binary(env_config.get("odoo_bin"), ["odoo", "odoo-bin"])
-    coverage_info = _probe_binary(env_config.get("coverage_bin"), ["coverage"])
-
-    version_result = OdooOperations(env_config, verbose=False).get_odoo_version(
-        suppress_output=True
-    )
-
-    missing_critical_config = [
-        key
-        for key in ("python_bin", "odoo_bin", "addons_path")
-        if not env_config.get(key)
-    ]
-
-    return {
-        "environment": {
-            "name": global_config.env_name,
-            "source": global_config.config_source,
-            "config_path": global_config.config_path,
-        },
-        "resolved_binaries": {
-            "python_bin": python_info,
-            "odoo_bin": odoo_info,
-            "coverage_bin": coverage_info,
-        },
-        "addons_paths": {
-            "configured": configured_paths,
-            "base": base_paths,
-            "all": all_paths,
-            "valid": valid_paths,
-            "invalid": invalid_paths,
-        },
-        "odoo": {
-            "version": version_result.get("version"),
-            "series": detected_series.value if detected_series else None,
-        },
-        "database": {
-            "db_name": env_config.get("db_name"),
-            "db_host": env_config.get("db_host") or "localhost",
-            "db_user": env_config.get("db_user"),
-        },
-        "duplicate_modules": duplicate_modules,
-        "available_module_count": available_module_count,
-        "invalid_addon_paths": invalid_paths,
-        "missing_critical_config": missing_critical_config,
-        "doctor_summary": doctor_report.get("summary", {}),
-        "doctor_checks": doctor_report.get("checks", []),
-    }
 
 
 def _build_addon_inspection_data(
@@ -3249,62 +2850,12 @@ def _build_addon_inspection_data(
     odoo_series: OdooSeries | None,
 ) -> tuple[dict[str, Any], list[str], list[str]]:
     """Aggregate addon inspection data for a single module."""
-    manifest = module_manager.get_manifest(module_name)
-    if manifest is None:
-        raise ValueError(f"Module '{module_name}' was not found in addons_path")
-
-    warnings: list[str] = []
-    remediation: list[str] = []
-    module_path = module_manager.find_module_path(module_name)
-    reverse_dependencies = module_manager.get_reverse_dependencies(module_name)
-
-    try:
-        missing_dependencies = module_manager.find_missing_dependencies(module_name)
-    except ValueError as exc:
-        missing_dependencies = []
-        warnings.append(str(exc))
-
-    dependency_cycle: list[str] = []
-    try:
-        install_order = module_manager.get_install_order(module_name)
-    except ValueError as exc:
-        install_order = []
-        warnings.append(str(exc))
-        dependency_cycle = module_manager.parse_cycle_error(str(exc))
-        if dependency_cycle:
-            remediation.append(
-                "Break the dependency cycle before attempting installation or update."
-            )
-
-    if missing_dependencies:
-        remediation.append(
-            "Resolve missing dependencies before attempting installation or update."
-        )
-
-    raw_data = manifest.get_raw_data()
-    inspection = {
-        "module": module_name,
-        "exists": True,
-        "module_path": module_path,
-        "addon_type": _get_agent_addon_type(module_name, odoo_series),
-        "version_display": module_manager.get_module_version_display(
-            module_name, odoo_series
-        ),
-        "manifest": raw_data,
-        "manifest_fields": sorted(raw_data.keys()),
-        "direct_dependencies": manifest.codependencies,
-        "reverse_dependencies": reverse_dependencies,
-        "reverse_dependency_count": len(reverse_dependencies),
-        "install_order_slice": install_order,
-        "install_order_available": bool(install_order),
-        "dependency_cycle": dependency_cycle,
-        "missing_dependencies": missing_dependencies,
-        "impacted_modules": reverse_dependencies,
-        "series": odoo_series.value if odoo_series else None,
-        "python_dependencies": manifest.python_dependencies,
-        "binary_dependencies": manifest.binary_dependencies,
-    }
-    return inspection, warnings, remediation
+    return _build_addon_inspection_data_impl(
+        module_manager,
+        module_name,
+        odoo_series,
+        get_agent_addon_type_fn=_get_agent_addon_type,
+    )
 
 
 def _build_update_plan_data(
@@ -3312,129 +2863,27 @@ def _build_update_plan_data(
     module_name: str,
 ) -> tuple[dict[str, Any], list[str], list[str]]:
     """Build a read-only update plan for a module."""
-    env_config = global_config.env_config or {}
-    module_manager = ModuleManager(str(env_config.get("addons_path", "")))
-    detected_series = global_config.odoo_series or module_manager.detect_odoo_series()
-    inspection, warnings, remediation = _build_addon_inspection_data(
-        module_manager,
+    return _build_update_plan_data_impl(
+        global_config,
         module_name,
-        detected_series,
+        module_manager_cls=ModuleManager,
+        addons_path_manager_cls=AddonsPathManager,
+        build_addon_inspection_data_fn=_build_addon_inspection_data,
     )
-
-    duplicate_modules = AddonsPathManager(
-        env_config["addons_path"]
-    ).find_duplicate_module_names()
-    duplicate_name_risk = module_name in duplicate_modules
-    reverse_dependency_count = int(inspection["reverse_dependency_count"])
-    missing_dependencies = list(inspection["missing_dependencies"])
-    dependency_cycle = list(inspection.get("dependency_cycle", []))
-
-    risk_factors: list[str] = []
-    risk_score = 0
-    if reverse_dependency_count:
-        risk_score += min(reverse_dependency_count * 10, 40)
-        risk_factors.append(
-            f"{reverse_dependency_count} reverse dependencies would be affected"
-        )
-    if missing_dependencies:
-        risk_score += min(len(missing_dependencies) * 20, 30)
-        risk_factors.append("module has missing dependencies")
-    if duplicate_name_risk:
-        risk_score += 20
-        risk_factors.append("module name is duplicated across addons paths")
-    if dependency_cycle:
-        risk_score += 30
-        risk_factors.append("dependency graph contains a cycle")
-    if inspection["addon_type"] == "custom":
-        risk_score += 10
-        risk_factors.append("custom addon changes should be validated in the target DB")
-
-    risk_level = "low"
-    if risk_score >= 50:
-        risk_level = "high"
-    elif risk_score >= 20:
-        risk_level = "medium"
-
-    backup_advised = reverse_dependency_count > 0 or duplicate_name_risk
-    verification_steps = [
-        f"Run `oduit agent test-summary --module {module_name} "
-        f"--test-tags /{module_name}`.",
-        f"Inspect reverse dependencies for `{module_name}` before "
-        "updating dependent addons.",
-    ]
-    if inspection["reverse_dependencies"]:
-        verification_steps.append(
-            "Retest at least one impacted reverse dependency after the update."
-        )
-    if backup_advised:
-        remediation.append(
-            "Take a database backup before updating this module in a shared "
-            "environment."
-        )
-
-    plan_data = {
-        "module": module_name,
-        "exists": True,
-        "impact_set": inspection["reverse_dependencies"],
-        "impact_count": reverse_dependency_count,
-        "missing_dependencies": missing_dependencies,
-        "duplicate_name_risk": duplicate_name_risk,
-        "duplicate_module_locations": duplicate_modules.get(module_name, []),
-        "dependency_cycle": dependency_cycle,
-        "cycle_risk": bool(dependency_cycle),
-        "ordering_constraints": inspection["install_order_slice"],
-        "recommended_sequence": [
-            "Review dependency and duplicate-module warnings.",
-            *(
-                ["Take a database backup."]
-                if backup_advised
-                else ["A dedicated backup is optional for this change."]
-            ),
-            f"Update `{module_name}`.",
-            "Run targeted validation and tests.",
-        ],
-        "backup_advised": backup_advised,
-        "risk_score": risk_score,
-        "risk_level": risk_level,
-        "risk_factors": risk_factors,
-        "verification_steps": verification_steps,
-        "inspection": inspection,
-    }
-    return plan_data, warnings, remediation
 
 
 @agent_app.command("context")
 def agent_context(ctx: typer.Context) -> None:
     """Return a structured environment snapshot for automation."""
-    operation = "agent_context"
-    result_type = "environment_context"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(
-            operation,
-            result_type,
-            "No environment configuration available",
-            error_type="ConfigError",
-        )
-    assert global_config.env_config is not None
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    context = ops.get_environment_context(
-        env_name=global_config.env_name,
-        config_source=global_config.config_source,
-        config_path=global_config.config_path,
-        odoo_series=global_config.odoo_series,
+    _agent_context_command(
+        ctx,
+        resolve_agent_global_config_fn=_resolve_agent_global_config,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        odoo_operations_cls=OdooOperations,
+        safe_read_only=SAFE_READ_ONLY,
     )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        context.to_dict(),
-        warnings=list(context.warnings),
-        remediation=list(context.remediation),
-        read_only=True,
-        safety_level=SAFE_READ_ONLY,
-    )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("inspect-addon")
@@ -3443,42 +2892,17 @@ def agent_inspect_addon(
     module: str = typer.Argument(help="Addon to inspect"),
 ) -> None:
     """Return a one-shot addon inspection payload."""
-    operation = "inspect_addon"
-    result_type = "addon_inspection"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    try:
-        inspection = ops.inspect_addon(
-            module,
-            odoo_series=global_config.odoo_series,
-        )
-    except OduitModuleNotFoundError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ModuleNotFoundError",
-            details={"module": module},
-            remediation=[
-                "Verify that the module exists in the configured addons paths.",
-                "Run `oduit agent context` to inspect the resolved addons paths.",
-            ],
-        )
-
-    payload = _agent_payload(
-        operation,
-        result_type,
-        inspection.to_dict(),
-        warnings=list(inspection.warnings),
-        remediation=list(inspection.remediation),
-        read_only=True,
-        safety_level=SAFE_READ_ONLY,
+    _agent_inspect_addon_command(
+        ctx,
+        module=module,
+        resolve_agent_global_config_fn=_resolve_agent_global_config,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        odoo_operations_cls=OdooOperations,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        safe_read_only=SAFE_READ_ONLY,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("plan-update")
@@ -3487,42 +2911,17 @@ def agent_plan_update(
     module: str = typer.Argument(help="Addon to plan an update for"),
 ) -> None:
     """Return a structured, read-only update plan for a module."""
-    operation = "plan_update"
-    result_type = "update_plan"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    try:
-        plan = ops.plan_update(
-            module,
-            odoo_series=global_config.odoo_series,
-        )
-    except OduitModuleNotFoundError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ModuleNotFoundError",
-            details={"module": module},
-            remediation=[
-                "Verify that the module exists before planning the update.",
-                "Run `oduit agent inspect-addon <module>` to inspect discovery state.",
-            ],
-        )
-
-    payload = _agent_payload(
-        operation,
-        result_type,
-        plan.to_dict(),
-        warnings=list(plan.warnings),
-        remediation=list(plan.remediation),
-        read_only=True,
-        safety_level=SAFE_READ_ONLY,
+    _agent_plan_update_command(
+        ctx,
+        module=module,
+        resolve_agent_global_config_fn=_resolve_agent_global_config,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        odoo_operations_cls=OdooOperations,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        safe_read_only=SAFE_READ_ONLY,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("locate-model")
@@ -3532,43 +2931,17 @@ def agent_locate_model(
     module: str = typer.Option(..., "--module", help="Addon to inspect"),
 ) -> None:
     """Locate likely source files for a model extension inside one addon."""
-    operation = "locate_model"
-    result_type = "model_source_location"
-    _, ops = _resolve_agent_ops(ctx, operation, result_type)
-    try:
-        location = ops.locate_model(module, model)
-    except OduitModuleNotFoundError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ModuleNotFoundError",
-            details={"module": module, "model": model},
-            remediation=[
-                "Verify that the addon exists in the configured addons paths.",
-                "Run `oduit agent inspect-addon <module>` to confirm addon discovery.",
-            ],
-        )
-    except ConfigError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ConfigError",
-            details={"module": module, "model": model},
-            remediation=[
-                "Set `addons_path` in the selected environment before retrying.",
-            ],
-        )
-
-    payload = _agent_payload(
-        operation,
-        result_type,
-        location.to_dict(),
-        warnings=list(location.warnings),
-        remediation=list(location.remediation),
+    _agent_locate_model_command(
+        ctx,
+        model=model,
+        module=module,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        config_error_cls=ConfigError,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("locate-field")
@@ -3579,43 +2952,18 @@ def agent_locate_field(
     module: str = typer.Option(..., "--module", help="Addon to inspect"),
 ) -> None:
     """Locate an existing field or suggest the best insertion point."""
-    operation = "locate_field"
-    result_type = "field_source_location"
-    _, ops = _resolve_agent_ops(ctx, operation, result_type)
-    try:
-        location = ops.locate_field(module, model, field_name)
-    except OduitModuleNotFoundError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ModuleNotFoundError",
-            details={"module": module, "model": model, "field": field_name},
-            remediation=[
-                "Verify that the addon exists in the configured addons paths.",
-                "Run `oduit agent inspect-addon <module>` to confirm addon discovery.",
-            ],
-        )
-    except ConfigError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ConfigError",
-            details={"module": module, "model": model, "field": field_name},
-            remediation=[
-                "Set `addons_path` in the selected environment before retrying.",
-            ],
-        )
-
-    payload = _agent_payload(
-        operation,
-        result_type,
-        location.to_dict(),
-        warnings=list(location.warnings),
-        remediation=list(location.remediation),
+    _agent_locate_field_command(
+        ctx,
+        model=model,
+        field_name=field_name,
+        module=module,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        config_error_cls=ConfigError,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("list-addon-tests")
@@ -3630,42 +2978,18 @@ def agent_list_addon_tests(
     ),
 ) -> None:
     """List likely tests for an addon, optionally ranked by model/field references."""
-    operation = "list_addon_tests"
-    result_type = "addon_test_inventory"
-    _, ops = _resolve_agent_ops(ctx, operation, result_type)
-    try:
-        inventory = ops.list_addon_tests(module, model=model, field_name=field_name)
-    except OduitModuleNotFoundError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ModuleNotFoundError",
-            details={"module": module},
-            remediation=[
-                "Verify that the addon exists in the configured addons paths.",
-            ],
-        )
-    except ConfigError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ConfigError",
-            details={"module": module},
-            remediation=[
-                "Set `addons_path` in the selected environment before retrying.",
-            ],
-        )
-
-    payload = _agent_payload(
-        operation,
-        result_type,
-        inventory.to_dict(),
-        warnings=list(inventory.warnings),
-        remediation=list(inventory.remediation),
+    _agent_list_addon_tests_command(
+        ctx,
+        module=module,
+        model=model,
+        field_name=field_name,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        config_error_cls=ConfigError,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("list-addon-models")
@@ -3674,42 +2998,16 @@ def agent_list_addon_models(
     module: str = typer.Argument(help="Addon to inspect"),
 ) -> None:
     """List the models declared or extended by one addon."""
-    operation = "list_addon_models"
-    result_type = "addon_model_inventory"
-    _, ops = _resolve_agent_ops(ctx, operation, result_type)
-    try:
-        inventory = ops.list_addon_models(module)
-    except OduitModuleNotFoundError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ModuleNotFoundError",
-            details={"module": module},
-            remediation=[
-                "Verify that the addon exists in the configured addons paths.",
-            ],
-        )
-    except ConfigError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ConfigError",
-            details={"module": module},
-            remediation=[
-                "Set `addons_path` in the selected environment before retrying.",
-            ],
-        )
-
-    payload = _agent_payload(
-        operation,
-        result_type,
-        inventory.to_dict(),
-        warnings=list(inventory.warnings),
-        remediation=list(inventory.remediation),
+    _agent_list_addon_models_command(
+        ctx,
+        module=module,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        config_error_cls=ConfigError,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("find-model-extensions")
@@ -3727,49 +3025,18 @@ def agent_find_model_extensions(
     timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
 ) -> None:
     """Find where a model is declared, extended, and installed."""
-    operation = "find_model_extensions"
-    result_type = "model_extension_inventory"
-    _, ops = _resolve_agent_ops(ctx, operation, result_type)
-    try:
-        inventory = ops.find_model_extensions(model, database=database, timeout=timeout)
-    except ConfigError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ConfigError",
-            details={"model": model},
-            remediation=[
-                "Set `addons_path` in the selected environment before retrying.",
-            ],
-        )
-
-    remediation = list(inventory.remediation)
-    if not inventory.installed_fields:
-        remediation.append(
-            "Runtime field metadata was unavailable; verify database access "
-            "if installed state matters."
-        )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        {
-            **inventory.to_dict(),
-            "summary": summary,
-            "base_declaration_count": len(inventory.base_declarations),
-            "source_extension_count": len(inventory.source_extensions),
-            "source_view_extension_count": len(inventory.source_view_extensions),
-            "installed_field_count": len(inventory.installed_fields),
-            "installed_extension_field_count": len(
-                inventory.installed_extension_fields
-            ),
-            "installed_view_extension_count": len(inventory.installed_view_extensions),
-        },
-        warnings=list(inventory.warnings),
-        remediation=list(dict.fromkeys(remediation)),
-        exclude_fields=["scanned_python_files"] if summary else None,
+    _agent_find_model_extensions_command(
+        ctx,
+        model=model,
+        summary=summary,
+        database=database,
+        timeout=timeout,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        config_error_cls=ConfigError,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("get-model-views")
@@ -3792,95 +3059,34 @@ def agent_get_model_views(
     timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
 ) -> None:
     """Fetch database-backed primary and extension views for a model."""
-    operation = "get_model_views"
-    result_type = "model_view_inventory"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    requested_types = _parse_view_types(types, operation, result_type)
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    inventory = ops.get_model_views(
-        model,
-        view_types=requested_types,
+    _agent_get_model_views_command(
+        ctx,
+        model=model,
+        types=types,
+        summary=summary,
         database=database,
         timeout=timeout,
-        include_arch=not summary,
+        resolve_agent_global_config_fn=_resolve_agent_global_config,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        parse_view_types_fn=_parse_view_types,
+        strip_arch_from_model_views_fn=_strip_arch_from_model_views,
+        odoo_operations_cls=OdooOperations,
     )
-    inventory_data = inventory.to_dict()
-    if summary:
-        inventory_data = _strip_arch_from_model_views(inventory_data)
-    remediation = list(inventory.remediation)
-    payload = _agent_payload(
-        operation,
-        result_type,
-        {
-            **inventory_data,
-            "summary": summary,
-        },
-        success=(
-            inventory.error is None
-            and bool(inventory.primary_views or inventory.extension_views)
-        ),
-        warnings=list(inventory.warnings),
-        remediation=remediation,
-        error=(
-            inventory.error
-            or (
-                f"No database views were found for model '{model}'"
-                if not inventory.primary_views and not inventory.extension_views
-                else None
-            )
-        ),
-        error_type=(
-            inventory.error_type
-            or (
-                "ModelViewNotFound"
-                if not inventory.primary_views and not inventory.extension_views
-                else None
-            )
-        ),
-    )
-    _agent_emit_payload(payload)
-    if inventory.error or not inventory.primary_views and not inventory.extension_views:
-        raise typer.Exit(1)
 
 
 @agent_app.command("doctor")
 def agent_doctor(ctx: typer.Context) -> None:
     """Return doctor diagnostics through the standard agent envelope."""
-    operation = "agent_doctor"
-    result_type = "doctor_report"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(
-            operation,
-            result_type,
-            "No environment configuration available",
-            error_type="ConfigError",
-        )
-
-    report = _build_doctor_report(global_config)
-    payload = _agent_payload(
-        operation,
-        result_type,
-        {
-            "source": report.get("source", {}),
-            "checks": report.get("checks", []),
-            "summary": report.get("summary", {}),
-            "next_steps": report.get("next_steps", []),
-        },
-        success=report.get("success", False),
-        warnings=list(report.get("warnings", [])),
-        errors=list(report.get("errors", [])),
-        remediation=list(report.get("remediation", [])),
-        error=report.get("error"),
-        error_type=report.get("error_type"),
+    _agent_doctor_command(
+        ctx,
+        resolve_agent_global_config_fn=_resolve_agent_global_config,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        build_doctor_report_fn=_build_doctor_report,
     )
-    _agent_emit_payload(payload)
-    if not report.get("success", False):
-        raise typer.Exit(1)
 
 
 @agent_app.command("list-addons")
@@ -3897,91 +3103,24 @@ def agent_list_addons(
     sorting: str = SORT_OPTION,
 ) -> None:
     """Return structured addon inventory for the active environment."""
-    operation = "agent_list_addons"
-    result_type = "addon_inventory"
-    global_config, ops = _resolve_agent_ops(ctx, operation, result_type)
-    env_config = global_config.env_config
-    assert env_config is not None
-    addons_path = _require_agent_addons_path(env_config, operation, result_type)
-
-    try:
-        include_filter = _parse_filter_values(include, "include")
-        exclude_filter = _parse_filter_values(exclude, "exclude")
-    except ValueError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            details={"include": include, "exclude": exclude},
-        )
-
-    module_manager = ModuleManager(addons_path)
-    addons = module_manager.find_module_dirs(filter_dir=select_dir)
-    addons = [addon for addon in addons if not addon.startswith("test_")]
-    odoo_series = global_config.odoo_series or module_manager.detect_odoo_series()
-
-    if exclude_core_addons or exclude_enterprise_addons:
-        try:
-            addons = _apply_core_addon_filters(
-                addons,
-                exclude_core_addons,
-                exclude_enterprise_addons,
-                odoo_series,
-            )
-        except ValueError:
-            _agent_fail(
-                operation,
-                result_type,
-                (
-                    "Could not apply addon type filters because Odoo series "
-                    "detection failed"
-                ),
-                error_type="ConfigError",
-                remediation=[
-                    (
-                        "Pass `--odoo-series` or ensure addon versions allow "
-                        "Odoo series detection."
-                    ),
-                ],
-            )
-
-    try:
-        addons = _apply_field_filters(
-            addons,
-            module_manager,
-            include_filter,
-            exclude_filter,
-            odoo_series,
-        )
-        sorted_addons = module_manager.sort_modules(addons, sorting)
-    except ValueError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ValidationError",
-        )
-
-    inventory = ops.list_addons_inventory(sorted_addons, odoo_series=odoo_series)
-    duplicates = ops.list_duplicates()
-    payload = _agent_payload(
-        operation,
-        result_type,
-        {
-            "addons": inventory,
-            "total": len(inventory),
-            "filters": {
-                "select_dir": select_dir,
-                "include": include_filter,
-                "exclude": exclude_filter,
-                "exclude_core_addons": exclude_core_addons,
-                "exclude_enterprise_addons": exclude_enterprise_addons,
-            },
-            "sorting": sorting,
-            "duplicate_modules": duplicates,
-        },
+    _agent_list_addons_command(
+        ctx,
+        select_dir=select_dir,
+        include=include,
+        exclude=exclude,
+        sorting=sorting,
+        exclude_core_addons=exclude_core_addons,
+        exclude_enterprise_addons=exclude_enterprise_addons,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        require_agent_addons_path_fn=_require_agent_addons_path,
+        parse_filter_values_fn=_parse_filter_values,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        module_manager_cls=ModuleManager,
+        apply_core_addon_filters_fn=_apply_core_addon_filters,
+        apply_field_filters_fn=_apply_field_filters,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("dependency-graph")
@@ -3990,43 +3129,16 @@ def agent_dependency_graph(
     modules: str = typer.Option(..., "--modules", help="Comma-separated addon names"),
 ) -> None:
     """Return a structured dependency and reverse-dependency graph."""
-    operation = "agent_dependency_graph"
-    result_type = "dependency_graph"
-    _, ops = _resolve_agent_ops(ctx, operation, result_type)
-    module_names = _parse_csv_items(modules)
-    if not module_names:
-        _agent_fail(
-            operation,
-            result_type,
-            "At least one module must be provided via --modules",
-            error_type="ValidationError",
-        )
-
-    try:
-        graph = ops.dependency_graph(module_names)
-    except ConfigError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ConfigError",
-            details={"modules": module_names},
-            remediation=[
-                "Set `addons_path` in the selected environment before retrying.",
-            ],
-        )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        graph,
-        warnings=list(graph.get("warnings", [])),
-        remediation=(
-            ["Resolve dependency cycles before relying on the computed install order."]
-            if graph.get("cycles")
-            else []
-        ),
+    _agent_dependency_graph_command(
+        ctx,
+        modules=modules,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        parse_csv_items_fn=_parse_csv_items,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        config_error_cls=ConfigError,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("inspect-addons")
@@ -4035,135 +3147,41 @@ def agent_inspect_addons(
     modules: str = typer.Option(..., "--modules", help="Comma-separated addon names"),
 ) -> None:
     """Inspect multiple addons through the stable agent envelope."""
-    operation = "inspect_addons"
-    result_type = "batch_addon_inspection"
-    global_config, ops = _resolve_agent_ops(ctx, operation, result_type)
-    module_names = _parse_csv_items(modules)
-    if not module_names:
-        _agent_fail(
-            operation,
-            result_type,
-            "At least one module must be provided via --modules",
-            error_type="ValidationError",
-        )
-
-    inspections = []
-    missing_modules: list[str] = []
-    for module_name in module_names:
-        try:
-            inspections.append(
-                ops.inspect_addon(module_name, odoo_series=global_config.odoo_series)
-            )
-        except OduitModuleNotFoundError:
-            missing_modules.append(module_name)
-
-    success = not missing_modules
-    payload = _agent_payload(
-        operation,
-        result_type,
-        {
-            "modules": module_names,
-            "inspections": [inspection.to_dict() for inspection in inspections],
-            "found_count": len(inspections),
-            "missing_modules": missing_modules,
-        },
-        success=success,
-        warnings=(
-            [f"Some requested modules were not found: {', '.join(missing_modules)}"]
-            if missing_modules
-            else []
-        ),
-        remediation=(
-            ["Verify the requested module names and configured addons paths."]
-            if missing_modules
-            else []
-        ),
-        error=(
-            f"{len(missing_modules)} module(s) were not found"
-            if missing_modules
-            else None
-        ),
-        error_type="ModuleNotFoundError" if missing_modules else None,
+    _agent_inspect_addons_command(
+        ctx,
+        modules=modules,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        parse_csv_items_fn=_parse_csv_items,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        module_not_found_error_cls=OduitModuleNotFoundError,
     )
-    _agent_emit_payload(payload)
-    if not success:
-        raise typer.Exit(1)
 
 
 @agent_app.command("resolve-config")
 def agent_resolve_config(ctx: typer.Context) -> None:
     """Return the resolved configuration with sensitive values redacted."""
-    operation = "resolve_config"
-    result_type = "config_resolution"
-    global_config, ops = _resolve_agent_ops(ctx, operation, result_type)
-    env_config = global_config.env_config
-    assert env_config is not None
-    context = ops.get_environment_context(
-        env_name=global_config.env_name,
-        config_source=global_config.config_source,
-        config_path=global_config.config_path,
-        odoo_series=global_config.odoo_series,
+    _agent_resolve_config_command(
+        ctx,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        redact_config_fn=_redact_config,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
     )
-    context_data = context.to_dict()
-    payload = _agent_payload(
-        operation,
-        result_type,
-        {
-            "environment": {
-                "name": global_config.env_name,
-                "source": global_config.config_source,
-                "config_path": global_config.config_path,
-            },
-            "effective_config": _redact_config(env_config),
-            "missing_required_keys": list(context.missing_critical_config),
-            "resolved_binaries": context_data["resolved_binaries"],
-            "addons_paths": context_data["addons_paths"],
-            "odoo": context_data["odoo"],
-            "database": context_data["database"],
-        },
-        warnings=list(context.warnings),
-        remediation=list(context.remediation),
-    )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("list-duplicates")
 def agent_list_duplicates(ctx: typer.Context) -> None:
     """Return duplicate addon names through the standard agent envelope."""
-    operation = "list_duplicates"
-    result_type = "duplicate_modules"
-    _, ops = _resolve_agent_ops(ctx, operation, result_type)
-    try:
-        duplicates = ops.list_duplicates()
-    except ConfigError as exc:
-        _agent_fail(
-            operation,
-            result_type,
-            str(exc),
-            error_type="ConfigError",
-            remediation=[
-                "Set `addons_path` in the selected environment before retrying.",
-            ],
-        )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        {
-            "duplicate_modules": duplicates,
-            "duplicate_count": len(duplicates),
-        },
-        warnings=(
-            ["Duplicate addon names can make module resolution ambiguous."]
-            if duplicates
-            else []
-        ),
-        remediation=(
-            ["Remove or reorder duplicate addon paths before mutating modules."]
-            if duplicates
-            else []
-        ),
+    _agent_list_duplicates_command(
+        ctx,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        config_error_cls=ConfigError,
     )
-    _agent_emit_payload(payload)
 
 
 @agent_app.command("install-module")
@@ -4180,79 +3198,27 @@ def agent_install_module(
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ) -> None:
     """Install a module with an explicit mutation gate."""
-    operation = "install_module"
-    result_type = "module_installation"
-    global_config, ops = _resolve_agent_ops(ctx, operation, result_type)
-
-    if dry_run:
-        try:
-            inspection = ops.inspect_addon(
-                module, odoo_series=global_config.odoo_series
-            )
-        except OduitModuleNotFoundError as exc:
-            _agent_fail(
-                operation,
-                result_type,
-                str(exc),
-                error_type="ModuleNotFoundError",
-                details={"module": module},
-            )
-        payload = _agent_payload(
-            operation,
-            "addon_inspection",
-            {
-                **inspection.to_dict(),
-                "dry_run": True,
-                "planned_action": "install",
-            },
-            warnings=list(inspection.warnings),
-            remediation=list(inspection.remediation),
-            read_only=True,
-            safety_level=SAFE_READ_ONLY,
-        )
-        _agent_emit_payload(payload)
-        return
-
-    _agent_require_mutation(
-        allow_mutation,
-        operation,
-        result_type,
-        "module install",
-        CONTROLLED_RUNTIME_MUTATION,
-    )
-    result = ops.install_module(
-        module,
-        no_http=global_config.no_http,
-        suppress_output=True,
-        compact=compact,
-        max_cron_threads=max_cron_threads,
-        without_demo=without_demo or False,
-        language=language,
+    _agent_install_module_command(
+        ctx,
+        module=module,
+        allow_mutation=allow_mutation,
+        dry_run=dry_run,
+        without_demo=without_demo,
         with_demo=with_demo,
-        log_level=log_level.value if log_level else None,
+        language=language,
+        max_cron_threads=max_cron_threads,
+        compact=compact,
+        log_level=log_level,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        agent_require_mutation_fn=_agent_require_mutation,
+        output_result_to_json_fn=output_result_to_json,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        safe_read_only=SAFE_READ_ONLY,
+        controlled_runtime_mutation=CONTROLLED_RUNTIME_MUTATION,
     )
-    result["operation"] = operation
-    payload = output_result_to_json(
-        result,
-        additional_fields={
-            "module": module,
-            "without_demo": without_demo,
-            "with_demo": with_demo,
-            "language": language,
-            "compact": compact,
-            "read_only": False,
-            "safety_level": CONTROLLED_RUNTIME_MUTATION,
-            "remediation": (
-                ["Inspect unmet dependencies and retry after fixing them."]
-                if not result.get("success", False)
-                else []
-            ),
-        },
-        result_type=result_type,
-    )
-    _agent_emit_payload(payload)
-    if not result.get("success", False):
-        raise typer.Exit(1)
 
 
 @agent_app.command("update-module")
@@ -4269,77 +3235,27 @@ def agent_update_module(
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ) -> None:
     """Update a module with an explicit mutation gate."""
-    operation = "update_module"
-    result_type = "module_update"
-    global_config, ops = _resolve_agent_ops(ctx, operation, result_type)
-
-    if dry_run:
-        try:
-            plan = ops.plan_update(module, odoo_series=global_config.odoo_series)
-        except OduitModuleNotFoundError as exc:
-            _agent_fail(
-                operation,
-                result_type,
-                str(exc),
-                error_type="ModuleNotFoundError",
-                details={"module": module},
-            )
-        payload = _agent_payload(
-            operation,
-            "update_plan",
-            {
-                **plan.to_dict(),
-                "dry_run": True,
-                "planned_action": "update",
-            },
-            warnings=list(plan.warnings),
-            remediation=list(plan.remediation),
-            read_only=True,
-            safety_level=SAFE_READ_ONLY,
-        )
-        _agent_emit_payload(payload)
-        return
-
-    _agent_require_mutation(
-        allow_mutation,
-        operation,
-        result_type,
-        "module update",
-        CONTROLLED_RUNTIME_MUTATION,
-    )
-    result = ops.update_module(
-        module,
-        no_http=global_config.no_http,
-        suppress_output=True,
-        compact=compact,
-        log_level=log_level.value if log_level else None,
-        max_cron_threads=max_cron_threads,
-        without_demo=without_demo or False,
+    _agent_update_module_command(
+        ctx,
+        module=module,
+        allow_mutation=allow_mutation,
+        dry_run=dry_run,
+        without_demo=without_demo,
         language=language,
         i18n_overwrite=i18n_overwrite,
+        max_cron_threads=max_cron_threads,
+        compact=compact,
+        log_level=log_level,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        agent_require_mutation_fn=_agent_require_mutation,
+        output_result_to_json_fn=output_result_to_json,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        safe_read_only=SAFE_READ_ONLY,
+        controlled_runtime_mutation=CONTROLLED_RUNTIME_MUTATION,
     )
-    result["operation"] = operation
-    payload = output_result_to_json(
-        result,
-        additional_fields={
-            "module": module,
-            "without_demo": without_demo,
-            "language": language,
-            "i18n_overwrite": i18n_overwrite,
-            "compact": compact,
-            "read_only": False,
-            "safety_level": CONTROLLED_RUNTIME_MUTATION,
-            "remediation": (
-                ["Inspect the update error and rerun targeted tests after fixing it."]
-                if not result.get("success", False)
-                else []
-            ),
-        },
-        result_type=result_type,
-    )
-    _agent_emit_payload(payload)
-    if not result.get("success", False):
-        raise typer.Exit(1)
 
 
 @agent_app.command("create-addon")
@@ -4352,61 +3268,21 @@ def agent_create_addon(
     template: AddonTemplate = ADDON_TEMPLATE_OPTION,
 ) -> None:
     """Create a new addon with an explicit mutation gate."""
-    operation = "create_agent_addon"
-    result_type = "addon_creation"
-    _, ops = _resolve_agent_ops(ctx, operation, result_type)
-
-    if dry_run:
-        payload = _agent_payload(
-            operation,
-            result_type,
-            {
-                "addon_name": addon_name,
-                "path": path,
-                "template": template.value,
-                "dry_run": True,
-            },
-            remediation=[
-                "Retry with `--allow-mutation` to run the scaffold command.",
-            ],
-            read_only=True,
-            safety_level=SAFE_READ_ONLY,
-        )
-        _agent_emit_payload(payload)
-        return
-
-    _agent_require_mutation(
-        allow_mutation,
-        operation,
-        result_type,
-        "addon creation",
-        CONTROLLED_SOURCE_MUTATION,
+    _agent_create_addon_command(
+        ctx,
+        addon_name=addon_name,
+        allow_mutation=allow_mutation,
+        dry_run=dry_run,
+        path=path,
+        template=template,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        agent_require_mutation_fn=_agent_require_mutation,
+        output_result_to_json_fn=output_result_to_json,
+        safe_read_only=SAFE_READ_ONLY,
+        controlled_source_mutation=CONTROLLED_SOURCE_MUTATION,
     )
-    result = ops.create_addon(
-        addon_name,
-        destination=path,
-        template=template.value,
-        suppress_output=True,
-    )
-    result["operation"] = operation
-    payload = output_result_to_json(
-        result,
-        additional_fields={
-            "path": path,
-            "template": template.value,
-            "read_only": False,
-            "safety_level": CONTROLLED_SOURCE_MUTATION,
-            "remediation": (
-                ["Verify the target path and addon name, then retry the scaffold."]
-                if not result.get("success", False)
-                else []
-            ),
-        },
-        result_type=result_type,
-    )
-    _agent_emit_payload(payload)
-    if not result.get("success", False):
-        raise typer.Exit(1)
 
 
 @agent_app.command("export-lang")
@@ -4419,91 +3295,25 @@ def agent_export_lang(
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ) -> None:
     """Export language files with an explicit mutation gate."""
-    operation = "export_lang_module"
-    result_type = "language_export"
-    global_config, ops = _resolve_agent_ops(ctx, operation, result_type)
-    env_config = global_config.env_config
-    assert env_config is not None
-    addons_path = _require_agent_addons_path(env_config, operation, result_type)
-
-    language_value = language or env_config.get("language", "de_DE")
-    if language_value is None:
-        language_value = "de_DE"
-
-    module_manager = ModuleManager(addons_path)
-    module_path = module_manager.find_module_path(module)
-    if not module_path:
-        _agent_fail(
-            operation,
-            result_type,
-            f"Module '{module}' was not found in addons_path",
-            error_type="ModuleNotFoundError",
-            details={"module": module},
-            remediation=[
-                "Verify that the addon exists in the configured addons paths.",
-            ],
-        )
-    i18n_dir = os.path.join(module_path, "i18n")
-    language_slug = (
-        language_value.split("_")[0] if "_" in language_value else language_value
+    _agent_export_lang_command(
+        ctx,
+        module=module,
+        allow_mutation=allow_mutation,
+        dry_run=dry_run,
+        language=language,
+        log_level=log_level,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        require_agent_addons_path_fn=_require_agent_addons_path,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        agent_require_mutation_fn=_agent_require_mutation,
+        output_result_to_json_fn=output_result_to_json,
+        module_manager_cls=ModuleManager,
+        os_module=os,
+        safe_read_only=SAFE_READ_ONLY,
+        controlled_source_mutation=CONTROLLED_SOURCE_MUTATION,
     )
-    filename = os.path.join(i18n_dir, f"{language_slug}.po")
-
-    if dry_run:
-        payload = _agent_payload(
-            operation,
-            result_type,
-            {
-                "module": module,
-                "language": language_value,
-                "filename": filename,
-                "dry_run": True,
-            },
-            remediation=[
-                "Retry with `--allow-mutation` to export the translation file.",
-            ],
-            read_only=True,
-            safety_level=SAFE_READ_ONLY,
-        )
-        _agent_emit_payload(payload)
-        return
-
-    _agent_require_mutation(
-        allow_mutation,
-        operation,
-        result_type,
-        "language export",
-        CONTROLLED_SOURCE_MUTATION,
-    )
-    os.makedirs(i18n_dir, exist_ok=True)
-    result = ops.export_module_language(
-        module,
-        filename,
-        language_value,
-        no_http=global_config.no_http,
-        log_level=log_level.value if log_level else None,
-        suppress_output=True,
-    )
-    result["operation"] = operation
-    payload = output_result_to_json(
-        result,
-        additional_fields={
-            "module": module,
-            "language": language_value,
-            "filename": filename,
-            "read_only": False,
-            "safety_level": CONTROLLED_SOURCE_MUTATION,
-            "remediation": (
-                ["Inspect the export error and verify the module path and language."]
-                if not result.get("success", False)
-                else []
-            ),
-        },
-        result_type=result_type,
-    )
-    _agent_emit_payload(payload)
-    if not result.get("success", False):
-        raise typer.Exit(1)
 
 
 @agent_app.command("test-summary")
@@ -4535,59 +3345,27 @@ def agent_test_summary(
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ) -> None:
     """Run tests and emit a normalized summary payload."""
-    operation = "test_summary"
-    result_type = "test_summary"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    _agent_require_mutation(
-        allow_mutation,
-        operation,
-        result_type,
-        "test execution",
-        CONTROLLED_RUNTIME_MUTATION,
-    )
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    result = ops.run_tests(
+    _agent_test_summary_command(
+        ctx,
         module=module,
+        allow_mutation=allow_mutation,
+        install=install,
+        update=update,
+        coverage=coverage,
+        test_file=test_file,
+        test_tags=test_tags,
         stop_on_error=stop_on_error,
-        install=install,
-        update=update,
-        coverage=coverage,
-        test_file=test_file,
-        test_tags=test_tags,
         compact=compact,
-        suppress_output=True,
-        log_level=log_level.value if log_level else None,
+        log_level=log_level,
+        resolve_agent_global_config_fn=_resolve_agent_global_config,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        agent_require_mutation_fn=_agent_require_mutation,
+        build_agent_test_summary_details_fn=_build_agent_test_summary_details,
+        odoo_operations_cls=OdooOperations,
+        controlled_runtime_mutation=CONTROLLED_RUNTIME_MUTATION,
     )
-    payload_data, warnings, suggested_next_steps = _build_agent_test_summary_details(
-        result,
-        module=module,
-        install=install,
-        update=update,
-        coverage=coverage,
-        test_file=test_file,
-        test_tags=test_tags,
-    )
-
-    payload = _agent_payload(
-        operation,
-        result_type,
-        payload_data,
-        success=result.get("success", False),
-        warnings=warnings,
-        remediation=suggested_next_steps,
-        read_only=False,
-        safety_level=CONTROLLED_RUNTIME_MUTATION,
-        error=result.get("error"),
-        error_type=result.get("error_type"),
-    )
-    _agent_emit_payload(payload)
-    if not result.get("success", False):
-        raise typer.Exit(1)
 
 
 @agent_app.command("validate-addon-change")
@@ -4612,187 +3390,35 @@ def agent_validate_addon_change(
     log_level: LogLevel | None = LOG_LEVEL_OPTION,
 ) -> None:
     """Validate an addon change with one aggregate structured payload."""
-    operation = "validate_addon_change"
-    result_type = "addon_change_validation"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    _agent_require_mutation(
-        allow_mutation,
-        operation,
-        result_type,
-        "addon change validation",
-        CONTROLLED_RUNTIME_MUTATION,
+    _agent_validate_impl.agent_validate_addon_change_command(
+        ctx,
+        module=module,
+        allow_mutation=allow_mutation,
+        install_if_needed=install_if_needed,
+        update=update,
+        test_tags=test_tags,
+        discover_tests=discover_tests,
+        stop_on_error=stop_on_error,
+        compact=compact,
+        log_level=log_level,
+        resolve_agent_global_config_fn=_resolve_agent_global_config,
+        agent_fail_fn=_agent_fail,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        agent_require_mutation_fn=_agent_require_mutation,
+        agent_sub_result_fn=_agent_sub_result,
+        build_agent_test_summary_details_fn=_build_agent_test_summary_details,
+        build_validate_addon_change_payload_fn=_build_validate_addon_change_payload,
+        run_validate_addon_change_preflight_fn=_run_validate_addon_change_preflight,
+        build_validate_addon_change_discovery_result_fn=(
+            _build_validate_addon_change_discovery_result
+        ),
+        build_doctor_report_fn=_build_doctor_report,
+        odoo_operations_cls=OdooOperations,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        config_error_cls=ConfigError,
+        controlled_runtime_mutation=CONTROLLED_RUNTIME_MUTATION,
     )
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    resolved_test_tags = test_tags or f"/{module}"
-    mutation_action = {"action": "none", "performed": False}
-    sub_results, completed_steps, failed_step, installed_state = (
-        _run_validate_addon_change_preflight(ops, global_config, module)
-    )
-
-    if failed_step is None:
-        assert installed_state is not None
-        should_install = install_if_needed and not installed_state["installed"]
-        should_update = update and not should_install
-        if should_install:
-            result = ops.install_module(
-                module,
-                no_http=global_config.no_http,
-                suppress_output=True,
-                compact=compact,
-                max_cron_threads=None,
-                without_demo=False,
-                language=None,
-                with_demo=False,
-                log_level=log_level.value if log_level else None,
-            )
-            mutation_action = {
-                "action": "install",
-                "performed": True,
-                "reason": "module_not_installed",
-            }
-        elif should_update:
-            result = ops.update_module(
-                module,
-                no_http=global_config.no_http,
-                suppress_output=True,
-                compact=compact,
-                log_level=log_level.value if log_level else None,
-                max_cron_threads=None,
-                without_demo=False,
-                language=None,
-                i18n_overwrite=False,
-            )
-            mutation_action = {
-                "action": "update",
-                "performed": True,
-                "reason": "update_requested",
-            }
-        else:
-            result = None
-            mutation_action = {
-                "action": "none",
-                "performed": False,
-                "reason": (
-                    "module_already_installed"
-                    if install_if_needed and installed_state["installed"]
-                    else "no_runtime_mutation_requested"
-                ),
-            }
-
-        if result is None:
-            sub_results["module_action"] = _agent_sub_result(
-                success=True,
-                data=mutation_action,
-                skipped=True,
-            )
-        else:
-            action_success = bool(result.get("success", False))
-            remediation = (
-                ["Inspect the module-action error before retrying verification."]
-                if not action_success
-                else []
-            )
-            sub_results["module_action"] = _agent_sub_result(
-                success=action_success,
-                data={
-                    **result,
-                    **mutation_action,
-                },
-                remediation=remediation,
-                error=result.get("error"),
-                error_type=result.get("error_type"),
-                read_only=False,
-                safety_level=CONTROLLED_RUNTIME_MUTATION,
-            )
-            if not action_success:
-                failed_step = "module_action"
-        completed_steps.append("module_action")
-
-    if failed_step is None:
-        test_result = ops.run_tests(
-            module=module,
-            stop_on_error=stop_on_error,
-            install=None,
-            update=None,
-            coverage=None,
-            test_file=None,
-            test_tags=resolved_test_tags,
-            compact=compact,
-            suppress_output=True,
-            log_level=log_level.value if log_level else None,
-        )
-        test_data, test_warnings, test_remediation = _build_agent_test_summary_details(
-            test_result,
-            module=module,
-            install=None,
-            update=None,
-            coverage=None,
-            test_file=None,
-            test_tags=resolved_test_tags,
-        )
-        sub_results["module_tests"] = _agent_sub_result(
-            success=bool(test_result.get("success", False)),
-            data=test_data,
-            warnings=test_warnings,
-            remediation=test_remediation,
-            error=test_result.get("error"),
-            error_type=test_result.get("error_type"),
-            read_only=False,
-            safety_level=CONTROLLED_RUNTIME_MUTATION,
-        )
-        completed_steps.append("module_tests")
-        if not test_result.get("success", False):
-            failed_step = "module_tests"
-
-    discovery_result, discovery_failed_step, discovery_completed = (
-        _build_validate_addon_change_discovery_result(
-            ops,
-            module,
-            discover_tests=discover_tests,
-            failed_step=failed_step,
-        )
-    )
-    sub_results["discovered_tests"] = discovery_result
-    if discovery_completed:
-        completed_steps.append("discovered_tests")
-    if discovery_failed_step is not None:
-        failed_step = discovery_failed_step
-
-    payload_data, success, warnings, errors, remediation, error, error_type = (
-        _build_validate_addon_change_payload(
-            module,
-            install_if_needed=install_if_needed,
-            update=update,
-            resolved_test_tags=resolved_test_tags,
-            discover_tests=discover_tests,
-            installed_state=installed_state,
-            mutation_action=mutation_action,
-            sub_results=sub_results,
-            completed_steps=completed_steps,
-            failed_step=failed_step,
-        )
-    )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        payload_data,
-        success=success,
-        warnings=warnings,
-        errors=errors,
-        remediation=remediation,
-        read_only=False,
-        safety_level=CONTROLLED_RUNTIME_MUTATION,
-        error=error,
-        error_type=error_type,
-    )
-    _agent_emit_payload(payload)
-    if not success:
-        raise typer.Exit(1)
 
 
 @agent_app.command("query-model")
@@ -4812,45 +3438,21 @@ def agent_query_model(
     timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
 ) -> None:
     """Run a structured read-only model query."""
-    operation = "query_model"
-    result_type = "query_result"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    result = ops.query_model(
-        model,
-        domain=_parse_json_list_option(
-            domain_json, "domain_json", operation, result_type
-        ),
-        fields=_parse_csv_items(fields),
+    _agent_query_model_command(
+        ctx,
+        model=model,
+        domain_json=domain_json,
+        fields=fields,
         limit=limit,
         database=database,
         timeout=timeout,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        parse_json_list_option_fn=_parse_json_list_option,
+        parse_csv_items_fn=_parse_csv_items,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        safe_read_only=SAFE_READ_ONLY,
     )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        result.to_dict(),
-        success=result.success,
-        remediation=(
-            [
-                "Review the validation error and retry the query with "
-                "literal-safe inputs."
-            ]
-            if not result.success
-            else []
-        ),
-        read_only=True,
-        safety_level=SAFE_READ_ONLY,
-        error=result.error,
-        error_type=result.error_type,
-    )
-    _agent_emit_payload(payload)
-    if not result.success:
-        raise typer.Exit(1)
 
 
 @agent_app.command("read-record")
@@ -4867,39 +3469,19 @@ def agent_read_record(
     timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
 ) -> None:
     """Read a single record by id via OdooQuery."""
-    operation = "read_record"
-    result_type = "record_result"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    result = ops.read_record(
-        model,
-        record_id,
-        fields=_parse_csv_items(fields),
+    _agent_read_record_command(
+        ctx,
+        model=model,
+        record_id=record_id,
+        fields=fields,
         database=database,
         timeout=timeout,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        parse_csv_items_fn=_parse_csv_items,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        safe_read_only=SAFE_READ_ONLY,
     )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        result.to_dict(),
-        success=result.success,
-        remediation=(
-            ["Verify the record id and field names, then retry the read operation."]
-            if not result.success
-            else []
-        ),
-        read_only=True,
-        safety_level=SAFE_READ_ONLY,
-        error=result.error,
-        error_type=result.error_type,
-    )
-    _agent_emit_payload(payload)
-    if not result.success:
-        raise typer.Exit(1)
 
 
 @agent_app.command("search-count")
@@ -4915,40 +3497,18 @@ def agent_search_count(
     timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
 ) -> None:
     """Count records matching a domain via OdooQuery."""
-    operation = "search_count"
-    result_type = "count_result"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    result = ops.search_count(
-        model,
-        domain=_parse_json_list_option(
-            domain_json, "domain_json", operation, result_type
-        ),
+    _agent_search_count_command(
+        ctx,
+        model=model,
+        domain_json=domain_json,
         database=database,
         timeout=timeout,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        parse_json_list_option_fn=_parse_json_list_option,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        safe_read_only=SAFE_READ_ONLY,
     )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        result.to_dict(),
-        success=result.success,
-        remediation=(
-            ["Verify the model name and domain syntax, then retry the search count."]
-            if not result.success
-            else []
-        ),
-        read_only=True,
-        safety_level=SAFE_READ_ONLY,
-        error=result.error,
-        error_type=result.error_type,
-    )
-    _agent_emit_payload(payload)
-    if not result.success:
-        raise typer.Exit(1)
 
 
 @agent_app.command("get-model-fields")
@@ -4966,41 +3526,18 @@ def agent_get_model_fields(
     timeout: float = typer.Option(30.0, "--timeout", help="Query timeout in seconds"),
 ) -> None:
     """Inspect model field metadata via OdooQuery."""
-    operation = "get_model_fields"
-    result_type = "model_fields"
-    global_config = _resolve_agent_global_config(ctx, operation, result_type)
-    if global_config.env_config is None:
-        _agent_fail(operation, result_type, "No environment configuration available")
-    assert global_config.env_config is not None
-
-    ops = OdooOperations(global_config.env_config, verbose=False)
-    result = ops.get_model_fields(
-        model,
-        attributes=_parse_csv_items(attributes),
+    _agent_get_model_fields_command(
+        ctx,
+        model=model,
+        attributes=attributes,
         database=database,
         timeout=timeout,
+        resolve_agent_ops_fn=_resolve_agent_ops,
+        parse_csv_items_fn=_parse_csv_items,
+        agent_payload_fn=_agent_payload,
+        agent_emit_payload_fn=_agent_emit_payload,
+        safe_read_only=SAFE_READ_ONLY,
     )
-    payload = _agent_payload(
-        operation,
-        result_type,
-        result.to_dict(),
-        success=result.success,
-        remediation=(
-            [
-                "Verify the model name and requested attributes, then retry "
-                "the inspection."
-            ]
-            if not result.success
-            else []
-        ),
-        read_only=True,
-        safety_level=SAFE_READ_ONLY,
-        error=result.error,
-        error_type=result.error_type,
-    )
-    _agent_emit_payload(payload)
-    if not result.success:
-        raise typer.Exit(1)
 
 
 def cli_main() -> None:
