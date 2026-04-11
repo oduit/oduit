@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
+from oduit import ConfigError
 from oduit.api_models import ModelViewInventory, ModelViewRecord
 from oduit.cli.app import app
 
@@ -380,3 +381,72 @@ def test_resolve_config_redacts_sensitive_values(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["type"] == "config_resolution"
     assert payload["effective_config"]["db_password"] == "***redacted***"
+
+
+def test_validate_addon_change_failure_payload_validates_against_schema(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "my_partner")
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "my_partner", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.get_addon_install_state.return_value = MagicMock(
+            success=True,
+            module="my_partner",
+            record_found=True,
+            state="installed",
+            installed=True,
+        )
+        ops.run_tests.return_value = {
+            "success": True,
+            "operation": "test",
+            "return_code": 0,
+            "total_tests": 1,
+            "passed_tests": 1,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "failures": [],
+        }
+        ops.list_addon_tests.side_effect = ConfigError("invalid discovery inputs")
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "my_partner",
+                "--allow-mutation",
+                "--discover-tests",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    envelope_schema = json.loads((SCHEMAS / "result-envelope.schema.json").read_text())
+    command_schema = json.loads(
+        (SCHEMAS / "agent" / "addon-change-validation.schema.json").read_text()
+    )
+    _validate_schema(envelope_schema, payload)
+    _validate_schema(command_schema, payload)
+    assert payload["verification_summary"]["failed_step"] == "discovered_tests"
+    assert payload["error_type"] == "ConfigError"

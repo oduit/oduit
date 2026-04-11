@@ -60,8 +60,12 @@ pytest -m "not integration"
 4. **test_module_with_missing_dependency**: Tests handling of modules with unmet dependencies (module d)
 5. **test_module_test_failure**: Verifies oduit detects failing unit tests in module b
 6. **test_run_module_tests_success**: Tests successful test execution
-7. **test_agent_prepare_addon_change_and_validate_success**: Runs the real agent workflow against module e
+7. **test_agent_smoke_commands_emit_expected_envelopes**: Runs the real agent workflow and smoke-command envelope assertions against module e
 8. **test_agent_validate_addon_change_reports_dependency_failure**: Verifies structured agent failures for module d
+
+The agent workflow coverage in `integration_tests/test_agent_workflows.py`
+serves as the real Odoo-backed smoke suite for the documented coding-agent
+command loop.
 
 ## CI/CD
 
@@ -69,7 +73,8 @@ These tests require a real Odoo instance and are typically:
 
 - Run in a Docker container with Odoo pre-installed
 - Skipped in lightweight CI environments
-- Run nightly or before releases
+- Run on the dedicated Odoo 17 publish-smoke lane before release
+- Kept on Odoo 18 and 19 lanes for compatibility coverage
 
 ## Troubleshooting
 

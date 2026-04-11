@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
+from oduit import ConfigError
 from oduit.api_models import (
     AddonInstallState,
     InstalledAddonInventory,
@@ -1085,6 +1086,511 @@ def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> Non
     assert payload["installed_state"]["installed"] is False
     assert payload["mutation_action"]["action"] == "install"
     ops.get_addon_install_state.assert_called_once_with("x_sale")
+    ops.install_module.assert_called_once()
+    ops.update_module.assert_not_called()
+
+
+def test_agent_validate_addon_change_fails_when_doctor_fails(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    config = _agent_config(tmp_path, str(addons_dir))
+    config["odoo_bin"] = str(tmp_path / "missing-odoo-bin")
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(
+            OdooOperations,
+            "get_odoo_version",
+            return_value={"success": True, "version": "17.0"},
+        ),
+        patch.object(
+            OdooOperations,
+            "db_exists",
+            return_value={"success": True, "exists": True},
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["verification_summary"]["failed_step"] == "doctor"
+    assert "Doctor found" in payload["error"]
+    assert "odoo_bin" in payload["error"]
+    assert payload["error_type"] == "DoctorCheckError"
+    assert payload["sub_results"]["doctor"]["success"] is False
+    assert payload["remediation"]
+
+
+def test_agent_validate_addon_change_fails_when_target_module_is_duplicated(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_a = tmp_path / "addons_a"
+    addons_b = tmp_path / "addons_b"
+    addons_a.mkdir()
+    addons_b.mkdir()
+    _make_addon(addons_a, "base", depends=[])
+    _make_addon(addons_a, "x_sale", depends=["base"])
+    _make_addon(addons_b, "x_sale", depends=["base"])
+    config = _agent_config(tmp_path, f"{addons_a},{addons_b}")
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(
+            OdooOperations,
+            "get_odoo_version",
+            return_value={"success": True, "version": "17.0"},
+        ),
+        patch.object(
+            OdooOperations,
+            "db_exists",
+            return_value={"success": True, "exists": True},
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["verification_summary"]["failed_step"] == "duplicates"
+    assert payload["error_type"] == "DuplicateModuleError"
+    assert payload["error_code"] == "module.duplicate_name"
+    assert (
+        payload["sub_results"]["duplicates"]["data"]["target_module_duplicated"] is True
+    )
+    assert payload["remediation"]
+
+
+def test_agent_validate_addon_change_surfaces_installed_state_query_failure(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.get_addon_install_state.return_value = AddonInstallState(
+            success=False,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=False,
+            state="unknown",
+            installed=False,
+            error="database unavailable",
+            error_type="QueryError",
+        )
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["verification_summary"]["failed_step"] == "installed_state"
+    assert payload["error"] == "database unavailable"
+    assert payload["error_type"] == "QueryError"
+    assert payload["error_code"] == "runtime.query_failed"
+    assert payload["sub_results"]["installed_state"]["success"] is False
+    assert (
+        "Verify database access and retry the module-state lookup."
+        in payload["remediation"]
+    )
+
+
+def test_agent_validate_addon_change_surfaces_module_action_failure(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.get_addon_install_state.return_value = AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=True,
+            state="uninstalled",
+            installed=False,
+        )
+        ops.install_module.return_value = {
+            "success": False,
+            "operation": "install_module",
+            "return_code": 1,
+            "error": "module install failed",
+            "error_type": "ModuleOperationError",
+        }
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+                "--install-if-needed",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["verification_summary"]["failed_step"] == "module_action"
+    assert payload["error"] == "module install failed"
+    assert payload["error_type"] == "ModuleOperationError"
+    assert payload["error_code"] == "runtime.module_operation_failed"
+    assert payload["sub_results"]["module_action"]["success"] is False
+    assert payload["sub_results"]["module_action"]["read_only"] is False
+    assert payload["sub_results"]["module_action"]["safety_level"] == (
+        "controlled_runtime_mutation"
+    )
+    assert (
+        "Inspect the module-action error before retrying verification."
+        in payload["remediation"]
+    )
+    ops.run_tests.assert_not_called()
+
+
+def test_agent_validate_addon_change_surfaces_test_failure(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.get_addon_install_state.return_value = AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=True,
+            state="installed",
+            installed=True,
+        )
+        ops.run_tests.return_value = {
+            "success": False,
+            "operation": "test",
+            "return_code": 1,
+            "error": "failed test run",
+            "error_type": "TestFailure",
+            "total_tests": 1,
+            "passed_tests": 0,
+            "failed_tests": 1,
+            "error_tests": 0,
+            "failures": [],
+        }
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+                "--discover-tests",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["verification_summary"]["failed_step"] == "module_tests"
+    assert payload["error"] == "failed test run"
+    assert payload["error_type"] == "TestFailure"
+    assert payload["error_code"] == "runtime.test_failure"
+    assert payload["sub_results"]["module_tests"]["success"] is False
+    assert payload["sub_results"]["discovered_tests"]["skipped"] is True
+    assert payload["sub_results"]["discovered_tests"]["data"]["reason"] == (
+        "skipped_after_failed_required_step"
+    )
+
+
+def test_agent_validate_addon_change_surfaces_discovered_tests_failure(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.get_addon_install_state.return_value = AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=True,
+            state="installed",
+            installed=True,
+        )
+        ops.run_tests.return_value = {
+            "success": True,
+            "operation": "test",
+            "return_code": 0,
+            "total_tests": 1,
+            "passed_tests": 1,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "failures": [],
+        }
+        ops.list_addon_tests.side_effect = ConfigError("invalid discovery inputs")
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+                "--discover-tests",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["verification_summary"]["failed_step"] == "discovered_tests"
+    assert payload["error"] == "invalid discovery inputs"
+    assert payload["error_type"] == "ConfigError"
+    assert payload["sub_results"]["discovered_tests"]["success"] is False
+    assert (
+        "Verify the addon path and test discovery inputs before retrying."
+        in (payload["remediation"])
+    )
+
+
+def test_agent_validate_addon_change_skips_module_action_when_already_installed(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.get_addon_install_state.return_value = AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=True,
+            state="installed",
+            installed=True,
+        )
+        ops.run_tests.return_value = {
+            "success": True,
+            "operation": "test",
+            "return_code": 0,
+            "total_tests": 1,
+            "passed_tests": 1,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "failures": [],
+        }
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+                "--install-if-needed",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["mutation_action"] == {
+        "action": "none",
+        "performed": False,
+        "reason": "module_already_installed",
+    }
+    assert payload["sub_results"]["module_action"]["skipped"] is True
+    ops.install_module.assert_not_called()
+    ops.update_module.assert_not_called()
+
+
+def test_agent_validate_addon_change_prefers_install_when_update_is_requested(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.get_addon_install_state.return_value = AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=False,
+            state="uninstalled",
+            installed=False,
+        )
+        ops.install_module.return_value = {
+            "success": True,
+            "operation": "install_module",
+            "return_code": 0,
+        }
+        ops.run_tests.return_value = {
+            "success": True,
+            "operation": "test",
+            "return_code": 0,
+            "total_tests": 1,
+            "passed_tests": 1,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "failures": [],
+        }
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+                "--install-if-needed",
+                "--update",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["mutation_action"] == {
+        "action": "install",
+        "performed": True,
+        "reason": "module_not_installed",
+    }
     ops.install_module.assert_called_once()
     ops.update_module.assert_not_called()
 

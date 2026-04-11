@@ -20,6 +20,36 @@ def _generate_manifests_from_templates(odoo_version: str) -> None:
         manifest_path.write_text(generated_content)
 
 
+def _ensure_integration_database(config: dict[str, Any]) -> None:
+    db_name = config.get("db_name")
+    if not db_name:
+        return
+
+    ops = OdooOperations(config, verbose=False)
+    exists_result = ops.db_exists(with_sudo=False, suppress_output=True)
+    if exists_result.get("success", False) and exists_result.get("exists", False):
+        return
+
+    create_result = ops.create_db(
+        with_sudo=True,
+        suppress_output=True,
+        db_user=str(config.get("db_user")) if config.get("db_user") else None,
+    )
+    exists_after_create = ops.db_exists(with_sudo=False, suppress_output=True)
+    if exists_after_create.get("success", False) and exists_after_create.get(
+        "exists", False
+    ):
+        return
+
+    reason = (
+        create_result.get("error")
+        or exists_after_create.get("error")
+        or exists_result.get("error")
+        or f"Database '{db_name}' is unavailable"
+    )
+    pytest.skip(f"Integration database is unavailable: {reason}")
+
+
 @pytest.fixture
 def integration_config() -> dict[str, Any]:
     integration_dir = Path(__file__).parent
@@ -50,6 +80,8 @@ def integration_config() -> dict[str, Any]:
     if result.get("success", False) and result.get("version"):
         odoo_version = result["version"]
         _generate_manifests_from_templates(odoo_version)
+
+    _ensure_integration_database(config)
 
     return config
 

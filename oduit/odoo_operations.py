@@ -687,7 +687,9 @@ class OdooOperations:
                 print_info(f"Checking if database exists: {db_name}")
 
             exists_result = self.process_manager.run_operation(
-                exists_operation, verbose=self.verbose
+                exists_operation,
+                verbose=self.verbose,
+                suppress_output=suppress_output,
             )
 
             stdout = exists_result.get("stdout", "") if exists_result else ""
@@ -774,7 +776,9 @@ class OdooOperations:
                 print_info(f"Dropping database: {db_name}")
 
             drop_result = self.process_manager.run_operation(
-                drop_operation, verbose=self.verbose
+                drop_operation,
+                verbose=self.verbose,
+                suppress_output=suppress_output,
             )
 
             drop_success = drop_result.get("success", False) if drop_result else False
@@ -897,7 +901,9 @@ class OdooOperations:
                     )
 
             create_result = self.process_manager.run_operation(
-                create_operation, verbose=self.verbose
+                create_operation,
+                verbose=self.verbose,
+                suppress_output=suppress_output,
             )
 
             create_success = (
@@ -973,7 +979,9 @@ class OdooOperations:
                 print_info("Listing databases...")
 
             list_result = self.process_manager.run_operation(
-                list_operation, verbose=self.verbose, suppress_output=suppress_output
+                list_operation,
+                verbose=self.verbose,
+                suppress_output=suppress_output,
             )
 
             list_success = list_result.get("success", False) if list_result else False
