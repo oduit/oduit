@@ -15,6 +15,7 @@ from manifestoo_core.odoo_series import OdooSeries
 from . import output as _output_module
 from .addons_path_manager import AddonsPathManager
 from .api_models import (
+    AddonInfo,
     AddonInspection,
     AddonInstallState,
     AddonModelInventory,
@@ -69,6 +70,7 @@ from .operation_result import OperationResult
 from .output import print_error, print_error_result, print_info
 from .process_manager import ProcessManager
 from .source_locator import (
+    list_addon_languages,
     list_addon_models,
     list_addon_tests,
     list_model_extensions,
@@ -1678,6 +1680,94 @@ class OdooOperations:
             remediation=list(dict.fromkeys(remediation)),
         )
 
+    def addon_info(
+        self,
+        module_name: str,
+        *,
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> AddonInfo:
+        """Return a combined addon summary for onboarding and planning."""
+        inspection = self.inspect_addon(module_name, odoo_series=odoo_series)
+        module_manager = self._get_module_manager()
+        manifest = module_manager.get_manifest(module_name)
+        addon_root = inspection.module_path
+        if manifest is None or addon_root is None:
+            raise ModuleNotFoundError(
+                f"Module '{module_name}' was not found in addons_path"
+            )
+
+        model_inventory = self.list_addon_models(module_name)
+        test_inventory = self.list_addon_tests(module_name)
+        languages, language_warnings = list_addon_languages(addon_root)
+        installed_state = self.get_addon_install_state(
+            module_name,
+            database=database,
+            timeout=timeout,
+        )
+
+        declared_models = sorted(
+            {
+                entry.model
+                for entry in model_inventory.models
+                if entry.relation_kind == "declares"
+            }
+        )
+        inherit_models = sorted(
+            {
+                inherited_model
+                for entry in model_inventory.models
+                for inherited_model in entry.inherited_models
+                if inherited_model
+            }
+        )
+
+        warnings = [
+            *inspection.warnings,
+            *model_inventory.warnings,
+            *test_inventory.warnings,
+            *language_warnings,
+        ]
+        remediation = [
+            *inspection.remediation,
+            *model_inventory.remediation,
+            *test_inventory.remediation,
+        ]
+        if not installed_state.success:
+            warnings.append(
+                "Runtime install state was unavailable; static addon info is still "
+                "provided."
+            )
+            remediation.append(
+                "Verify database access if installed state matters for this addon."
+            )
+
+        return AddonInfo(
+            module=module_name,
+            module_path=addon_root,
+            addon_type=inspection.addon_type,
+            version_display=inspection.version_display,
+            summary=manifest.summary,
+            description=manifest.description,
+            license=manifest.license,
+            depends=list(inspection.direct_dependencies),
+            reverse_dependencies=list(inspection.reverse_dependencies),
+            reverse_dependency_count=inspection.reverse_dependency_count,
+            missing_dependencies=list(inspection.missing_dependencies),
+            installable=manifest.installable,
+            auto_install=manifest.auto_install,
+            models=declared_models,
+            inherit_models=inherit_models,
+            model_count=len(declared_models),
+            test_cases=list(test_inventory.tests),
+            test_count=len(test_inventory.tests),
+            languages=languages,
+            installed_state=installed_state,
+            warnings=list(dict.fromkeys(warnings)),
+            remediation=list(dict.fromkeys(remediation)),
+        )
+
     def plan_update(
         self,
         module_name: str,
@@ -1996,6 +2086,11 @@ class OdooOperations:
             return None
         return bool(value)
 
+    @staticmethod
+    def _normalize_optional_str(value: Any) -> str | None:
+        """Normalize optional string-like values from query helpers."""
+        return value if isinstance(value, str) else None
+
     @classmethod
     def _normalize_installed_addon_record(
         cls,
@@ -2037,7 +2132,9 @@ class OdooOperations:
                 success=False,
                 operation="get_addon_install_state",
                 module=module,
-                database=result.database,
+                database=self._normalize_optional_str(
+                    getattr(result, "database", None)
+                ),
                 error=result.error,
                 error_type=result.error_type,
             )
@@ -2051,7 +2148,7 @@ class OdooOperations:
             record_found=bool(result.records),
             state=state,
             installed=state == "installed",
-            database=result.database,
+            database=self._normalize_optional_str(getattr(result, "database", None)),
         )
 
     def list_installed_dependents(

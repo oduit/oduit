@@ -17,6 +17,7 @@ contract changes such as new stable fields or failure codes.
 - `AddonsPathManager`
 - `EnvironmentSource`, `BinaryProbe`, `AddonsPathStatus`, `OdooVersionInfo`
 - `DatabaseSummary`, `EnvironmentContext`, `AddonInstallState`, `AddonInspection`
+- `AddonInfo`
 - `InstalledAddonRecord`, `InstalledAddonInventory`, `UpdatePlan`
 - `QueryModelResult`, `RecordReadResult`, `SearchCountResult`, `ModelFieldsResult`
 - `ModuleManager`
@@ -49,6 +50,7 @@ contract changes such as new stable fields or failure codes.
 - `list-env`
 - `print-config`
 - `create-addon`
+- `addon-info`
 - `list-addons`
 - `list-installed-addons`
 - `print-manifest`
@@ -66,6 +68,7 @@ contract changes such as new stable fields or failure codes.
 ## `oduit agent` subcommands in `oduit.cli.app`
 
 - `context`
+- `addon-info`
 - `create-addon`
 - `dependency-graph`
 - `doctor`
@@ -112,6 +115,7 @@ contract changes such as new stable fields or failure codes.
 - `get_odoo_version()`
 - `get_environment_context()`
 - `inspect_addon()`
+- `addon_info()`
 - `plan_update()`
 - `get_addon_install_state()`
 - `list_installed_dependents()`

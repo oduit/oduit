@@ -426,6 +426,34 @@ class AddonTestInventory(DictModel):
 
 
 @dataclass
+class AddonInfo(DictModel):
+    """Combined static and runtime addon summary for onboarding workflows."""
+
+    module: str
+    module_path: str | None
+    addon_type: str
+    version_display: str
+    summary: str = ""
+    description: str = ""
+    license: str = ""
+    depends: list[str] = dataclass_field(default_factory=list)
+    reverse_dependencies: list[str] = dataclass_field(default_factory=list)
+    reverse_dependency_count: int = 0
+    missing_dependencies: list[str] = dataclass_field(default_factory=list)
+    installable: bool = False
+    auto_install: bool = False
+    models: list[str] = dataclass_field(default_factory=list)
+    inherit_models: list[str] = dataclass_field(default_factory=list)
+    model_count: int = 0
+    test_cases: list[AddonTestFile] = dataclass_field(default_factory=list)
+    test_count: int = 0
+    languages: list[str] = dataclass_field(default_factory=list)
+    installed_state: AddonInstallState | None = None
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
 class RecommendedTestPlan(DictModel):
     """Changed-file to test recommendation plan for coding-agent workflows."""
 

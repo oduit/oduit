@@ -11,7 +11,13 @@ from unittest.mock import MagicMock, patch
 import typer
 from typer.testing import CliRunner
 
-from oduit.api_models import InstalledAddonInventory, InstalledAddonRecord
+from oduit.api_models import (
+    AddonInfo,
+    AddonInstallState,
+    AddonTestFile,
+    InstalledAddonInventory,
+    InstalledAddonRecord,
+)
 from oduit.cli.app import app, create_global_config
 from oduit.cli_types import AddonTemplate, GlobalConfig, OutputFormat, ShellInterface
 
@@ -737,6 +743,70 @@ class TestCLICommands(unittest.TestCase):
         self.assertEqual(payload["operation"], "list_installed_addons")
         self.assertEqual(payload["addons"][0]["module"], "sale")
         self.assertEqual(payload["modules_filter"], ["sale"])
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_addon_info_json_output(self, mock_config_loader_class, mock_odoo_ops):
+        """Test addon-info JSON output."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.addon_info.return_value = AddonInfo(
+            module="sale",
+            module_path="/test/addons/sale",
+            addon_type="core",
+            version_display="17.0.1.0.0",
+            summary="Sales",
+            description="Sales management",
+            license="LGPL-3",
+            depends=["base"],
+            models=["sale.order"],
+            inherit_models=["mail.thread"],
+            model_count=1,
+            test_cases=[
+                AddonTestFile(
+                    path="/test/addons/sale/tests/test_sale.py", test_type="python"
+                )
+            ],
+            test_count=1,
+            languages=["de", "fr"],
+            installed_state=AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="sale",
+                record_found=True,
+                state="installed",
+                installed=True,
+                database="test_db",
+            ),
+        )
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "--json", "addon-info", "sale"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assert_common_json_envelope(
+            payload,
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        self.assertEqual(payload["type"], "addon_info")
+        self.assertEqual(payload["operation"], "addon_info")
+        self.assertEqual(payload["module"], "sale")
+        self.assertEqual(payload["models"], ["sale.order"])
+        self.assertEqual(payload["languages"], ["de", "fr"])
+        self.assertEqual(payload["installed_state"]["state"], "installed")
+        mock_ops_instance.addon_info.assert_called_once_with(
+            "sale",
+            odoo_series=None,
+            database=None,
+            timeout=30.0,
+        )
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")

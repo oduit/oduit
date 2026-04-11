@@ -13,6 +13,7 @@ from oduit.api_models import (
     InstalledAddonRecord,
     ModelViewInventory,
     ModelViewRecord,
+    QueryModelResult,
 )
 from oduit.cli.app import app
 from oduit.odoo_operations import OdooOperations
@@ -124,6 +125,61 @@ def test_agent_inspect_addon_returns_dependency_snapshot(tmp_path: Path) -> None
     assert payload["direct_dependencies"] == ["base"]
     assert payload["reverse_dependencies"] == ["x_sale_ext"]
     assert payload["install_order_slice"] == ["base", "x_sale"]
+
+
+def test_agent_addon_info_returns_combined_summary(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    addon_dir = addons_dir / "my_partner"
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class PartnerScore(models.Model):\n"
+        "    _name = 'x.partner.score'\n"
+        "    _inherit = 'mail.thread'\n"
+        "    partner_id = fields.Many2one('res.partner')\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+    (addon_dir / "tests").mkdir()
+    (addon_dir / "tests" / "test_partner.py").write_text("assert True\n")
+    (addon_dir / "i18n").mkdir()
+    (addon_dir / "i18n" / "de.po").write_text('msgid ""\nmsgstr ""\n')
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.odoo_operations.OdooOperations.query_model",
+            return_value=QueryModelResult(
+                success=True,
+                operation="query_model",
+                model="ir.module.module",
+                records=[{"name": "my_partner", "state": "installed"}],
+                database="test_db",
+            ),
+        ),
+    ):
+        result = runner.invoke(
+            app, ["--env", "dev", "agent", "addon-info", "my_partner"]
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_info"
+    assert payload["operation"] == "addon_info"
+    assert payload["module"] == "my_partner"
+    assert payload["models"] == ["x.partner.score"]
+    assert payload["inherit_models"] == ["mail.thread", "res.partner"]
+    assert payload["languages"] == ["de"]
+    assert payload["installed_state"]["installed"] is True
+    assert payload["test_cases"][0]["path"].endswith("tests/test_partner.py")
 
 
 def test_agent_plan_update_returns_risk_summary(tmp_path: Path) -> None:

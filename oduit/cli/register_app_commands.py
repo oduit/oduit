@@ -36,6 +36,7 @@ def register_app_commands(  # noqa: C901
     get_config_loader_cls: Any,
     get_module_manager_cls: Any,
     get_addons_path_manager_cls: Any,
+    module_not_found_error_cls: Any,
     validate_addon_name_fn: Any,
     get_addon_type_fn: Any,
     build_addon_table_fn: Any,
@@ -63,6 +64,7 @@ def register_app_commands(  # noqa: C901
     list_env_command_impl: Any,
     print_config_command_impl: Any,
     create_addon_command_impl: Any,
+    addon_info_command_impl: Any,
     print_manifest_command_impl: Any,
     list_addons_command_impl: Any,
     list_installed_addons_command_impl: Any,
@@ -450,6 +452,27 @@ def register_app_commands(  # noqa: C901
             module_manager_cls=get_module_manager_cls(),
             get_addon_type_fn=get_addon_type_fn,
             build_addon_table_fn=build_addon_table_fn,
+        )
+
+    @app.command("addon-info")
+    def addon_info(
+        ctx: typer.Context,
+        addon_name: str = typer.Argument(help="Name of the addon to inspect"),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Runtime query timeout in seconds"
+        ),
+    ) -> None:
+        """Print a combined manifest, source, and runtime addon summary."""
+        addon_info_command_impl(
+            ctx,
+            addon_name=addon_name,
+            database=database,
+            timeout=timeout,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+            module_not_found_error_cls=module_not_found_error_cls,
         )
 
     @app.command("list-addons")

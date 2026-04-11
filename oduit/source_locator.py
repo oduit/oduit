@@ -584,6 +584,24 @@ def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
     )
 
 
+def list_addon_languages(addon_root: str) -> tuple[list[str], list[str]]:
+    """Return translation language codes and non-fatal discovery warnings."""
+    i18n_dir = Path(addon_root) / "i18n"
+    if not i18n_dir.is_dir():
+        return [], []
+
+    languages: set[str] = set()
+    warnings: list[str] = []
+    for path in sorted(i18n_dir.glob("*.po")):
+        if not path.is_file():
+            continue
+        if path.stem:
+            languages.add(path.stem)
+            continue
+        warnings.append(f"Ignored translation file with empty stem: {path}")
+    return sorted(languages), warnings
+
+
 def _path_tokens(path: Path) -> set[str]:
     tokens: set[str] = set()
     for part in path.with_suffix("").parts:

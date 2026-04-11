@@ -30,6 +30,54 @@ def _parse_filter_pairs(
     return parsed_filters
 
 
+def _print_addon_info_text(info: Any) -> None:
+    """Render a compact human-readable addon summary."""
+    installed_state = info.installed_state.state if info.installed_state else "unknown"
+    if info.installed_state and not info.installed_state.success:
+        installed_flag = "unknown"
+    else:
+        installed_flag = (
+            "yes" if info.installed_state and info.installed_state.installed else "no"
+        )
+
+    print(f"Module: {info.module}")
+    print(f"Path: {info.module_path or '-'}")
+    print(f"Addon type: {info.addon_type}")
+    print(f"Version: {info.version_display}")
+    print(f"Installed: {installed_flag} ({installed_state})")
+    print(f"Installable: {'yes' if info.installable else 'no'}")
+    print(f"Auto install: {'yes' if info.auto_install else 'no'}")
+    print(f"Depends: {', '.join(info.depends) if info.depends else '-'}")
+    print(
+        "Reverse dependencies: "
+        f"{', '.join(info.reverse_dependencies) if info.reverse_dependencies else '-'}"
+    )
+    print(
+        "Missing dependencies: "
+        f"{', '.join(info.missing_dependencies) if info.missing_dependencies else '-'}"
+    )
+    print(f"License: {info.license or '-'}")
+    print(f"Summary: {info.summary or '-'}")
+    print(f"Description: {info.description or '-'}")
+    print(f"Models: {', '.join(info.models) if info.models else '-'}")
+    print(
+        "Inherit models: "
+        f"{', '.join(info.inherit_models) if info.inherit_models else '-'}"
+    )
+    print(f"Languages: {', '.join(info.languages) if info.languages else '-'}")
+    print("Test cases:")
+    if info.test_cases:
+        for test_case in info.test_cases:
+            print(f"  - {test_case.path} ({test_case.test_type})")
+    else:
+        print("  - none found")
+
+    if info.warnings:
+        print("Warnings:")
+        for warning in info.warnings:
+            print(f"  - {warning}")
+
+
 def create_addon_command(
     ctx: typer.Context,
     *,
@@ -112,6 +160,55 @@ def print_manifest_command(
     console = Console()
     table = build_addon_table_fn(addon_name, manifest, addon_type)
     console.print(table)
+
+
+def addon_info_command(
+    ctx: typer.Context,
+    *,
+    addon_name: str,
+    database: str | None,
+    timeout: float,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+    print_command_error_result_fn: Any,
+    module_not_found_error_cls: Any,
+) -> None:
+    """Print a combined addon summary for one addon."""
+    global_config, _ = resolve_command_env_config_fn(ctx)
+    odoo_operations = build_odoo_operations_fn(global_config)
+    try:
+        info = odoo_operations.addon_info(
+            addon_name,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+        )
+    except module_not_found_error_cls as exc:
+        print_command_error_result_fn(
+            global_config,
+            "addon_info",
+            str(exc),
+            error_type="ModuleNotFoundError",
+            details={"module": addon_name},
+            remediation=[
+                "Verify that the addon exists in the configured addons paths.",
+            ],
+        )
+        raise typer.Exit(1) from None
+
+    if global_config.format == OutputFormat.JSON:
+        payload = output_result_to_json(
+            {
+                "success": True,
+                "operation": "addon_info",
+                **info.to_dict(),
+            },
+            result_type="addon_info",
+        )
+        print(json.dumps(payload))
+        return
+
+    _print_addon_info_text(info)
 
 
 def list_addons_command(

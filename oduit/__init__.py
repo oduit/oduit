@@ -29,6 +29,7 @@ from .manifest import (
 from .manifest_collection import ManifestCollection
 from .addons_path_manager import AddonsPathManager
 from .api_models import (
+    AddonInfo,
     AddonInstallState,
     AddonInspection,
     AddonTestFile,
@@ -85,6 +86,7 @@ __all__ = [
     "OdooVersionInfo",
     "DatabaseSummary",
     "EnvironmentContext",
+    "AddonInfo",
     "AddonInstallState",
     "AddonInspection",
     "InstalledAddonRecord",

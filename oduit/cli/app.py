@@ -68,6 +68,9 @@ from .agent.query import (
 from .agent.query import agent_query_model_command as _agent_query_model_command
 from .agent.query import agent_read_record_command as _agent_read_record_command
 from .agent.query import agent_search_count_command as _agent_search_count_command
+from .agent.read_only import (
+    agent_addon_info_command as _agent_addon_info_command,
+)
 from .agent.read_only import agent_context_command as _agent_context_command
 from .agent.read_only import (
     agent_dependency_graph_command as _agent_dependency_graph_command,
@@ -120,6 +123,7 @@ from .agent.services import (
     resolve_agent_global_config as _resolve_agent_global_config_impl,
 )
 from .agent.services import resolve_agent_ops as _resolve_agent_ops_impl
+from .commands.addons import addon_info_command as _addon_info_command_impl
 from .commands.addons import create_addon_command as _create_addon_command_impl
 from .commands.addons import list_addons_command as _list_addons_command_impl
 from .commands.addons import (
@@ -414,6 +418,7 @@ register_app_commands(
     get_config_loader_cls=lambda: ConfigLoader,
     get_module_manager_cls=lambda: ModuleManager,
     get_addons_path_manager_cls=lambda: AddonsPathManager,
+    module_not_found_error_cls=OduitModuleNotFoundError,
     validate_addon_name_fn=lambda addon_name: validate_addon_name(addon_name),
     get_addon_type_fn=get_addon_type,
     build_addon_table_fn=build_addon_table,
@@ -441,6 +446,7 @@ register_app_commands(
     list_env_command_impl=_list_env_command_impl,
     print_config_command_impl=_print_config_command_impl,
     create_addon_command_impl=_create_addon_command_impl,
+    addon_info_command_impl=_addon_info_command_impl,
     print_manifest_command_impl=_print_manifest_command_impl,
     list_addons_command_impl=_list_addons_command_impl,
     list_installed_addons_command_impl=_list_installed_addons_command_impl,
@@ -509,6 +515,7 @@ register_agent_commands(
     config_error_cls=ConfigError,
     module_not_found_error_cls=OduitModuleNotFoundError,
     context_command_impl=_agent_context_command,
+    addon_info_command_impl=_agent_addon_info_command,
     inspect_addon_command_impl=_agent_inspect_addon_command,
     plan_update_command_impl=_agent_plan_update_command,
     prepare_addon_change_command_impl=_agent_prepare_addon_change_command,

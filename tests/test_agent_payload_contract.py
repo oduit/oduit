@@ -94,6 +94,7 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
     expected = [
         SCHEMAS / "result-envelope.schema.json",
         SCHEMAS / "agent" / "environment-context.schema.json",
+        SCHEMAS / "agent" / "addon-info.schema.json",
         SCHEMAS / "agent" / "addon-inspection.schema.json",
         SCHEMAS / "agent" / "update-plan.schema.json",
         SCHEMAS / "agent" / "addon-change-context.schema.json",
@@ -128,6 +129,8 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
     )
     (addon_dir / "tests").mkdir()
     (addon_dir / "tests" / "test_partner.py").write_text("MODEL = 'res.partner'\n")
+    (addon_dir / "i18n").mkdir()
+    (addon_dir / "i18n" / "de.po").write_text('msgid ""\nmsgstr ""\n')
     config = _agent_config(tmp_path, str(addons_dir))
     loader = _loader_with_config(config, tmp_path)
 
@@ -154,6 +157,12 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                     error=None,
                 ),
                 MagicMock(success=True, records=[], error=None),
+                MagicMock(
+                    success=True,
+                    records=[{"name": "my_partner", "state": "installed"}],
+                    error=None,
+                    error_type=None,
+                ),
                 MagicMock(
                     success=True,
                     records=[{"name": "my_partner", "state": "installed"}],
@@ -229,6 +238,12 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                 runner.invoke(
                     app,
                     ["--env", "dev", "agent", "inspect-addon", "my_partner"],
+                ).output
+            ),
+            "addon-info.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "addon-info", "my_partner"],
                 ).output
             ),
             "update-plan.schema.json": json.loads(

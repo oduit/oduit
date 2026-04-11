@@ -95,6 +95,61 @@ def agent_inspect_addon_command(
     agent_emit_payload_fn(payload)
 
 
+def agent_addon_info_command(
+    ctx: typer.Context,
+    *,
+    module: str,
+    database: str | None,
+    timeout: float,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    odoo_operations_cls: Any,
+    module_not_found_error_cls: Any,
+    safe_read_only: str,
+) -> None:
+    """Return a combined addon summary for onboarding and planning."""
+    operation = "addon_info"
+    result_type = "addon_info"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    ops = odoo_operations_cls(global_config.env_config, verbose=False)
+    try:
+        info = ops.addon_info(
+            module,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+        )
+    except module_not_found_error_cls as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ModuleNotFoundError",
+            details={"module": module},
+            remediation=[
+                "Verify that the addon exists in the configured addons paths.",
+                "Run `oduit agent context` to inspect the resolved addons paths.",
+            ],
+        )
+
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        info.to_dict(),
+        warnings=list(info.warnings),
+        remediation=list(info.remediation),
+        read_only=True,
+        safety_level=safe_read_only,
+    )
+    agent_emit_payload_fn(payload)
+
+
 def agent_plan_update_command(
     ctx: typer.Context,
     *,

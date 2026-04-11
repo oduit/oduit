@@ -13,6 +13,7 @@ UNSAFE_ARBITRARY_EXECUTION = "unsafe_arbitrary_execution"
 
 SAFE_READ_ONLY_OPERATIONS = {
     "agent_context",
+    "addon_info",
     "doctor",
     "get_odoo_version",
     "inspect_addon",
@@ -75,6 +76,7 @@ UNSAFE_OPERATIONS = {
 }
 
 SAFE_READ_ONLY_TYPES = {
+    "addon_info",
     "doctor_report",
     "manifest",
     "manifest_values",

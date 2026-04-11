@@ -60,6 +60,20 @@ def test_agent_smoke_commands_emit_expected_envelopes(
     assert inspect_payload["module"] == "e"
     assert inspect_payload["module_path"].endswith("integration_tests/myaddons/e")
 
+    exit_code, addon_info_payload = _invoke_agent(
+        monkeypatch, "agent", "addon-info", "e"
+    )
+    assert exit_code == 0
+    _assert_payload_shape(
+        addon_info_payload,
+        payload_type="addon_info",
+        operation="addon_info",
+        read_only=True,
+        safety_level="safe_read_only",
+    )
+    assert addon_info_payload["module"] == "e"
+    assert addon_info_payload["test_cases"]
+
     exit_code, locate_model_payload = _invoke_agent(
         monkeypatch,
         "agent",

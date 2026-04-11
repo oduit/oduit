@@ -53,6 +53,7 @@ def register_agent_commands(  # noqa: C901
     config_error_cls: Any,
     module_not_found_error_cls: Any,
     context_command_impl: Any,
+    addon_info_command_impl: Any,
     inspect_addon_command_impl: Any,
     plan_update_command_impl: Any,
     prepare_addon_change_command_impl: Any,
@@ -106,6 +107,30 @@ def register_agent_commands(  # noqa: C901
         inspect_addon_command_impl(
             ctx,
             module=module,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            odoo_operations_cls=get_odoo_operations_cls(),
+            module_not_found_error_cls=module_not_found_error_cls,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("addon-info")
+    def agent_addon_info(
+        ctx: typer.Context,
+        module: str = typer.Argument(help="Addon to summarize"),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Runtime query timeout in seconds"
+        ),
+    ) -> None:
+        """Return a combined manifest, source, and runtime addon summary."""
+        addon_info_command_impl(
+            ctx,
+            module=module,
+            database=database,
+            timeout=timeout,
             resolve_agent_global_config_fn=resolve_agent_global_config_fn,
             agent_fail_fn=agent_fail_fn,
             agent_payload_fn=agent_payload_fn,
