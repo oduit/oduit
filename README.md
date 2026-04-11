@@ -127,12 +127,22 @@ for:
 - payload expectations
 - failure handling
 
+Use [`docs/agent_command_inventory.rst`](docs/agent_command_inventory.rst) for
+the generated command matrix and stability tiers, and
+[`docs/maintainer/agent_contract_changes.md`](docs/maintainer/agent_contract_changes.md)
+for machine-facing contract changes.
+
 Agent commands always emit JSON and do not require the global `--json` flag.
 Structured payloads include an explicit `schema_version`, currently `2.0`.
+Prefer the read-only planning path first: `context`, `resolve-config`,
+`resolve-addon-root`, `get-addon-files`, `preflight-addon-change`, and only then
+controlled mutation commands such as `validate-addon-change`.
 For one-shot verification after an addon change, prefer
 `oduit --env <env> agent validate-addon-change <module> --allow-mutation`.
 Destructive uninstall support is disabled by default and requires both
 `allow_uninstall = true` in config and `--allow-uninstall` at execution time.
+Do not use `execute_python_code()` or `OdooCodeExecutor` for routine agent
+workflows; keep them as trusted fallbacks with `allow_unsafe=True`.
 
 Recommended command sequence for an addon field change:
 

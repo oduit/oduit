@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/model-existence.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "model",
+    "exists",
+    "source_exists",
+    "runtime_exists",
+    "source_addon_candidates",
+    "runtime_source_modules"
+  ],
+  "properties": {
+    "type": { "const": "model_existence" },
+    "model": { "type": "string" },
+    "module": { "type": ["string", "null"] },
+    "exists": { "type": "boolean" },
+    "source_exists": { "type": "boolean" },
+    "runtime_exists": { "type": ["boolean", "null"] },
+    "source_addon_candidates": { "type": "array" },
+    "runtime_source_modules": { "type": "array" }
+  },
+  "additionalProperties": true
+}

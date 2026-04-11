@@ -7,11 +7,30 @@
 import os
 import sys
 from configparser import ConfigParser, SectionProxy
+from dataclasses import dataclass
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
 from .config_provider import ConfigProvider
+
+CANONICAL_CONFIG_SHAPE = "sectioned"
+CANONICAL_CONFIG_SHAPE_VERSION = "1.0"
+_BINARY_CONFIG_KEYS = frozenset({"python_bin", "odoo_bin", "coverage_bin"})
+
+
+@dataclass(frozen=True)
+class LoadedConfigDetails:
+    """Normalized configuration plus shape metadata."""
+
+    config: dict[str, Any]
+    canonical_config: dict[str, Any]
+    raw_shape: str
+    normalized_shape: str
+    shape_version: str
+    format_type: str
+    config_path: str | None
+    deprecation_warnings: tuple[str, ...]
 
 
 class ConfigLoader:
@@ -78,6 +97,90 @@ class ConfigLoader:
         else:
             # Legacy flat format - return as-is
             return raw_config
+
+    def _normalize_addons_path(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Normalize ``addons_path`` into the canonical comma-separated string."""
+        normalized = dict(config)
+        if isinstance(normalized.get("addons_path"), list):
+            normalized["addons_path"] = ",".join(normalized["addons_path"])
+        return normalized
+
+    def _detect_raw_config_shape(self, raw_config: dict[str, Any]) -> str:
+        """Classify the user-facing config shape before normalization."""
+        has_sections = "binaries" in raw_config or "odoo_params" in raw_config
+        if not has_sections:
+            return "legacy_flat"
+
+        compatibility_keys = [
+            key
+            for key in raw_config
+            if key not in {"binaries", "odoo_params"} and key in _BINARY_CONFIG_KEYS
+        ]
+        compatibility_keys.extend(
+            key
+            for key in raw_config
+            if key not in {"binaries", "odoo_params"} and key not in _BINARY_CONFIG_KEYS
+        )
+        return "mixed_compat" if compatibility_keys else "sectioned"
+
+    def _build_loaded_config_details(
+        self,
+        *,
+        raw_config: dict[str, Any],
+        format_type: str,
+        config_path: str | None,
+        raw_shape: str | None = None,
+    ) -> LoadedConfigDetails:
+        """Build normalized config details from a raw config dictionary."""
+        normalized_config = self._normalize_addons_path(
+            self._normalize_sectioned_config(raw_config)
+        )
+        canonical_config = ConfigProvider(normalized_config).to_sectioned_dict()
+        detected_shape = raw_shape or self._detect_raw_config_shape(raw_config)
+        deprecation_warnings: list[str] = []
+        if detected_shape in {"legacy_flat", "mixed_compat"}:
+            deprecation_warnings.append(
+                "Legacy flat config keys are deprecated; prefer sectioned TOML "
+                "with [binaries] and [odoo_params]."
+            )
+        return LoadedConfigDetails(
+            config=normalized_config,
+            canonical_config=canonical_config,
+            raw_shape=detected_shape,
+            normalized_shape=CANONICAL_CONFIG_SHAPE,
+            shape_version=CANONICAL_CONFIG_SHAPE_VERSION,
+            format_type=format_type,
+            config_path=config_path,
+            deprecation_warnings=tuple(deprecation_warnings),
+        )
+
+    def _load_raw_config_from_path(
+        self, config_path: str, format_type: str
+    ) -> tuple[dict[str, Any], str]:
+        """Load the raw config dictionary and its source shape metadata."""
+        if format_type == "toml":
+            tomllib, _ = self._import_toml_libs()
+            if tomllib is None:
+                raise ImportError(
+                    "TOML support not available. "
+                    "Install with: pip install tomli tomli-w"
+                )
+            with open(config_path, "rb") as f:
+                raw_config = tomllib.load(f)
+            if not isinstance(raw_config, dict):
+                raise ValueError(f"Invalid config format in: {config_path}")
+            raw_shape = self._detect_raw_config_shape(raw_config)
+        elif format_type == "conf":
+            raw_config = self.import_odoo_conf(config_path, sectioned=True)
+            raw_shape = "odoo_conf_import"
+        else:
+            with open(config_path) as f:
+                raw_config = yaml.safe_load(f)
+            if not isinstance(raw_config, dict):
+                raise ValueError(f"Invalid config format in: {config_path}")
+            raw_shape = self._detect_raw_config_shape(raw_config)
+
+        return raw_config, raw_shape
 
     def _get_boolean_value(self, options: dict | SectionProxy, key: str) -> bool:
         """Helper to get boolean value from both dict and SectionProxy."""
@@ -157,6 +260,10 @@ class ConfigLoader:
 
     def load_local_config(self) -> dict[str, Any]:
         """Load config from .oduit.toml in current directory."""
+        return self.load_local_config_details().config
+
+    def load_local_config_details(self) -> LoadedConfigDetails:
+        """Load local config plus canonical normalized metadata."""
         config_path = ".oduit.toml"
 
         if not os.path.exists(config_path):
@@ -164,26 +271,13 @@ class ConfigLoader:
                 f"Local configuration file not found: {config_path}"
             )
 
-        tomllib, _ = self._import_toml_libs()
-        if tomllib is None:
-            raise ImportError(
-                "TOML support not available. Install with: pip install tomli tomli-w"
-            )
-
-        with open(config_path, "rb") as f:
-            raw_config = tomllib.load(f)
-
-        if not isinstance(raw_config, dict):
-            raise ValueError(f"Invalid config format in: {config_path}")
-
-        # Convert sectioned format to flat format for backward compatibility
-        env_config = self._normalize_sectioned_config(raw_config)
-
-        # Join addons_path list into a comma-separated string
-        if isinstance(env_config.get("addons_path"), list):
-            env_config["addons_path"] = ",".join(env_config["addons_path"])
-
-        return env_config
+        raw_config, raw_shape = self._load_raw_config_from_path(config_path, "toml")
+        return self._build_loaded_config_details(
+            raw_config=raw_config,
+            format_type="toml",
+            config_path=os.path.abspath(config_path),
+            raw_shape=raw_shape,
+        )
 
     def _parse_database_config(
         self, options: dict | SectionProxy, oduit_config: dict[str, Any]
@@ -436,6 +530,10 @@ class ConfigLoader:
     def load_config(self, env_name: str) -> dict[str, Any]:
         """Load config from ~/.config/oduit/<env>.(yaml|toml|conf) or from a
         direct file path"""
+        return self.load_config_details(env_name).config
+
+    def load_config_details(self, env_name: str) -> LoadedConfigDetails:
+        """Load config plus canonical normalized metadata."""
         config_path, format_type = self._detect_config_format(env_name)
 
         if not os.path.exists(config_path):
@@ -444,32 +542,15 @@ class ConfigLoader:
             else:
                 raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
-        if format_type == "toml":
-            tomllib, _ = self._import_toml_libs()
-            if tomllib is None:
-                raise ImportError(
-                    "TOML support not available. "
-                    "Install with: pip install tomli tomli-w"
-                )
-
-            with open(config_path, "rb") as f:
-                env_config = tomllib.load(f)
-        elif format_type == "conf":
-            env_config = self.import_odoo_conf(config_path)
-        else:
-            with open(config_path) as f:
-                env_config = yaml.safe_load(f)
-
-        if not isinstance(env_config, dict):
-            raise ValueError(f"Invalid config format in: {config_path}")
-
-        env_config = self._normalize_sectioned_config(env_config)
-
-        # Join addons_path list into a comma-separated string
-        if isinstance(env_config.get("addons_path"), list):
-            env_config["addons_path"] = ",".join(env_config["addons_path"])
-
-        return env_config
+        raw_config, raw_shape = self._load_raw_config_from_path(
+            config_path, format_type
+        )
+        return self._build_loaded_config_details(
+            raw_config=raw_config,
+            format_type=format_type,
+            config_path=config_path,
+            raw_shape=raw_shape,
+        )
 
     def get_available_environments(self) -> list[str]:
         """Return a list of available environment names based on config files."""

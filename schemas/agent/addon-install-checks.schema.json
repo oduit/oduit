@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/addon-install-checks.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "requested_modules",
+    "checks",
+    "installed_modules",
+    "not_installed_modules",
+    "unknown_modules"
+  ],
+  "properties": {
+    "type": { "const": "addon_install_checks" },
+    "requested_modules": { "type": "array" },
+    "checks": { "type": "array" },
+    "installed_modules": { "type": "array" },
+    "not_installed_modules": { "type": "array" },
+    "unknown_modules": { "type": "array" }
+  },
+  "additionalProperties": true
+}

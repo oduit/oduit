@@ -47,8 +47,10 @@ Contents
    installation
    quickstart
    agent_contract
+   agent_command_inventory
    interfaces
    cli
+   command_inventory
    configuration
    api
    examples

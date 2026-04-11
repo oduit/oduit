@@ -254,6 +254,7 @@ def build_agent_test_summary_details(
             "source_line": failure.get("source_line"),
             "broken_line_count": failure.get("broken_line_count", 0),
             "failure_excerpt": failure.get("failure_excerpt"),
+            "raw_failure_excerpt": failure.get("raw_failure_excerpt"),
             "error_message": failure.get("error_message"),
         }
         for failure in failures
@@ -299,9 +300,9 @@ def build_agent_test_summary_details(
         "return_code": result.get("return_code"),
         "command": result.get("command"),
     }
-    warnings = (
-        ["Per-file coverage entries are not currently normalized by run_tests()."]
-        if coverage
-        else []
-    )
+    warnings = list(result.get("warnings", []))
+    if coverage:
+        warnings.append(
+            "Per-file coverage entries are not currently normalized by run_tests()."
+        )
     return data, warnings, suggested_next_steps

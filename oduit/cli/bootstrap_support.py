@@ -1,11 +1,12 @@
 """Bootstrap helpers for the Typer composition root."""
 
 import os
-from typing import Any
+from typing import Any, cast
 
 import typer
 
 from ..cli_types import GlobalConfig, OutputFormat
+from .runtime_context import AppRuntimeContext
 
 
 def resolve_config_source(
@@ -123,7 +124,7 @@ def resolve_command_global_config(
 
     if isinstance(ctx.obj, dict):
         try:
-            return create_global_config_fn(**ctx.obj)
+            return cast(GlobalConfig, create_global_config_fn(**ctx.obj))
         except typer.Exit:
             raise
         except Exception as exc:
@@ -170,11 +171,14 @@ def build_doctor_report(
     odoo_operations_cls: Any,
 ) -> dict[str, Any]:
     """Build a diagnostics report for the active configuration."""
-    return build_doctor_report_fn(
-        global_config,
-        addons_path_manager_cls=addons_path_manager_cls,
-        module_manager_cls=module_manager_cls,
-        odoo_operations_cls=odoo_operations_cls,
+    return cast(
+        dict[str, Any],
+        build_doctor_report_fn(
+            global_config,
+            addons_path_manager_cls=addons_path_manager_cls,
+            module_manager_cls=module_manager_cls,
+            odoo_operations_cls=odoo_operations_cls,
+        ),
     )
 
 
@@ -186,7 +190,7 @@ def build_registration_helpers(
     get_addons_path_manager_cls: Any,
     get_module_manager_cls: Any,
     get_odoo_operations_cls: Any,
-) -> dict[str, Any]:
+) -> AppRuntimeContext:
     """Build classic CLI helper callables for command registration."""
 
     def resolve_command_global_config_fn(ctx: typer.Context) -> GlobalConfig:
@@ -220,9 +224,9 @@ def build_registration_helpers(
             odoo_operations_cls=get_odoo_operations_cls(),
         )
 
-    return {
-        "resolve_command_global_config_fn": resolve_command_global_config_fn,
-        "resolve_command_env_config_fn": resolve_command_env_config_fn,
-        "build_odoo_operations_fn": build_odoo_operations_fn,
-        "build_doctor_report_fn": build_doctor_report_fn,
-    }
+    return AppRuntimeContext(
+        resolve_command_global_config_fn=resolve_command_global_config_fn,
+        resolve_command_env_config_fn=resolve_command_env_config_fn,
+        build_odoo_operations_fn=build_odoo_operations_fn,
+        build_doctor_report_fn=build_doctor_report_fn,
+    )

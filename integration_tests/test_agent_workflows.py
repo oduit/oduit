@@ -1,17 +1,38 @@
 import json
+from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 from oduit.cli.app import app
+from oduit.config_loader import ConfigLoader
+from oduit.odoo_operations import OdooOperations
 
 
-def _invoke_agent(monkeypatch: pytest.MonkeyPatch, *args: str) -> tuple[int, dict]:
+def _invoke_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    *args: str,
+    config_override: dict[str, Any] | None = None,
+) -> tuple[int, dict]:
     monkeypatch.chdir(Path(__file__).parent)
+    if config_override is not None:
+        patched_config = deepcopy(config_override)
+
+        def _load_local_config(self: ConfigLoader) -> dict[str, Any]:
+            del self
+            return deepcopy(patched_config)
+
+        monkeypatch.setattr(
+            ConfigLoader,
+            "load_local_config",
+            _load_local_config,
+        )
     runner = CliRunner()
     result = runner.invoke(app, list(args))
-    return result.exit_code, json.loads(result.output)
+    payload_lines = [line for line in result.output.splitlines() if line.strip()]
+    return result.exit_code, json.loads(payload_lines[-1])
 
 
 def _assert_payload_shape(
@@ -26,6 +47,41 @@ def _assert_payload_shape(
     assert payload["operation"] == operation
     assert payload["read_only"] is read_only
     assert payload["safety_level"] == safety_level
+
+
+def _config_with_overrides(config: dict[str, Any], **overrides: Any) -> dict[str, Any]:
+    updated = deepcopy(config)
+    updated.update(overrides)
+    return updated
+
+
+def _module_is_installed(ops: OdooOperations, module: str) -> bool:
+    state = ops.get_addon_install_state(module)
+    assert state.success is True, state.error
+    return state.installed
+
+
+def _set_module_install_state(
+    ops: OdooOperations,
+    module: str,
+    *,
+    installed: bool,
+) -> None:
+    if _module_is_installed(ops, module) is installed:
+        return
+
+    if installed:
+        result = ops.install_module(module, suppress_output=True)
+        assert result["success"] is True, result
+    else:
+        result = ops.uninstall_module(
+            module,
+            suppress_output=True,
+            allow_uninstall=True,
+        )
+        assert result["success"] is True, result
+
+    assert _module_is_installed(ops, module) is installed
 
 
 @pytest.mark.integration
@@ -204,6 +260,209 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         safety_level="controlled_runtime_mutation",
     )
     assert tests_payload["selected_modules"] == ["e"]
+
+
+@pytest.mark.integration
+def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
+    integration_config: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = "e"
+    runtime_config = _config_with_overrides(integration_config, allow_uninstall=True)
+    ops = OdooOperations(runtime_config, verbose=False)
+    initially_installed = _module_is_installed(ops, module)
+
+    try:
+        _set_module_install_state(ops, module, installed=False)
+
+        exit_code, install_plan_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "install-module",
+            module,
+            "--dry-run",
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        _assert_payload_shape(
+            install_plan_payload,
+            payload_type="addon_inspection",
+            operation="install_module",
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        assert install_plan_payload["module"] == module
+        assert install_plan_payload["planned_action"] == "install"
+
+        exit_code, install_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "install-module",
+            module,
+            "--allow-mutation",
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        assert install_payload["success"] is True
+        _assert_payload_shape(
+            install_payload,
+            payload_type="module_installation",
+            operation="install_module",
+            read_only=False,
+            safety_level="controlled_runtime_mutation",
+        )
+        assert install_payload["module"] == module
+
+        exit_code, installed_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "list-installed-addons",
+            "--modules",
+            module,
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        _assert_payload_shape(
+            installed_payload,
+            payload_type="installed_addon_inventory",
+            operation="list_installed_addons",
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        assert any(
+            addon["module"] == module and addon["installed"] is True
+            for addon in installed_payload["addons"]
+        )
+
+        exit_code, query_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "query-model",
+            "ir.module.module",
+            "--domain-json",
+            f'[["name", "=", "{module}"]]',
+            "--fields",
+            "name,state",
+            "--limit",
+            "1",
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        _assert_payload_shape(
+            query_payload,
+            payload_type="query_result",
+            operation="query_model",
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        assert query_payload["count"] == 1
+        assert query_payload["records"][0]["name"] == module
+        assert query_payload["records"][0]["state"] == "installed"
+
+        exit_code, update_plan_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "update-module",
+            module,
+            "--dry-run",
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        _assert_payload_shape(
+            update_plan_payload,
+            payload_type="update_plan",
+            operation="update_module",
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        assert update_plan_payload["module"] == module
+        assert update_plan_payload["planned_action"] == "update"
+
+        exit_code, update_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "update-module",
+            module,
+            "--allow-mutation",
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        assert update_payload["success"] is True
+        _assert_payload_shape(
+            update_payload,
+            payload_type="module_update",
+            operation="update_module",
+            read_only=False,
+            safety_level="controlled_runtime_mutation",
+        )
+        assert update_payload["module"] == module
+
+        exit_code, uninstall_plan_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "uninstall-module",
+            module,
+            "--dry-run",
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        _assert_payload_shape(
+            uninstall_plan_payload,
+            payload_type="module_uninstallation",
+            operation="uninstall_module",
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        assert uninstall_plan_payload["planned_action"] == "uninstall"
+        assert uninstall_plan_payload["config_allows_uninstall"] is True
+        assert uninstall_plan_payload["allow_uninstall_flag"] is False
+        assert uninstall_plan_payload["blocked"] is True
+        assert (
+            "--allow-uninstall was not provided"
+            in uninstall_plan_payload["blocked_reasons"]
+        )
+
+        exit_code, uninstall_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "uninstall-module",
+            module,
+            "--allow-mutation",
+            "--allow-uninstall",
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        assert uninstall_payload["success"] is True
+        _assert_payload_shape(
+            uninstall_payload,
+            payload_type="module_uninstallation",
+            operation="uninstall_module",
+            read_only=False,
+            safety_level="controlled_runtime_mutation",
+        )
+        assert uninstall_payload["module"] == module
+        assert uninstall_payload["uninstalled"] is True
+
+        exit_code, install_state_payload = _invoke_agent(
+            monkeypatch,
+            "agent",
+            "check-addons-installed",
+            "--modules",
+            module,
+            config_override=runtime_config,
+        )
+        assert exit_code == 0
+        _assert_payload_shape(
+            install_state_payload,
+            payload_type="addon_install_checks",
+            operation="check_addons_installed",
+            read_only=True,
+            safety_level="safe_read_only",
+        )
+        assert install_state_payload["installed_modules"] == []
+        assert install_state_payload["not_installed_modules"] == [module]
+    finally:
+        _set_module_install_state(ops, module, installed=initially_installed)
 
 
 @pytest.mark.integration

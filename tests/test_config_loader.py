@@ -128,6 +128,79 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(result["addons_path"], "/path1,/path2")
         self.assertTrue(result["allow_uninstall"])
 
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data=(
+            b'[binaries]\npython_bin = "/usr/bin/python3"\n'
+            b'[odoo_params]\naddons_path = ["/path1", "/path2"]\n'
+            b"allow_uninstall = true\n"
+        ),
+    )
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    def test_load_config_details_reports_sectioned_shape(
+        self, mock_expanduser, mock_exists, mock_file
+    ):
+        """Test load_config_details exposes canonical shape metadata."""
+        mock_expanduser.return_value = "/mocked/home/.config/oduit"
+
+        def exists_side_effect(path):
+            return path.endswith("test.toml")
+
+        mock_exists.side_effect = exists_side_effect
+
+        with patch.object(ConfigLoader, "_import_toml_libs") as mock_import:
+            mock_tomllib = MagicMock()
+            mock_tomllib.load.return_value = {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {
+                    "addons_path": ["/path1", "/path2"],
+                    "allow_uninstall": True,
+                },
+            }
+            mock_import.return_value = (mock_tomllib, None)
+
+            details = ConfigLoader().load_config_details("test")
+
+        self.assertEqual(details.raw_shape, "sectioned")
+        self.assertEqual(details.normalized_shape, "sectioned")
+        self.assertEqual(details.shape_version, "1.0")
+        self.assertEqual(details.config["addons_path"], "/path1,/path2")
+        self.assertEqual(
+            details.canonical_config["odoo_params"]["addons_path"], "/path1,/path2"
+        )
+        self.assertEqual(details.deprecation_warnings, ())
+
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("yaml.safe_load")
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    def test_load_config_details_warns_for_legacy_flat_shape(
+        self, mock_expanduser, mock_exists, mock_yaml, mock_file
+    ):
+        """Test load_config_details marks flat configs as deprecated."""
+        mock_expanduser.return_value = "/mocked/home/.config/oduit"
+
+        def exists_side_effect(path):
+            return path.endswith("test.yaml")
+
+        mock_exists.side_effect = exists_side_effect
+        mock_yaml.return_value = {
+            "python_bin": "/usr/bin/python3",
+            "addons_path": ["/path1", "/path2"],
+            "db_name": "test_db",
+        }
+
+        details = ConfigLoader().load_config_details("test")
+
+        self.assertEqual(details.raw_shape, "legacy_flat")
+        self.assertEqual(details.format_type, "yaml")
+        self.assertEqual(len(details.deprecation_warnings), 1)
+        self.assertIn(
+            "Legacy flat config keys are deprecated", details.deprecation_warnings[0]
+        )
+
     @patch("os.path.exists")
     @patch("os.path.expanduser")
     def test_load_config_file_not_found(self, mock_expanduser, mock_exists):

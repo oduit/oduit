@@ -1,6 +1,6 @@
 """Aggregate planning commands for coding-agent workflows."""
 
-from typing import Any
+from typing import Any, cast
 
 import typer
 
@@ -19,10 +19,13 @@ def _dedupe_strings(values: list[str]) -> list[str]:
 def _skipped_step(
     agent_sub_result_fn: Any, *, reason: str, **data: Any
 ) -> dict[str, Any]:
-    return agent_sub_result_fn(
-        success=True,
-        skipped=True,
-        data={"reason": reason, **data},
+    return cast(
+        dict[str, Any],
+        agent_sub_result_fn(
+            success=True,
+            skipped=True,
+            data={"reason": reason, **data},
+        ),
     )
 
 

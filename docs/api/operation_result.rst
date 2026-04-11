@@ -278,30 +278,36 @@ Test operations provide detailed test statistics and failure information:
 
 .. code-block:: python
 
-   {
-       # Standard fields...
+    {
+        # Standard fields...
 
-       # Test-specific parsed results
-       'total_tests': int,           # Total number of tests run
-       'passed_tests': int,          # Number of passed tests
-       'failed_tests': int,          # Number of failed tests
-       'error_tests': int,           # Number of tests with errors
-       'failures': list[dict],       # Detailed failure information
-   }
+        # Test-specific parsed results
+        'total_tests': int,           # Total number of tests run
+        'passed_tests': int,          # Number of passed tests
+        'failed_tests': int,          # Number of failed tests
+        'error_tests': int,           # Number of tests with errors
+        'failures': list[dict],       # Detailed failure information
+        'warnings': list[str],        # Parser diagnostics when excerpts are preserved
+    }
 
 Example failures structure:
 
 .. code-block:: python
 
-   'failures': [
-       {
-           'test_name': 'FastAPIDemoCase.test_no_key',
-           'file': '/path/to/test_file.py',
-           'line': 42,
-           'error_message': 'AssertionError: Expected value not found',
-           'traceback': ['Full traceback lines...']
-       }
-   ]
+    'failures': [
+        {
+            'test_name': 'FastAPIDemoCase.test_no_key',
+            'file': '/path/to/test_file.py',
+            'line': 42,
+            'error_message': 'AssertionError: Expected value not found',
+            'traceback': ['Full traceback lines...'],
+            'raw_failure_excerpt': [
+                'FAIL: FastAPIDemoCase.test_no_key',
+                'Traceback (most recent call last):',
+                'AssertionError: Expected value not found',
+            ],
+        }
+    ]
 
 Semantic Success Logic
 ----------------------

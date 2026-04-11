@@ -193,6 +193,8 @@ def output_result_to_json(
         "tests",
         "test_cases",
         "languages",
+        "globs",
+        "files",
         "missing_modules",
         "related_files",
         "scanned_python_files",
@@ -201,6 +203,15 @@ def output_result_to_json(
         "cycles",
         "missing_required_keys",
         "values",
+        "requested_modules",
+        "checks",
+        "installed_modules",
+        "not_installed_modules",
+        "unknown_modules",
+        "deprecation_warnings",
+        "source_addon_candidates",
+        "runtime_source_modules",
+        "source_candidates",
     }
     output = {
         k: v for k, v in output.items() if v != [] or k in meaningful_empty_fields

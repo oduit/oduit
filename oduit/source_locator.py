@@ -21,6 +21,7 @@ from .api_models import (
     ModelSourceCandidate,
     ModelSourceLocation,
     RecommendedTestPlan,
+    SourceEvidence,
     ViewExtensionSource,
 )
 
@@ -328,6 +329,43 @@ def _candidate_reason(match_kind: str, model: str) -> str:
     return reasons.get(match_kind, f"Class is associated with `{model}`.")
 
 
+def _build_model_candidate_evidence(
+    class_scan: _ClassScan,
+    *,
+    model: str,
+    model_hint: str,
+    match_kind: str,
+) -> list[SourceEvidence]:
+    """Build explicit evidence for one model source candidate."""
+    evidence = [
+        SourceEvidence(
+            kind=f"model_{match_kind}",
+            message=_candidate_reason(match_kind, model),
+            path=class_scan.path,
+            line_hint=class_scan.lineno,
+        )
+    ]
+    path = Path(class_scan.path)
+    if model_hint in path.stem:
+        evidence.append(
+            SourceEvidence(
+                kind="filename_hint",
+                message=f"Filename `{path.name}` resembles `{model}`.",
+                path=class_scan.path,
+            )
+        )
+    if class_scan.class_name.lower().replace("_", "") == model_hint.replace("_", ""):
+        evidence.append(
+            SourceEvidence(
+                kind="class_name_hint",
+                message=f"Class name `{class_scan.class_name}` resembles `{model}`.",
+                path=class_scan.path,
+                line_hint=class_scan.lineno,
+            )
+        )
+    return evidence
+
+
 def locate_model_sources(
     addon_root: str, module: str, model: str
 ) -> ModelSourceLocation:
@@ -369,6 +407,13 @@ def locate_model_sources(
                 match_kind=match_kind,
                 declared_model=declared_model,
                 confidence=round(min(confidence, 0.99), 2),
+                match_strength="confirmed",
+                evidence=_build_model_candidate_evidence(
+                    class_scan,
+                    model=model,
+                    model_hint=model_hint,
+                    match_kind=match_kind,
+                ),
                 line_hint=class_scan.lineno,
                 reason=_candidate_reason(match_kind, model),
             )
@@ -393,10 +438,20 @@ def locate_model_sources(
             "Verify that the requested addon and model name are correct.",
         ]
     )
+    ambiguous = len(candidates) > 1
     return ModelSourceLocation(
         model=model,
         module=module,
         addon_root=addon_root,
+        resolution="ambiguous"
+        if ambiguous
+        else ("confirmed" if candidates else "not_found"),
+        ambiguous=ambiguous,
+        ambiguity_reason=(
+            "Multiple source candidates matched the requested model."
+            if ambiguous
+            else None
+        ),
         candidates=candidates,
         scanned_python_files=scan.scanned_files,
         warnings=scan.warnings,
@@ -424,6 +479,20 @@ def locate_field_sources(
         if line_hint is None:
             continue
         match_kind = "inherit" if model in class_scan.inherits else "name"
+        evidence = [
+            SourceEvidence(
+                kind="field_definition",
+                message=f"Exact field definition for `{field_name}` found in source.",
+                path=class_scan.path,
+                line_hint=line_hint,
+            ),
+            *_build_model_candidate_evidence(
+                class_scan,
+                model=model,
+                model_hint=model.replace(".", "_"),
+                match_kind=match_kind,
+            ),
+        ]
         field_candidates.append(
             FieldSourceCandidate(
                 path=class_scan.path,
@@ -439,6 +508,8 @@ def locate_field_sources(
                     ),
                     2,
                 ),
+                match_strength="confirmed",
+                evidence=evidence,
                 line_hint=line_hint,
                 reason=f"Exact field definition for `{field_name}` found in source.",
             )
@@ -484,6 +555,14 @@ def locate_field_sources(
     remediation = []
     if not field_candidates and insertion_candidate is None:
         remediation.extend(model_location.remediation)
+    ambiguous = len(field_candidates) > 1 or (
+        not field_candidates and bool(model_location.ambiguous)
+    )
+    resolution = "not_found"
+    if field_candidates:
+        resolution = "ambiguous" if ambiguous else "confirmed"
+    elif insertion_candidate is not None:
+        resolution = "suggested"
 
     return FieldSourceLocation(
         model=model,
@@ -491,6 +570,18 @@ def locate_field_sources(
         module=module,
         addon_root=addon_root,
         exists=bool(field_candidates),
+        resolution=resolution,
+        ambiguous=ambiguous,
+        ambiguity_reason=(
+            "Multiple source candidates matched the requested field."
+            if len(field_candidates) > 1
+            else (
+                "Field was not found and the insertion suggestion inherits model "
+                "ambiguity."
+                if not field_candidates and model_location.ambiguous
+                else None
+            )
+        ),
         source_exists=bool(field_candidates),
         candidates=field_candidates,
         insertion_candidate=insertion_candidate,

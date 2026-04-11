@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/addon-root-resolution.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "module",
+    "exists",
+    "unique",
+    "addon_root",
+    "duplicate_candidates",
+    "candidate_count"
+  ],
+  "properties": {
+    "type": { "const": "addon_root_resolution" },
+    "module": { "type": "string" },
+    "exists": { "type": "boolean" },
+    "unique": { "type": "boolean" },
+    "addon_root": { "type": "string" },
+    "duplicate_candidates": { "type": "array" },
+    "candidate_count": { "type": "integer" }
+  },
+  "additionalProperties": true
+}

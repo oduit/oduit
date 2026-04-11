@@ -92,8 +92,12 @@ def test_agent_locate_model_returns_ranked_candidates(tmp_path: Path) -> None:
     assert payload["type"] == "model_source_location"
     assert payload["model"] == "res.partner"
     assert payload["module"] == "my_partner"
+    assert payload["resolution"] == "ambiguous"
+    assert payload["ambiguous"] is True
     assert payload["candidates"][0]["path"].endswith("models/res_partner.py")
     assert payload["candidates"][0]["match_kind"] == "inherit"
+    assert payload["candidates"][0]["match_strength"] == "confirmed"
+    assert payload["candidates"][0]["evidence"]
 
 
 def test_agent_locate_field_reports_existing_field_and_insertion_candidate(
@@ -164,11 +168,18 @@ def test_agent_locate_field_reports_existing_field_and_insertion_candidate(
     missing_payload = json.loads(missing.output)
     assert existing.exit_code == 0
     assert existing_payload["exists"] is True
+    assert existing_payload["resolution"] == "confirmed"
+    assert existing_payload["ambiguous"] is False
     assert existing_payload["source_exists"] is True
     assert existing_payload["candidates"][0]["field_name"] == "email3"
     assert existing_payload["candidates"][0]["reason"]
+    assert existing_payload["candidates"][0]["match_strength"] == "confirmed"
+    assert (
+        existing_payload["candidates"][0]["evidence"][0]["kind"] == "field_definition"
+    )
     assert missing.exit_code == 0
     assert missing_payload["exists"] is False
+    assert missing_payload["resolution"] == "suggested"
     assert missing_payload["insertion_candidate"]["path"].endswith(
         "models/res_partner.py"
     )

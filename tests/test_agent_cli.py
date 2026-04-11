@@ -1,6 +1,7 @@
 import json
 import stat
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +17,7 @@ from oduit.api_models import (
     QueryModelResult,
 )
 from oduit.cli.app import app
+from oduit.config_provider import ConfigProvider
 from oduit.odoo_operations import OdooOperations
 
 
@@ -53,6 +55,7 @@ def _agent_config(tmp_path: Path, addons_path: str) -> dict[str, str]:
         "db_name": "test_db",
         "db_host": "localhost",
         "db_user": "odoo",
+        "db_password": "super-secret",
     }
 
 
@@ -60,6 +63,18 @@ def _loader_with_config(config: dict[str, str], tmp_path: Path) -> MagicMock:
     loader = MagicMock()
     loader.load_config.return_value = config
     loader.resolve_config_path.return_value = (str(tmp_path / "dev.toml"), "toml")
+    details = SimpleNamespace(
+        config=config,
+        canonical_config=ConfigProvider(config).to_sectioned_dict(),
+        raw_shape="sectioned",
+        normalized_shape="sectioned",
+        shape_version="1.0",
+        format_type="toml",
+        config_path=str(tmp_path / "dev.toml"),
+        deprecation_warnings=(),
+    )
+    loader.load_config_details.return_value = details
+    loader.load_local_config_details.return_value = details
     return loader
 
 
@@ -98,6 +113,84 @@ def test_agent_context_returns_structured_snapshot(tmp_path: Path) -> None:
     assert payload["available_module_count"] == 4
     assert payload["duplicate_modules"]["dup_mod"]
     assert payload["doctor_summary"]["ok"] >= 1
+
+
+def test_agent_resolve_config_returns_canonical_shape_metadata(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(
+            OdooOperations,
+            "get_odoo_version",
+            return_value={"success": True, "version": "17.0"},
+        ),
+    ):
+        result = runner.invoke(app, ["--env", "dev", "agent", "resolve-config"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "config_resolution"
+    assert payload["environment"]["format"] == "toml"
+    assert payload["config_shape"] == {
+        "raw_shape": "sectioned",
+        "normalized_shape": "sectioned",
+        "shape_version": "1.0",
+        "source_format": "toml",
+    }
+    assert payload["deprecation_warnings"] == []
+    assert (
+        payload["normalized_config"]["binaries"]["python_bin"] == config["python_bin"]
+    )
+    assert (
+        payload["normalized_config"]["odoo_params"]["db_password"] == "***redacted***"
+    )
+
+
+def test_agent_resolve_config_warns_for_legacy_flat_shape(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+    deprecation_warning = (
+        "Legacy flat config keys are deprecated; prefer sectioned TOML "
+        "with [binaries] and [odoo_params]."
+    )
+    loader.resolve_config_path.return_value = (str(tmp_path / "dev.yaml"), "yaml")
+    loader.load_config_details.return_value = SimpleNamespace(
+        config=config,
+        canonical_config=ConfigProvider(config).to_sectioned_dict(),
+        raw_shape="legacy_flat",
+        normalized_shape="sectioned",
+        shape_version="1.0",
+        format_type="yaml",
+        config_path=str(tmp_path / "dev.yaml"),
+        deprecation_warnings=(deprecation_warning,),
+    )
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(
+            OdooOperations,
+            "get_odoo_version",
+            return_value={"success": True, "version": "17.0"},
+        ),
+    ):
+        result = runner.invoke(app, ["--env", "dev", "agent", "resolve-config"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["environment"]["format"] == "yaml"
+    assert payload["config_shape"]["raw_shape"] == "legacy_flat"
+    assert payload["deprecation_warnings"] == [deprecation_warning]
+    assert deprecation_warning in payload["warnings"]
 
 
 def test_agent_inspect_addon_returns_dependency_snapshot(tmp_path: Path) -> None:
@@ -819,6 +912,84 @@ def test_agent_test_summary_includes_error_output_excerpt_without_failures(
     assert payload["error_output_excerpt"][-1] == "ValueError: missing dependency"
 
 
+def test_agent_test_summary_preserves_parser_warnings_and_raw_failure_excerpt(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.run_tests.return_value = {
+            "success": False,
+            "operation": "test",
+            "return_code": 1,
+            "total_tests": 1,
+            "passed_tests": 0,
+            "failed_tests": 1,
+            "error_tests": 0,
+            "warnings": [
+                "Partially parsed failure 'BasicTestCase.test_missing_location'; "
+                "preserved raw_failure_excerpt."
+            ],
+            "failures": [
+                {
+                    "test_name": "BasicTestCase.test_missing_location",
+                    "file": None,
+                    "line": None,
+                    "function_name": None,
+                    "source_line": None,
+                    "broken_line_count": 0,
+                    "failure_excerpt": None,
+                    "raw_failure_excerpt": [
+                        "FAIL: BasicTestCase.test_missing_location",
+                        "Traceback (most recent call last):",
+                        "AssertionError: expected truthy value",
+                    ],
+                    "error_message": "AssertionError: expected truthy value",
+                }
+            ],
+            "stdout": "AssertionError: expected truthy value\n",
+            "error": "Tests failed",
+            "error_type": "TestFailure",
+        }
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "test-summary",
+                "--allow-mutation",
+                "--module",
+                "x_sale",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["warnings"] == [
+        "Partially parsed failure 'BasicTestCase.test_missing_location'; "
+        "preserved raw_failure_excerpt."
+    ]
+    assert payload["failure_details"][0]["raw_failure_excerpt"] == [
+        "FAIL: BasicTestCase.test_missing_location",
+        "Traceback (most recent call last):",
+        "AssertionError: expected truthy value",
+    ]
+    assert payload["traceback_summary"][0]["raw_failure_excerpt"] == [
+        "FAIL: BasicTestCase.test_missing_location",
+        "Traceback (most recent call last):",
+        "AssertionError: expected truthy value",
+    ]
+
+
 def test_agent_create_addon_reports_source_mutation(tmp_path: Path) -> None:
     runner = CliRunner()
     config = _agent_config(tmp_path, str(tmp_path / "addons"))
@@ -1063,6 +1234,9 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
     assert payload["mutation_action"]["action"] == "update"
     assert payload["sub_results"]["module_tests"]["success"] is True
     assert payload["sub_results"]["discovered_tests"]["data"]["executed"] is False
+    for step in payload["sub_results"].values():
+        assert isinstance(step["duration_ms"], int)
+        assert step["duration_ms"] >= 0
     ops.get_addon_install_state.assert_called_once_with("x_sale")
     ops.update_module.assert_called_once()
     ops.run_tests.assert_called_once_with(
@@ -1077,6 +1251,383 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
         suppress_output=True,
         log_level=None,
     )
+
+
+def test_agent_preflight_addon_change_returns_read_only_snapshot(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "x_sale"
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "res_partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    email3 = fields.Char()\n"
+    )
+    (addon_dir / "tests").mkdir()
+    (addon_dir / "tests" / "test_partner.py").write_text("MODEL = 'res.partner'\n")
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(
+            OdooOperations,
+            "get_odoo_version",
+            return_value={"success": True, "version": "17.0"},
+        ),
+        patch.object(
+            OdooOperations,
+            "db_exists",
+            return_value={"success": True, "exists": True},
+        ),
+        patch.object(
+            OdooOperations,
+            "get_addon_install_state",
+            return_value=AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="x_sale",
+                record_found=True,
+                state="installed",
+                installed=True,
+            ),
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "preflight-addon-change",
+                "x_sale",
+                "--model",
+                "res.partner",
+                "--field",
+                "email3",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_change_preflight"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    assert payload["ready_for_mutation"] is True
+    assert payload["preflight_summary"].get("failed_step") is None
+    assert payload["sub_results"]["field_source"]["success"] is True
+    assert payload["sub_results"]["addon_tests"]["success"] is True
+    assert payload["sub_results"]["field_source"]["data"]["field"] == "email3"
+    assert payload["sub_results"]["addon_tests"]["data"]["module"] == "x_sale"
+    for step in payload["sub_results"].values():
+        assert isinstance(step["duration_ms"], int)
+        assert step["duration_ms"] >= 0
+
+
+def test_agent_preflight_addon_change_rejects_field_without_model(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "preflight-addon-change",
+                "x_sale",
+                "--field",
+                "email3",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["error_type"] == "ValidationError"
+    assert "`--field` requires `--model`." == payload["error"]
+
+
+def test_agent_resolve_addon_root_returns_unique_root(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app, ["--env", "dev", "agent", "resolve-addon-root", "x_sale"]
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_root_resolution"
+    assert payload["unique"] is True
+    assert payload["addon_root"].endswith("addons/x_sale")
+
+
+def test_agent_get_addon_files_returns_filtered_inventory(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "x_sale"
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "res_partner.py").write_text("MODEL = 'res.partner'\n")
+    (addon_dir / "tests").mkdir()
+    (addon_dir / "tests" / "test_partner.py").write_text("assert True\n")
+    (addon_dir / "views").mkdir()
+    (addon_dir / "views" / "res_partner_views.xml").write_text("<odoo/>")
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "get-addon-files",
+                "x_sale",
+                "--globs",
+                "models/*.py,tests/*.py",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_file_inventory"
+    assert payload["files"] == ["models/res_partner.py", "tests/test_partner.py"]
+
+
+def test_agent_check_addons_installed_returns_runtime_states(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.get_addon_install_state.side_effect = [
+            AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="x_sale",
+                record_found=True,
+                state="installed",
+                installed=True,
+            ),
+            AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="crm",
+                record_found=False,
+                state="uninstalled",
+                installed=False,
+            ),
+        ]
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "check-addons-installed",
+                "--modules",
+                "x_sale,crm",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_install_checks"
+    assert payload["installed_modules"] == ["x_sale"]
+    assert payload["not_installed_modules"] == ["crm"]
+
+
+def test_agent_check_addons_installed_preserves_empty_lists(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.get_addon_install_state.return_value = AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=True,
+            state="installed",
+            installed=True,
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "check-addons-installed",
+                "--modules",
+                "x_sale",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["installed_modules"] == ["x_sale"]
+    assert payload["not_installed_modules"] == []
+    assert payload["unknown_modules"] == []
+
+
+def test_agent_check_model_exists_reports_source_and_runtime(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "res_partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    email3 = fields.Char()\n"
+    )
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.app.OdooOperations.get_model_fields",
+            return_value=MagicMock(
+                success=True,
+                field_names=["email3"],
+                field_definitions={"email3": {"modules": "my_partner"}},
+            ),
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "check-model-exists",
+                "res.partner",
+                "--module",
+                "my_partner",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "model_existence"
+    assert payload["exists"] is True
+    assert payload["source_exists"] is True
+    assert payload["runtime_exists"] is True
+    assert payload["source_addon_candidates"] == ["my_partner"]
+
+
+def test_agent_get_addon_files_preserves_empty_globs(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app, ["--env", "dev", "agent", "get-addon-files", "x_sale"]
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["globs"] == []
+    assert "__manifest__.py" in payload["files"]
+
+
+def test_agent_check_field_exists_reports_runtime_and_source(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "res_partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    email3 = fields.Char()\n"
+    )
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.app.OdooOperations.get_model_fields",
+            return_value=MagicMock(
+                success=True,
+                field_names=["email3"],
+                field_definitions={"email3": {"modules": "my_partner"}},
+            ),
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "check-field-exists",
+                "res.partner",
+                "email3",
+                "--module",
+                "my_partner",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "field_existence"
+    assert payload["exists"] is True
+    assert payload["runtime_exists"] is True
+    assert payload["source_exists"] is True
+    assert payload["runtime_source_modules"] == ["my_partner"]
 
 
 def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> None:

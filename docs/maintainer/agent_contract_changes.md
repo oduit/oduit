@@ -15,6 +15,48 @@ This page tracks machine-facing changes to the `oduit agent` JSON contract.
 
 ## Recent changes
 
+### Added generated command inventories and command tiers
+
+- The canonical `oduit agent` registration surface now drives generated command
+  inventory pages
+- Command docs now distinguish payload stability from per-command stability
+  tiers such as `stable_for_agents` and `beta_for_agents`
+
+### Added read-only preflight and primitive inspection commands
+
+- Added `preflight-addon-change` as a public read-only planning command
+- Added `resolve-addon-root`, `get-addon-files`,
+  `check-addons-installed`, `check-model-exists`, and
+  `check-field-exists`
+- New schema artifacts now publish those payload shapes under `schemas/agent/`
+
+### Added per-step timing metadata
+
+- Aggregate preflight and validation payloads now expose `duration_ms` on each
+  `sub_results` entry when that step runs
+
+### Added canonical config-shape metadata
+
+- `resolve-config` now exposes `normalized_config` in the canonical sectioned
+  shape
+- `resolve-config` also reports `config_shape`, `shape_version`, and
+  `deprecation_warnings` for legacy flat config files
+
+### Added preserved parser failure excerpts
+
+- Test-oriented structured payloads now preserve `failure_details[].raw_failure_excerpt`
+  (and the normalized `traceback_summary[]` counterpart) when traceback parsing
+  cannot fully recover the most useful lines
+- `warnings` may now include parser diagnostics when result normalization falls
+  back to preserved raw excerpts
+
+### Added source-evidence and ambiguity metadata
+
+- `locate-model` and `locate-field` now expose top-level `resolution`,
+  `ambiguous`, and `ambiguity_reason` fields
+- Source candidates now include `match_strength` and explicit `evidence`
+  entries instead of relying on confidence alone
+
 ### Added machine-facing failure codes
 
 - Agent payloads now expose `error_code` alongside `error_type`

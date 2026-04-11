@@ -1,6 +1,12 @@
 from pathlib import Path
 
 from oduit.cli.app import agent_app
+from oduit.cli.command_inventory import (
+    render_agent_inventory_rst,
+    render_cli_inventory_rst,
+    render_public_api_agent_section_markdown,
+    render_public_api_cli_section_markdown,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 DOC_FILES = [
@@ -16,6 +22,17 @@ DOC_FILES = [
 
 def _read_docs() -> dict[Path, str]:
     return {path: path.read_text() for path in DOC_FILES}
+
+
+def _extract_markdown_section(content: str, header: str) -> str:
+    lines = content.splitlines()
+    start_index = lines.index(header)
+    end_index = len(lines)
+    for index in range(start_index + 1, len(lines)):
+        if lines[index].startswith("## "):
+            end_index = index
+            break
+    return "\n".join(lines[start_index:end_index]).strip()
 
 
 def test_docs_do_not_reference_removed_or_stale_api_symbols() -> None:
@@ -141,6 +158,7 @@ def test_agent_contract_page_covers_required_topics() -> None:
         "error_code",
         "generated_at",
         '"schema_version": "2.0"',
+        "stable_for_agents",
         "controlled_runtime_mutation",
         "controlled_source_mutation",
         "validate-addon-change",
@@ -156,6 +174,15 @@ def test_agent_contract_page_covers_required_topics() -> None:
     failures = [marker for marker in required_markers if marker not in content]
     assert not failures, "Missing markers in docs/agent_contract.rst:\n" + "\n".join(
         failures
+    )
+
+
+def test_generated_command_inventory_pages_match_renderer() -> None:
+    assert (
+        ROOT / "docs" / "command_inventory.rst"
+    ).read_text() == render_cli_inventory_rst()
+    assert (ROOT / "docs" / "agent_command_inventory.rst").read_text() == (
+        render_agent_inventory_rst()
     )
 
 
@@ -223,19 +250,24 @@ def test_runtime_addon_docs_use_explicit_installed_inventory_command() -> None:
 
 
 def test_public_api_inventory_lists_all_agent_commands() -> None:
-    content = (ROOT / "docs" / "maintainer" / "public_api.md").read_text().splitlines()
-    section_header = "## `oduit agent` subcommands in `oduit.cli.app`"
-    start_index = content.index(section_header) + 1
-    documented_commands: set[str] = set()
+    content = (ROOT / "docs" / "maintainer" / "public_api.md").read_text()
+    cli_header = "## CLI commands in `oduit.cli.app`"
+    agent_header = "## `oduit agent` subcommands in `oduit.cli.app`"
 
-    for line in content[start_index:]:
-        if line.startswith("## "):
-            break
-        if line.startswith("- `") and line.endswith("`"):
-            documented_commands.add(line[3:-1])
+    assert _extract_markdown_section(content, cli_header) == (
+        render_public_api_cli_section_markdown()
+    )
+    assert _extract_markdown_section(content, agent_header) == (
+        render_public_api_agent_section_markdown()
+    )
 
     actual_commands = {
         command.name for command in agent_app.registered_commands if command.name
+    }
+    documented_commands = {
+        line.split("`")[1]
+        for line in render_public_api_agent_section_markdown().splitlines()
+        if line.startswith("| `")
     }
     assert documented_commands == actual_commands
 

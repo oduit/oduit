@@ -1,11 +1,11 @@
 """Registration helpers for `oduit agent` subcommands."""
 
-import os
-from typing import Any
+from __future__ import annotations
 
 import typer
 
 from ..cli_types import AddonTemplate, LogLevel
+from .runtime_context import AgentRegistrationContext
 
 INSTALLED_ADDON_STATE_OPTION = typer.Option(
     [],
@@ -14,76 +14,114 @@ INSTALLED_ADDON_STATE_OPTION = typer.Option(
 )
 
 
-def register_agent_commands(  # noqa: C901
-    *,
-    agent_app: typer.Typer,
-    addon_template_option: Any,
-    language_option: Any,
-    log_level_option: Any,
-    include_filter_option: Any,
-    exclude_filter_option: Any,
-    sort_option: Any,
-    resolve_agent_global_config_fn: Any,
-    resolve_agent_ops_fn: Any,
-    parse_view_types_fn: Any,
-    strip_arch_from_model_views_fn: Any,
-    require_agent_addons_path_fn: Any,
-    parse_filter_values_fn: Any,
-    parse_csv_items_fn: Any,
-    parse_json_list_option_fn: Any,
-    redact_config_fn: Any,
-    build_doctor_report_fn: Any,
-    agent_fail_fn: Any,
-    agent_payload_fn: Any,
-    agent_emit_payload_fn: Any,
-    agent_require_mutation_fn: Any,
-    agent_sub_result_fn: Any,
-    build_agent_test_summary_details_fn: Any,
-    build_validate_addon_change_payload_fn: Any,
-    run_validate_addon_change_preflight_fn: Any,
-    build_validate_addon_change_discovery_result_fn: Any,
-    apply_core_addon_filters_fn: Any,
-    apply_field_filters_fn: Any,
-    get_odoo_operations_cls: Any,
-    get_module_manager_cls: Any,
-    output_result_to_json_fn: Any,
-    safe_read_only: str,
-    controlled_runtime_mutation: str,
-    controlled_source_mutation: str,
-    config_error_cls: Any,
-    module_not_found_error_cls: Any,
-    context_command_impl: Any,
-    addon_info_command_impl: Any,
-    inspect_addon_command_impl: Any,
-    plan_update_command_impl: Any,
-    prepare_addon_change_command_impl: Any,
-    locate_model_command_impl: Any,
-    locate_field_command_impl: Any,
-    list_addon_tests_command_impl: Any,
-    recommend_tests_command_impl: Any,
-    list_addon_models_command_impl: Any,
-    find_model_extensions_command_impl: Any,
-    get_model_views_command_impl: Any,
-    doctor_command_impl: Any,
-    list_addons_command_impl: Any,
-    list_installed_addons_command_impl: Any,
-    dependency_graph_command_impl: Any,
-    inspect_addons_command_impl: Any,
-    resolve_config_command_impl: Any,
-    list_duplicates_command_impl: Any,
-    install_module_command_impl: Any,
-    uninstall_module_command_impl: Any,
-    update_module_command_impl: Any,
-    create_addon_command_impl: Any,
-    export_lang_command_impl: Any,
-    test_summary_command_impl: Any,
-    validate_impl: Any,
-    query_model_command_impl: Any,
-    read_record_command_impl: Any,
-    search_count_command_impl: Any,
-    get_model_fields_command_impl: Any,
-) -> None:
+def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa: C901
     """Register agent-first commands on the shared Typer app."""
+
+    agent_app = context.agent_app
+    addon_template_option = context.options.addon_template_option
+    language_option = context.options.language_option
+    log_level_option = context.options.log_level_option
+    include_filter_option = context.options.include_filter_option
+    exclude_filter_option = context.options.exclude_filter_option
+    sort_option = context.options.sort_option
+    resolve_agent_global_config_fn = context.runtime.resolve_agent_global_config_fn
+    resolve_agent_ops_fn = context.runtime.resolve_agent_ops_fn
+    parse_view_types_fn = context.runtime.parse_view_types_fn
+    strip_arch_from_model_views_fn = context.runtime.strip_arch_from_model_views_fn
+    require_agent_addons_path_fn = context.runtime.require_agent_addons_path_fn
+    parse_filter_values_fn = context.runtime.parse_filter_values_fn
+    apply_core_addon_filters_fn = context.runtime.apply_core_addon_filters_fn
+    apply_field_filters_fn = context.runtime.apply_field_filters_fn
+    parse_csv_items_fn = context.runtime.parse_csv_items_fn
+    parse_json_list_option_fn = context.runtime.parse_json_list_option_fn
+    redact_config_fn = context.runtime.redact_config_fn
+    build_doctor_report_fn = context.runtime.build_doctor_report_fn
+    agent_fail_fn = context.runtime.agent_fail_fn
+    agent_payload_fn = context.runtime.agent_payload_fn
+    agent_emit_payload_fn = context.runtime.agent_emit_payload_fn
+    agent_require_mutation_fn = context.runtime.agent_require_mutation_fn
+    agent_sub_result_fn = context.runtime.agent_sub_result_fn
+    build_agent_test_summary_details_fn = (
+        context.runtime.build_agent_test_summary_details_fn
+    )
+    build_validate_addon_change_payload_fn = (
+        context.runtime.build_validate_addon_change_payload_fn
+    )
+    run_validate_addon_change_preflight_fn = (
+        context.runtime.run_validate_addon_change_preflight_fn
+    )
+    build_validate_addon_change_discovery_result_fn = (
+        context.runtime.build_validate_addon_change_discovery_result_fn
+    )
+    output_result_to_json_fn = context.runtime.output_result_to_json_fn
+    safe_read_only = context.dependencies.safe_read_only
+    controlled_runtime_mutation = context.dependencies.controlled_runtime_mutation
+    controlled_source_mutation = context.dependencies.controlled_source_mutation
+    get_config_loader_cls = context.dependencies.get_config_loader_cls
+    get_odoo_operations_cls = context.dependencies.get_odoo_operations_cls
+    get_module_manager_cls = context.dependencies.get_module_manager_cls
+    config_error_cls = context.dependencies.config_error_cls
+    module_not_found_error_cls = context.dependencies.module_not_found_error_cls
+    os_module = context.dependencies.os_module
+    context_command_impl = context.implementations.context_command_impl
+    addon_info_command_impl = context.implementations.addon_info_command_impl
+    inspect_addon_command_impl = context.implementations.inspect_addon_command_impl
+    plan_update_command_impl = context.implementations.plan_update_command_impl
+    prepare_addon_change_command_impl = (
+        context.implementations.prepare_addon_change_command_impl
+    )
+    locate_model_command_impl = context.implementations.locate_model_command_impl
+    locate_field_command_impl = context.implementations.locate_field_command_impl
+    list_addon_tests_command_impl = (
+        context.implementations.list_addon_tests_command_impl
+    )
+    recommend_tests_command_impl = context.implementations.recommend_tests_command_impl
+    list_addon_models_command_impl = (
+        context.implementations.list_addon_models_command_impl
+    )
+    find_model_extensions_command_impl = (
+        context.implementations.find_model_extensions_command_impl
+    )
+    get_model_views_command_impl = context.implementations.get_model_views_command_impl
+    doctor_command_impl = context.implementations.doctor_command_impl
+    list_addons_command_impl = context.implementations.list_addons_command_impl
+    list_installed_addons_command_impl = (
+        context.implementations.list_installed_addons_command_impl
+    )
+    dependency_graph_command_impl = (
+        context.implementations.dependency_graph_command_impl
+    )
+    inspect_addons_command_impl = context.implementations.inspect_addons_command_impl
+    resolve_config_command_impl = context.implementations.resolve_config_command_impl
+    resolve_addon_root_command_impl = (
+        context.implementations.resolve_addon_root_command_impl
+    )
+    get_addon_files_command_impl = context.implementations.get_addon_files_command_impl
+    check_addons_installed_command_impl = (
+        context.implementations.check_addons_installed_command_impl
+    )
+    check_model_exists_command_impl = (
+        context.implementations.check_model_exists_command_impl
+    )
+    check_field_exists_command_impl = (
+        context.implementations.check_field_exists_command_impl
+    )
+    list_duplicates_command_impl = context.implementations.list_duplicates_command_impl
+    install_module_command_impl = context.implementations.install_module_command_impl
+    uninstall_module_command_impl = (
+        context.implementations.uninstall_module_command_impl
+    )
+    update_module_command_impl = context.implementations.update_module_command_impl
+    create_addon_command_impl = context.implementations.create_addon_command_impl
+    export_lang_command_impl = context.implementations.export_lang_command_impl
+    test_summary_command_impl = context.implementations.test_summary_command_impl
+    validate_impl = context.implementations.validate_impl
+    query_model_command_impl = context.implementations.query_model_command_impl
+    read_record_command_impl = context.implementations.read_record_command_impl
+    search_count_command_impl = context.implementations.search_count_command_impl
+    get_model_fields_command_impl = (
+        context.implementations.get_model_fields_command_impl
+    )
 
     @agent_app.command("context")
     def agent_context(ctx: typer.Context) -> None:
@@ -494,9 +532,136 @@ def register_agent_commands(  # noqa: C901
         resolve_config_command_impl(
             ctx,
             resolve_agent_ops_fn=resolve_agent_ops_fn,
+            config_loader_cls=get_config_loader_cls(),
             redact_config_fn=redact_config_fn,
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
+        )
+
+    @agent_app.command("resolve-addon-root")
+    def agent_resolve_addon_root(
+        ctx: typer.Context,
+        module: str = typer.Argument(help="Addon to resolve"),
+    ) -> None:
+        """Resolve addon root paths for one module name."""
+        resolve_addon_root_command_impl(
+            ctx,
+            module=module,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            require_agent_addons_path_fn=require_agent_addons_path_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("get-addon-files")
+    def agent_get_addon_files(
+        ctx: typer.Context,
+        module: str = typer.Argument(help="Addon to inspect"),
+        globs: str | None = typer.Option(
+            None,
+            "--globs",
+            help="Optional comma-separated glob patterns relative to the addon root",
+        ),
+    ) -> None:
+        """Return a deterministic file inventory for one addon."""
+        get_addon_files_command_impl(
+            ctx,
+            module=module,
+            globs=globs,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            require_agent_addons_path_fn=require_agent_addons_path_fn,
+            parse_csv_items_fn=parse_csv_items_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("check-addons-installed")
+    def agent_check_addons_installed(
+        ctx: typer.Context,
+        modules: str = typer.Option(
+            ...,
+            "--modules",
+            help="Comma-separated addon names to inspect at runtime",
+        ),
+    ) -> None:
+        """Return runtime installed-state checks for one or more addons."""
+        check_addons_installed_command_impl(
+            ctx,
+            modules=modules,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            parse_csv_items_fn=parse_csv_items_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("check-model-exists")
+    def agent_check_model_exists(
+        ctx: typer.Context,
+        model: str = typer.Argument(help="Model to inspect"),
+        module: str | None = typer.Option(
+            None,
+            "--module",
+            help="Optional addon hint for source filtering",
+        ),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Query timeout in seconds"
+        ),
+    ) -> None:
+        """Check whether a model exists in source discovery and runtime metadata."""
+        check_model_exists_command_impl(
+            ctx,
+            model=model,
+            module=module,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            require_agent_addons_path_fn=require_agent_addons_path_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("check-field-exists")
+    def agent_check_field_exists(
+        ctx: typer.Context,
+        model: str = typer.Argument(help="Model to inspect"),
+        field_name: str = typer.Argument(help="Field name to inspect"),
+        module: str | None = typer.Option(
+            None,
+            "--module",
+            help="Optional addon hint for static source lookup",
+        ),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Query timeout in seconds"
+        ),
+    ) -> None:
+        """Check whether a field exists in runtime metadata and source."""
+        check_field_exists_command_impl(
+            ctx,
+            model=model,
+            field_name=field_name,
+            module=module,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            module_not_found_error_cls=module_not_found_error_cls,
+            config_error_cls=config_error_cls,
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("list-duplicates")
@@ -663,7 +828,7 @@ def register_agent_commands(  # noqa: C901
             agent_require_mutation_fn=agent_require_mutation_fn,
             output_result_to_json_fn=output_result_to_json_fn,
             module_manager_cls=get_module_manager_cls(),
-            os_module=os,
+            os_module=os_module,
             safe_read_only=safe_read_only,
             controlled_source_mutation=controlled_source_mutation,
         )
@@ -773,6 +938,39 @@ def register_agent_commands(  # noqa: C901
             module_not_found_error_cls=module_not_found_error_cls,
             config_error_cls=config_error_cls,
             controlled_runtime_mutation=controlled_runtime_mutation,
+        )
+
+    @agent_app.command("preflight-addon-change")
+    def agent_preflight_addon_change(
+        ctx: typer.Context,
+        module: str = typer.Argument(help="Addon to inspect before editing"),
+        model: str | None = typer.Option(None, "--model", help="Optional model hint"),
+        field_name: str | None = typer.Option(
+            None,
+            "--field",
+            help="Optional field hint; requires --model",
+        ),
+    ) -> None:
+        """Run a cheap read-only addon-change preflight."""
+        validate_impl.agent_preflight_addon_change_command(
+            ctx,
+            module=module,
+            model=model,
+            field_name=field_name,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_sub_result_fn=agent_sub_result_fn,
+            build_preflight_addon_change_payload_fn=(
+                validate_impl.build_preflight_addon_change_payload
+            ),
+            run_validate_addon_change_preflight_fn=run_validate_addon_change_preflight_fn,
+            build_doctor_report_fn=build_doctor_report_fn,
+            odoo_operations_cls=get_odoo_operations_cls(),
+            module_not_found_error_cls=module_not_found_error_cls,
+            config_error_cls=config_error_cls,
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("query-model")

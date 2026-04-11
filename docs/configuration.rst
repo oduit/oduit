@@ -41,6 +41,56 @@ oduit still accepts:
 Those shapes are compatibility support, not the preferred format for new docs
 or new projects.
 
+Canonical Normalized Shape
+--------------------------
+
+Internally, oduit now treats the sectioned shape as the canonical normalized
+configuration:
+
+.. code-block:: toml
+
+   [binaries]
+   python_bin = "./venv/bin/python"
+   odoo_bin = "./odoo/odoo-bin"
+   coverage_bin = "./venv/bin/coverage"
+
+   [odoo_params]
+   addons_path = "./addons,./enterprise"
+   db_name = "project_dev"
+
+``oduit agent resolve-config`` exposes both the compatibility
+``effective_config`` view and the canonical ``normalized_config`` view, plus
+``config_shape`` metadata with a ``shape_version``.
+
+Legacy flat config files remain supported, but ``resolve-config`` now reports a
+deprecation warning when they are detected so agents can migrate toward the
+sectioned TOML shape.
+
+Canonical Normalized Shape
+--------------------------
+
+Internally, oduit now treats the sectioned shape as the canonical normalized
+configuration:
+
+.. code-block:: toml
+
+   [binaries]
+   python_bin = "./venv/bin/python"
+   odoo_bin = "./odoo/odoo-bin"
+   coverage_bin = "./venv/bin/coverage"
+
+   [odoo_params]
+   addons_path = "./addons,./enterprise"
+   db_name = "project_dev"
+
+``oduit agent resolve-config`` exposes both the compatibility
+``effective_config`` view and the canonical ``normalized_config`` view, plus
+``config_shape`` metadata with a ``shape_version``.
+
+Legacy flat config files remain supported, but ``resolve-config`` now reports a
+deprecation warning when they are detected so agents can migrate toward the
+sectioned TOML shape.
+
 Important Keys
 --------------
 

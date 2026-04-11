@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import typer
 from manifestoo_core.odoo_series import OdooSeries
 
@@ -71,6 +73,15 @@ from .agent.query import agent_search_count_command as _agent_search_count_comma
 from .agent.read_only import (
     agent_addon_info_command as _agent_addon_info_command,
 )
+from .agent.read_only import (
+    agent_check_addons_installed_command as _agent_check_addons_installed_command,
+)
+from .agent.read_only import (
+    agent_check_field_exists_command as _agent_check_field_exists_command,
+)
+from .agent.read_only import (
+    agent_check_model_exists_command as _agent_check_model_exists_command,
+)
 from .agent.read_only import agent_context_command as _agent_context_command
 from .agent.read_only import (
     agent_dependency_graph_command as _agent_dependency_graph_command,
@@ -78,6 +89,9 @@ from .agent.read_only import (
 from .agent.read_only import agent_doctor_command as _agent_doctor_command
 from .agent.read_only import (
     agent_find_model_extensions_command as _agent_find_model_extensions_command,
+)
+from .agent.read_only import (
+    agent_get_addon_files_command as _agent_get_addon_files_command,
 )
 from .agent.read_only import (
     agent_get_model_views_command as _agent_get_model_views_command,
@@ -106,6 +120,9 @@ from .agent.read_only import agent_locate_model_command as _agent_locate_model_c
 from .agent.read_only import agent_plan_update_command as _agent_plan_update_command
 from .agent.read_only import (
     agent_recommend_tests_command as _agent_recommend_tests_command,
+)
+from .agent.read_only import (
+    agent_resolve_addon_root_command as _agent_resolve_addon_root_command,
 )
 from .agent.read_only import (
     agent_resolve_config_command as _agent_resolve_config_command,
@@ -182,6 +199,17 @@ from .init_env import (
 from .main_support import handle_no_subcommand
 from .register_agent_commands import register_agent_commands
 from .register_app_commands import register_app_commands
+from .runtime_context import (
+    AgentCommandImplementations,
+    AgentRegistrationContext,
+    AgentRegistrationDependencies,
+    AgentRegistrationOptions,
+    AgentRuntimeContext,
+    AppCommandImplementations,
+    AppRegistrationContext,
+    AppRegistrationDependencies,
+    AppRegistrationOptions,
+)
 
 app = typer.Typer(
     name="oduit",
@@ -297,7 +325,7 @@ def create_global_config(
     )
 
 
-_bootstrap_registration_helpers = _bootstrap_support.build_registration_helpers(
+_app_runtime_context = _bootstrap_support.build_registration_helpers(
     create_global_config_fn=create_global_config,
     print_error_fn=print_error,
     build_doctor_report_impl_fn=build_doctor_report,
@@ -306,7 +334,7 @@ _bootstrap_registration_helpers = _bootstrap_support.build_registration_helpers(
     get_odoo_operations_cls=lambda: OdooOperations,
 )
 
-_agent_registration_helpers = _agent_support.build_registration_helpers(
+_agent_helper_context = _agent_support.build_registration_helpers(
     safe_read_only=SAFE_READ_ONLY,
     fail_impl_fn=_agent_fail_impl,
     emit_payload_fn=_agent_emit_payload_impl,
@@ -332,9 +360,175 @@ _agent_registration_helpers = _agent_support.build_registration_helpers(
         _agent_validate_impl.build_validate_addon_change_discovery_result
     ),
     agent_sub_result_impl_fn=_agent_sub_result_impl,
-    build_doctor_report_fn=_bootstrap_registration_helpers["build_doctor_report_fn"],
+    build_doctor_report_fn=_app_runtime_context.build_doctor_report_fn,
     module_not_found_error_cls=OduitModuleNotFoundError,
     config_error_cls=ConfigError,
+)
+
+_app_registration_context = AppRegistrationContext(
+    app=app,
+    options=AppRegistrationOptions(
+        dev_option=DEV_OPTION,
+        shell_interface_option=SHELL_INTERFACE_OPTION,
+        addon_template_option=ADDON_TEMPLATE_OPTION,
+        log_level_option=LOG_LEVEL_OPTION,
+        language_option=LANGUAGE_OPTION,
+        sort_option=SORT_OPTION,
+        include_filter_option=INCLUDE_FILTER_OPTION,
+        exclude_filter_option=EXCLUDE_FILTER_OPTION,
+        valid_filter_fields_str=_VALID_FILTER_FIELDS_STR,
+        valid_filter_fields=VALID_FILTER_FIELDS,
+    ),
+    runtime=_app_runtime_context,
+    dependencies=AppRegistrationDependencies(
+        print_doctor_report_fn=print_doctor_report,
+        confirmation_required_error_fn=confirmation_required_error,
+        print_command_error_result_fn=print_command_error_result,
+        dependency_error_details_fn=dependency_error_details,
+        get_config_loader_cls=lambda: ConfigLoader,
+        get_module_manager_cls=lambda: ModuleManager,
+        get_addons_path_manager_cls=lambda: AddonsPathManager,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        validate_addon_name_fn=lambda addon_name: validate_addon_name(addon_name),
+        get_addon_type_fn=get_addon_type,
+        build_addon_table_fn=build_addon_table,
+        get_addon_field_value_fn=get_addon_field_value,
+        apply_core_addon_filters_fn=apply_core_addon_filters,
+        apply_field_filters_fn=apply_field_filters,
+        print_dependency_tree_fn=print_dependency_tree,
+        print_dependency_list_fn=print_dependency_list,
+        check_environment_exists_fn=check_environment_exists,
+        detect_binaries_fn=detect_binaries,
+        build_initial_config_fn=build_initial_config,
+        import_or_convert_config_fn=import_or_convert_config,
+        normalize_addons_path_fn=normalize_addons_path,
+        save_config_file_fn=save_config_file,
+        display_config_summary_fn=display_config_summary,
+    ),
+    implementations=AppCommandImplementations(
+        doctor_command_impl=_doctor_command_impl,
+        run_command_impl=_run_command_impl,
+        shell_command_impl=_shell_command_impl,
+        install_command_impl=_install_command_impl,
+        update_command_impl=_update_command_impl,
+        uninstall_command_impl=_uninstall_command_impl,
+        test_command_impl=_test_command_impl,
+        create_db_command_impl=_create_db_command_impl,
+        list_db_command_impl=_list_db_command_impl,
+        list_env_command_impl=_list_env_command_impl,
+        print_config_command_impl=_print_config_command_impl,
+        create_addon_command_impl=_create_addon_command_impl,
+        addon_info_command_impl=_addon_info_command_impl,
+        print_manifest_command_impl=_print_manifest_command_impl,
+        list_addons_command_impl=_list_addons_command_impl,
+        list_installed_addons_command_impl=_list_installed_addons_command_impl,
+        list_manifest_values_command_impl=_list_manifest_values_command_impl,
+        list_duplicates_command_impl=_list_duplicates_command_impl,
+        list_depends_command_impl=_list_depends_command_impl,
+        list_codepends_command_impl=_list_codepends_command_impl,
+        install_order_command_impl=_install_order_command_impl,
+        impact_of_update_command_impl=_impact_of_update_command_impl,
+        list_missing_command_impl=_list_missing_command_impl,
+        init_env_command_impl=_init_env_command_impl,
+        export_lang_command_impl=_export_lang_command_impl,
+        get_odoo_version_command_impl=_get_odoo_version_command_impl,
+    ),
+)
+
+_agent_registration_context = AgentRegistrationContext(
+    agent_app=agent_app,
+    options=AgentRegistrationOptions(
+        addon_template_option=ADDON_TEMPLATE_OPTION,
+        language_option=LANGUAGE_OPTION,
+        log_level_option=LOG_LEVEL_OPTION,
+        include_filter_option=INCLUDE_FILTER_OPTION,
+        exclude_filter_option=EXCLUDE_FILTER_OPTION,
+        sort_option=SORT_OPTION,
+    ),
+    runtime=AgentRuntimeContext(
+        resolve_agent_global_config_fn=(
+            _agent_helper_context.resolve_agent_global_config_fn
+        ),
+        resolve_agent_ops_fn=_agent_helper_context.resolve_agent_ops_fn,
+        parse_view_types_fn=_agent_helper_context.parse_view_types_fn,
+        strip_arch_from_model_views_fn=_strip_arch_from_model_views_impl,
+        require_agent_addons_path_fn=_agent_helper_context.require_agent_addons_path_fn,
+        parse_filter_values_fn=_parse_filter_values_impl,
+        apply_core_addon_filters_fn=apply_core_addon_filters,
+        apply_field_filters_fn=apply_field_filters,
+        parse_csv_items_fn=_parse_csv_items_impl,
+        parse_json_list_option_fn=_agent_helper_context.parse_json_list_option_fn,
+        redact_config_fn=_redact_config_impl,
+        build_doctor_report_fn=_app_runtime_context.build_doctor_report_fn,
+        agent_fail_fn=_agent_helper_context.agent_fail_fn,
+        agent_payload_fn=_agent_payload_impl,
+        agent_emit_payload_fn=_agent_emit_payload_impl,
+        agent_require_mutation_fn=_agent_helper_context.agent_require_mutation_fn,
+        agent_sub_result_fn=_agent_sub_result_impl,
+        build_agent_test_summary_details_fn=(
+            _agent_helper_context.build_agent_test_summary_details_fn
+        ),
+        build_validate_addon_change_payload_fn=(
+            _agent_helper_context.build_validate_addon_change_payload_fn
+        ),
+        run_validate_addon_change_preflight_fn=(
+            _agent_helper_context.run_validate_addon_change_preflight_fn
+        ),
+        build_validate_addon_change_discovery_result_fn=(
+            _agent_helper_context.build_validate_addon_change_discovery_result_fn
+        ),
+        output_result_to_json_fn=lambda *args, **kwargs: output_result_to_json(
+            *args, **kwargs
+        ),
+    ),
+    dependencies=AgentRegistrationDependencies(
+        safe_read_only=SAFE_READ_ONLY,
+        controlled_runtime_mutation=CONTROLLED_RUNTIME_MUTATION,
+        controlled_source_mutation=CONTROLLED_SOURCE_MUTATION,
+        get_config_loader_cls=lambda: ConfigLoader,
+        get_odoo_operations_cls=lambda: OdooOperations,
+        get_module_manager_cls=lambda: ModuleManager,
+        config_error_cls=ConfigError,
+        module_not_found_error_cls=OduitModuleNotFoundError,
+        os_module=os,
+    ),
+    implementations=AgentCommandImplementations(
+        context_command_impl=_agent_context_command,
+        addon_info_command_impl=_agent_addon_info_command,
+        inspect_addon_command_impl=_agent_inspect_addon_command,
+        plan_update_command_impl=_agent_plan_update_command,
+        prepare_addon_change_command_impl=_agent_prepare_addon_change_command,
+        locate_model_command_impl=_agent_locate_model_command,
+        locate_field_command_impl=_agent_locate_field_command,
+        list_addon_tests_command_impl=_agent_list_addon_tests_command,
+        recommend_tests_command_impl=_agent_recommend_tests_command,
+        list_addon_models_command_impl=_agent_list_addon_models_command,
+        find_model_extensions_command_impl=_agent_find_model_extensions_command,
+        get_model_views_command_impl=_agent_get_model_views_command,
+        doctor_command_impl=_agent_doctor_command,
+        list_addons_command_impl=_agent_list_addons_command,
+        list_installed_addons_command_impl=_agent_list_installed_addons_command,
+        dependency_graph_command_impl=_agent_dependency_graph_command,
+        inspect_addons_command_impl=_agent_inspect_addons_command,
+        resolve_config_command_impl=_agent_resolve_config_command,
+        resolve_addon_root_command_impl=_agent_resolve_addon_root_command,
+        get_addon_files_command_impl=_agent_get_addon_files_command,
+        check_addons_installed_command_impl=_agent_check_addons_installed_command,
+        check_model_exists_command_impl=_agent_check_model_exists_command,
+        check_field_exists_command_impl=_agent_check_field_exists_command,
+        list_duplicates_command_impl=_agent_list_duplicates_command,
+        install_module_command_impl=_agent_install_module_command,
+        uninstall_module_command_impl=_agent_uninstall_module_command,
+        update_module_command_impl=_agent_update_module_command,
+        create_addon_command_impl=_agent_create_addon_command,
+        export_lang_command_impl=_agent_export_lang_command,
+        test_summary_command_impl=_agent_test_summary_command,
+        validate_impl=_agent_validate_impl,
+        query_model_command_impl=_agent_query_model_command,
+        read_record_command_impl=_agent_read_record_command,
+        search_count_command_impl=_agent_search_count_command,
+        get_model_fields_command_impl=_agent_get_model_fields_command,
+    ),
 )
 
 
@@ -390,161 +584,8 @@ def main(
     )
 
 
-register_app_commands(
-    app=app,
-    dev_option=DEV_OPTION,
-    shell_interface_option=SHELL_INTERFACE_OPTION,
-    addon_template_option=ADDON_TEMPLATE_OPTION,
-    log_level_option=LOG_LEVEL_OPTION,
-    language_option=LANGUAGE_OPTION,
-    sort_option=SORT_OPTION,
-    include_filter_option=INCLUDE_FILTER_OPTION,
-    exclude_filter_option=EXCLUDE_FILTER_OPTION,
-    valid_filter_fields_str=_VALID_FILTER_FIELDS_STR,
-    resolve_command_global_config_fn=_bootstrap_registration_helpers[
-        "resolve_command_global_config_fn"
-    ],
-    resolve_command_env_config_fn=_bootstrap_registration_helpers[
-        "resolve_command_env_config_fn"
-    ],
-    build_odoo_operations_fn=_bootstrap_registration_helpers[
-        "build_odoo_operations_fn"
-    ],
-    build_doctor_report_fn=_bootstrap_registration_helpers["build_doctor_report_fn"],
-    print_doctor_report_fn=print_doctor_report,
-    confirmation_required_error_fn=confirmation_required_error,
-    print_command_error_result_fn=print_command_error_result,
-    dependency_error_details_fn=dependency_error_details,
-    get_config_loader_cls=lambda: ConfigLoader,
-    get_module_manager_cls=lambda: ModuleManager,
-    get_addons_path_manager_cls=lambda: AddonsPathManager,
-    module_not_found_error_cls=OduitModuleNotFoundError,
-    validate_addon_name_fn=lambda addon_name: validate_addon_name(addon_name),
-    get_addon_type_fn=get_addon_type,
-    build_addon_table_fn=build_addon_table,
-    get_addon_field_value_fn=get_addon_field_value,
-    apply_core_addon_filters_fn=apply_core_addon_filters,
-    apply_field_filters_fn=apply_field_filters,
-    print_dependency_tree_fn=print_dependency_tree,
-    print_dependency_list_fn=print_dependency_list,
-    check_environment_exists_fn=check_environment_exists,
-    detect_binaries_fn=detect_binaries,
-    build_initial_config_fn=build_initial_config,
-    import_or_convert_config_fn=import_or_convert_config,
-    normalize_addons_path_fn=normalize_addons_path,
-    save_config_file_fn=save_config_file,
-    display_config_summary_fn=display_config_summary,
-    doctor_command_impl=_doctor_command_impl,
-    run_command_impl=_run_command_impl,
-    shell_command_impl=_shell_command_impl,
-    install_command_impl=_install_command_impl,
-    update_command_impl=_update_command_impl,
-    uninstall_command_impl=_uninstall_command_impl,
-    test_command_impl=_test_command_impl,
-    create_db_command_impl=_create_db_command_impl,
-    list_db_command_impl=_list_db_command_impl,
-    list_env_command_impl=_list_env_command_impl,
-    print_config_command_impl=_print_config_command_impl,
-    create_addon_command_impl=_create_addon_command_impl,
-    addon_info_command_impl=_addon_info_command_impl,
-    print_manifest_command_impl=_print_manifest_command_impl,
-    list_addons_command_impl=_list_addons_command_impl,
-    list_installed_addons_command_impl=_list_installed_addons_command_impl,
-    list_manifest_values_command_impl=_list_manifest_values_command_impl,
-    list_duplicates_command_impl=_list_duplicates_command_impl,
-    list_depends_command_impl=_list_depends_command_impl,
-    list_codepends_command_impl=_list_codepends_command_impl,
-    install_order_command_impl=_install_order_command_impl,
-    impact_of_update_command_impl=_impact_of_update_command_impl,
-    list_missing_command_impl=_list_missing_command_impl,
-    init_env_command_impl=_init_env_command_impl,
-    export_lang_command_impl=_export_lang_command_impl,
-    get_odoo_version_command_impl=_get_odoo_version_command_impl,
-    valid_filter_fields=VALID_FILTER_FIELDS,
-)
-
-register_agent_commands(
-    agent_app=agent_app,
-    addon_template_option=ADDON_TEMPLATE_OPTION,
-    language_option=LANGUAGE_OPTION,
-    log_level_option=LOG_LEVEL_OPTION,
-    include_filter_option=INCLUDE_FILTER_OPTION,
-    exclude_filter_option=EXCLUDE_FILTER_OPTION,
-    sort_option=SORT_OPTION,
-    resolve_agent_global_config_fn=_agent_registration_helpers[
-        "resolve_agent_global_config_fn"
-    ],
-    resolve_agent_ops_fn=_agent_registration_helpers["resolve_agent_ops_fn"],
-    parse_view_types_fn=_agent_registration_helpers["parse_view_types_fn"],
-    strip_arch_from_model_views_fn=_strip_arch_from_model_views_impl,
-    require_agent_addons_path_fn=_agent_registration_helpers[
-        "require_agent_addons_path_fn"
-    ],
-    parse_filter_values_fn=_parse_filter_values_impl,
-    parse_csv_items_fn=_parse_csv_items_impl,
-    parse_json_list_option_fn=_agent_registration_helpers["parse_json_list_option_fn"],
-    redact_config_fn=_redact_config_impl,
-    build_doctor_report_fn=_bootstrap_registration_helpers["build_doctor_report_fn"],
-    agent_fail_fn=_agent_registration_helpers["agent_fail_fn"],
-    agent_payload_fn=_agent_payload_impl,
-    agent_emit_payload_fn=_agent_emit_payload_impl,
-    agent_require_mutation_fn=_agent_registration_helpers["agent_require_mutation_fn"],
-    agent_sub_result_fn=_agent_sub_result_impl,
-    build_agent_test_summary_details_fn=_agent_registration_helpers[
-        "build_agent_test_summary_details_fn"
-    ],
-    build_validate_addon_change_payload_fn=_agent_registration_helpers[
-        "build_validate_addon_change_payload_fn"
-    ],
-    run_validate_addon_change_preflight_fn=_agent_registration_helpers[
-        "run_validate_addon_change_preflight_fn"
-    ],
-    build_validate_addon_change_discovery_result_fn=(
-        _agent_registration_helpers["build_validate_addon_change_discovery_result_fn"]
-    ),
-    apply_core_addon_filters_fn=apply_core_addon_filters,
-    apply_field_filters_fn=apply_field_filters,
-    get_odoo_operations_cls=lambda: OdooOperations,
-    get_module_manager_cls=lambda: ModuleManager,
-    output_result_to_json_fn=lambda *args, **kwargs: output_result_to_json(
-        *args, **kwargs
-    ),
-    safe_read_only=SAFE_READ_ONLY,
-    controlled_runtime_mutation=CONTROLLED_RUNTIME_MUTATION,
-    controlled_source_mutation=CONTROLLED_SOURCE_MUTATION,
-    config_error_cls=ConfigError,
-    module_not_found_error_cls=OduitModuleNotFoundError,
-    context_command_impl=_agent_context_command,
-    addon_info_command_impl=_agent_addon_info_command,
-    inspect_addon_command_impl=_agent_inspect_addon_command,
-    plan_update_command_impl=_agent_plan_update_command,
-    prepare_addon_change_command_impl=_agent_prepare_addon_change_command,
-    locate_model_command_impl=_agent_locate_model_command,
-    locate_field_command_impl=_agent_locate_field_command,
-    list_addon_tests_command_impl=_agent_list_addon_tests_command,
-    recommend_tests_command_impl=_agent_recommend_tests_command,
-    list_addon_models_command_impl=_agent_list_addon_models_command,
-    find_model_extensions_command_impl=_agent_find_model_extensions_command,
-    get_model_views_command_impl=_agent_get_model_views_command,
-    doctor_command_impl=_agent_doctor_command,
-    list_addons_command_impl=_agent_list_addons_command,
-    list_installed_addons_command_impl=_agent_list_installed_addons_command,
-    dependency_graph_command_impl=_agent_dependency_graph_command,
-    inspect_addons_command_impl=_agent_inspect_addons_command,
-    resolve_config_command_impl=_agent_resolve_config_command,
-    list_duplicates_command_impl=_agent_list_duplicates_command,
-    install_module_command_impl=_agent_install_module_command,
-    uninstall_module_command_impl=_agent_uninstall_module_command,
-    update_module_command_impl=_agent_update_module_command,
-    create_addon_command_impl=_agent_create_addon_command,
-    export_lang_command_impl=_agent_export_lang_command,
-    test_summary_command_impl=_agent_test_summary_command,
-    validate_impl=_agent_validate_impl,
-    query_model_command_impl=_agent_query_model_command,
-    read_record_command_impl=_agent_read_record_command,
-    search_count_command_impl=_agent_search_count_command,
-    get_model_fields_command_impl=_agent_get_model_fields_command,
-)
+register_app_commands(_app_registration_context)
+register_agent_commands(_agent_registration_context)
 
 
 def cli_main() -> None:

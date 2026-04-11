@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/field-existence.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "model",
+    "field",
+    "exists",
+    "runtime_exists",
+    "runtime_source_modules",
+    "source_candidates"
+  ],
+  "properties": {
+    "type": { "const": "field_existence" },
+    "model": { "type": "string" },
+    "field": { "type": "string" },
+    "module": { "type": ["string", "null"] },
+    "exists": { "type": "boolean" },
+    "runtime_exists": { "type": ["boolean", "null"] },
+    "source_exists": { "type": ["boolean", "null"] },
+    "runtime_source_modules": { "type": "array" },
+    "source_candidates": { "type": "array" },
+    "insertion_candidate": { "type": ["object", "null"] },
+    "insertion_file": { "type": ["string", "null"] },
+    "insertion_class": { "type": ["string", "null"] },
+    "insertion_confidence": { "type": ["number", "null"] }
+  },
+  "additionalProperties": true
+}

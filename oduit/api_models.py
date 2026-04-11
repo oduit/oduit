@@ -335,6 +335,16 @@ class ModelViewInventory(DictModel):
 
 
 @dataclass
+class SourceEvidence(DictModel):
+    """Machine-readable evidence attached to source-location candidates."""
+
+    kind: str
+    message: str
+    path: str
+    line_hint: int | None = None
+
+
+@dataclass
 class ModelSourceCandidate(DictModel):
     """Ranked model source candidate for static source localization."""
 
@@ -343,6 +353,8 @@ class ModelSourceCandidate(DictModel):
     match_kind: str
     declared_model: str
     confidence: float
+    match_strength: str = "confirmed"
+    evidence: list[SourceEvidence] = dataclass_field(default_factory=list)
     line_hint: int | None = None
     reason: str | None = None
 
@@ -354,6 +366,9 @@ class ModelSourceLocation(DictModel):
     model: str
     module: str
     addon_root: str
+    resolution: str = "not_found"
+    ambiguous: bool = False
+    ambiguity_reason: str | None = None
     candidates: list[ModelSourceCandidate] = dataclass_field(default_factory=list)
     scanned_python_files: list[str] = dataclass_field(default_factory=list)
     warnings: list[str] = dataclass_field(default_factory=list)
@@ -370,6 +385,8 @@ class FieldSourceCandidate(DictModel):
     match_kind: str
     declared_model: str
     confidence: float
+    match_strength: str = "confirmed"
+    evidence: list[SourceEvidence] = dataclass_field(default_factory=list)
     line_hint: int | None = None
     reason: str | None = None
 
@@ -383,6 +400,9 @@ class FieldSourceLocation(DictModel):
     module: str
     addon_root: str
     exists: bool
+    resolution: str = "not_found"
+    ambiguous: bool = False
+    ambiguity_reason: str | None = None
     source_exists: bool = False
     runtime_exists: bool | None = None
     runtime_only: bool = False

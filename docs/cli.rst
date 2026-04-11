@@ -922,6 +922,8 @@ require the global ``--json`` flag.
 Use :doc:`agent_contract` for the canonical command sequence, mutation policy,
 payload expectations, and failure handling. This section is the command
 reference.
+Use :doc:`agent_command_inventory` for the generated agent command matrix and
+``docs/maintainer/agent_contract_changes.md`` for machine-facing change notes.
 
 context
 ^^^^^^^
@@ -1007,7 +1009,9 @@ the database.
 locate-model
 ^^^^^^^^^^^^
 
-Locate likely Python source files for a model extension inside one addon.
+Locate likely Python source files for a model extension inside one addon. The
+payload now includes ``resolution``, ``ambiguous``, and candidate ``evidence``
+so agents can distinguish confirmed matches from ambiguous source hints.
 
 .. code-block:: bash
 
@@ -1016,7 +1020,9 @@ Locate likely Python source files for a model extension inside one addon.
 locate-field
 ^^^^^^^^^^^^
 
-Locate an existing field definition or suggest the best insertion point.
+Locate an existing field definition or suggest the best insertion point. The
+payload includes explicit ``resolution`` and ambiguity metadata, plus per-
+candidate evidence for exact field matches.
 
 .. code-block:: bash
 
@@ -1071,11 +1077,63 @@ Return dependency graph nodes, edges, cycles, and install order data.
 resolve-config
 ^^^^^^^^^^^^^^
 
-Return the resolved configuration with sensitive values redacted.
+Return the resolved configuration with sensitive values redacted. The payload
+includes both the compatibility ``effective_config`` view and the canonical
+sectioned ``normalized_config`` view, plus ``config_shape`` metadata and any
+legacy-flat deprecation warnings.
 
 .. code-block:: bash
 
    oduit --env dev agent resolve-config
+
+resolve-addon-root
+^^^^^^^^^^^^^^^^^^
+
+Resolve a module name to one or more addon root candidates before editing.
+
+.. code-block:: bash
+
+   oduit --env dev agent resolve-addon-root sale
+
+get-addon-files
+^^^^^^^^^^^^^^^
+
+Return a deterministic addon file inventory, optionally filtered by glob
+patterns.
+
+.. code-block:: bash
+
+   oduit --env dev agent get-addon-files sale
+   oduit --env dev agent get-addon-files sale --globs models/*.py,views/*.xml
+
+check-addons-installed
+^^^^^^^^^^^^^^^^^^^^^^
+
+Return runtime installed-state checks for one or more addons.
+
+.. code-block:: bash
+
+   oduit --env dev agent check-addons-installed --modules sale,stock
+
+check-model-exists
+^^^^^^^^^^^^^^^^^^
+
+Check whether a model exists in source discovery and, when available, runtime
+metadata.
+
+.. code-block:: bash
+
+   oduit --env dev agent check-model-exists res.partner --module my_partner
+
+check-field-exists
+^^^^^^^^^^^^^^^^^^
+
+Check whether a field exists in runtime metadata and source, or return the best
+source insertion hint when it does not.
+
+.. code-block:: bash
+
+   oduit --env dev agent check-field-exists res.partner email3 --module my_partner
 
 list-duplicates
 ^^^^^^^^^^^^^^^
@@ -1095,6 +1153,17 @@ command and requires ``--allow-mutation``.
 .. code-block:: bash
 
    oduit --env dev agent test-summary --allow-mutation --module sale --test-tags /sale
+
+preflight-addon-change
+^^^^^^^^^^^^^^^^^^^^^^
+
+Run a cheap read-only addon-change preflight that bundles inspection, doctor,
+duplicate checks, install-state lookup, source discovery, and likely test
+inventory before editing.
+
+.. code-block:: bash
+
+   oduit --env dev agent preflight-addon-change sale --model res.partner --field email3
 
 validate-addon-change
 ^^^^^^^^^^^^^^^^^^^^^
@@ -1137,6 +1206,8 @@ Other read helpers follow the same pattern:
    oduit --env dev agent get-model-views res.partner --types form,tree --summary
 
 For the recommended end-to-end coding-agent loop, use :doc:`agent_contract`.
+Keep arbitrary code execution as a trusted fallback only; ``OdooCodeExecutor``
+and ``execute_python_code()`` still require explicit ``allow_unsafe=True``.
 
 Common Workflows
 ----------------

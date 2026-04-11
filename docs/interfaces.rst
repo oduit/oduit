@@ -19,3 +19,7 @@ automation surface.
 
 Use :doc:`agent_contract` as the canonical guide for the recommended command
 sequence, mutation policy, payload expectations, and failure handling.
+
+Use :doc:`agent_command_inventory` for the generated agent command matrix and
+its per-command stability tiers, and :doc:`command_inventory` for the
+top-level CLI inventory.

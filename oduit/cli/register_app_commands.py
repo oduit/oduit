@@ -1,10 +1,11 @@
 """Registration helpers for classic `oduit` CLI commands."""
 
-from typing import Any
+from __future__ import annotations
 
 import typer
 
 from ..cli_types import AddonTemplate, DevFeature, LogLevel, ShellInterface
+from .runtime_context import AppRegistrationContext
 
 INSTALLED_ADDON_STATE_OPTION = typer.Option(
     [],
@@ -13,74 +14,81 @@ INSTALLED_ADDON_STATE_OPTION = typer.Option(
 )
 
 
-def register_app_commands(  # noqa: C901
-    *,
-    app: typer.Typer,
-    dev_option: Any,
-    shell_interface_option: Any,
-    addon_template_option: Any,
-    log_level_option: Any,
-    language_option: Any,
-    sort_option: Any,
-    include_filter_option: Any,
-    exclude_filter_option: Any,
-    valid_filter_fields_str: str,
-    resolve_command_global_config_fn: Any,
-    resolve_command_env_config_fn: Any,
-    build_odoo_operations_fn: Any,
-    build_doctor_report_fn: Any,
-    print_doctor_report_fn: Any,
-    confirmation_required_error_fn: Any,
-    print_command_error_result_fn: Any,
-    dependency_error_details_fn: Any,
-    get_config_loader_cls: Any,
-    get_module_manager_cls: Any,
-    get_addons_path_manager_cls: Any,
-    module_not_found_error_cls: Any,
-    validate_addon_name_fn: Any,
-    get_addon_type_fn: Any,
-    build_addon_table_fn: Any,
-    get_addon_field_value_fn: Any,
-    apply_core_addon_filters_fn: Any,
-    apply_field_filters_fn: Any,
-    print_dependency_tree_fn: Any,
-    print_dependency_list_fn: Any,
-    check_environment_exists_fn: Any,
-    detect_binaries_fn: Any,
-    build_initial_config_fn: Any,
-    import_or_convert_config_fn: Any,
-    normalize_addons_path_fn: Any,
-    save_config_file_fn: Any,
-    display_config_summary_fn: Any,
-    doctor_command_impl: Any,
-    run_command_impl: Any,
-    shell_command_impl: Any,
-    install_command_impl: Any,
-    update_command_impl: Any,
-    uninstall_command_impl: Any,
-    test_command_impl: Any,
-    create_db_command_impl: Any,
-    list_db_command_impl: Any,
-    list_env_command_impl: Any,
-    print_config_command_impl: Any,
-    create_addon_command_impl: Any,
-    addon_info_command_impl: Any,
-    print_manifest_command_impl: Any,
-    list_addons_command_impl: Any,
-    list_installed_addons_command_impl: Any,
-    list_manifest_values_command_impl: Any,
-    list_duplicates_command_impl: Any,
-    list_depends_command_impl: Any,
-    list_codepends_command_impl: Any,
-    install_order_command_impl: Any,
-    impact_of_update_command_impl: Any,
-    list_missing_command_impl: Any,
-    init_env_command_impl: Any,
-    export_lang_command_impl: Any,
-    get_odoo_version_command_impl: Any,
-    valid_filter_fields: list[str],
-) -> None:
+def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C901
     """Register classic CLI commands on the shared Typer app."""
+
+    app = context.app
+    dev_option = context.options.dev_option
+    shell_interface_option = context.options.shell_interface_option
+    addon_template_option = context.options.addon_template_option
+    log_level_option = context.options.log_level_option
+    language_option = context.options.language_option
+    sort_option = context.options.sort_option
+    include_filter_option = context.options.include_filter_option
+    exclude_filter_option = context.options.exclude_filter_option
+    valid_filter_fields_str = context.options.valid_filter_fields_str
+    valid_filter_fields = context.options.valid_filter_fields
+    resolve_command_global_config_fn = context.runtime.resolve_command_global_config_fn
+    resolve_command_env_config_fn = context.runtime.resolve_command_env_config_fn
+    build_odoo_operations_fn = context.runtime.build_odoo_operations_fn
+    build_doctor_report_fn = context.runtime.build_doctor_report_fn
+    print_doctor_report_fn = context.dependencies.print_doctor_report_fn
+    confirmation_required_error_fn = context.dependencies.confirmation_required_error_fn
+    print_command_error_result_fn = context.dependencies.print_command_error_result_fn
+    dependency_error_details_fn = context.dependencies.dependency_error_details_fn
+    get_config_loader_cls = context.dependencies.get_config_loader_cls
+    get_module_manager_cls = context.dependencies.get_module_manager_cls
+    get_addons_path_manager_cls = context.dependencies.get_addons_path_manager_cls
+    module_not_found_error_cls = context.dependencies.module_not_found_error_cls
+    validate_addon_name_fn = context.dependencies.validate_addon_name_fn
+    get_addon_type_fn = context.dependencies.get_addon_type_fn
+    build_addon_table_fn = context.dependencies.build_addon_table_fn
+    get_addon_field_value_fn = context.dependencies.get_addon_field_value_fn
+    apply_core_addon_filters_fn = context.dependencies.apply_core_addon_filters_fn
+    apply_field_filters_fn = context.dependencies.apply_field_filters_fn
+    print_dependency_tree_fn = context.dependencies.print_dependency_tree_fn
+    print_dependency_list_fn = context.dependencies.print_dependency_list_fn
+    check_environment_exists_fn = context.dependencies.check_environment_exists_fn
+    detect_binaries_fn = context.dependencies.detect_binaries_fn
+    build_initial_config_fn = context.dependencies.build_initial_config_fn
+    import_or_convert_config_fn = context.dependencies.import_or_convert_config_fn
+    normalize_addons_path_fn = context.dependencies.normalize_addons_path_fn
+    save_config_file_fn = context.dependencies.save_config_file_fn
+    display_config_summary_fn = context.dependencies.display_config_summary_fn
+    doctor_command_impl = context.implementations.doctor_command_impl
+    run_command_impl = context.implementations.run_command_impl
+    shell_command_impl = context.implementations.shell_command_impl
+    install_command_impl = context.implementations.install_command_impl
+    update_command_impl = context.implementations.update_command_impl
+    uninstall_command_impl = context.implementations.uninstall_command_impl
+    test_command_impl = context.implementations.test_command_impl
+    create_db_command_impl = context.implementations.create_db_command_impl
+    list_db_command_impl = context.implementations.list_db_command_impl
+    list_env_command_impl = context.implementations.list_env_command_impl
+    print_config_command_impl = context.implementations.print_config_command_impl
+    create_addon_command_impl = context.implementations.create_addon_command_impl
+    addon_info_command_impl = context.implementations.addon_info_command_impl
+    print_manifest_command_impl = context.implementations.print_manifest_command_impl
+    list_addons_command_impl = context.implementations.list_addons_command_impl
+    list_installed_addons_command_impl = (
+        context.implementations.list_installed_addons_command_impl
+    )
+    list_manifest_values_command_impl = (
+        context.implementations.list_manifest_values_command_impl
+    )
+    list_duplicates_command_impl = context.implementations.list_duplicates_command_impl
+    list_depends_command_impl = context.implementations.list_depends_command_impl
+    list_codepends_command_impl = context.implementations.list_codepends_command_impl
+    install_order_command_impl = context.implementations.install_order_command_impl
+    impact_of_update_command_impl = (
+        context.implementations.impact_of_update_command_impl
+    )
+    list_missing_command_impl = context.implementations.list_missing_command_impl
+    init_env_command_impl = context.implementations.init_env_command_impl
+    export_lang_command_impl = context.implementations.export_lang_command_impl
+    get_odoo_version_command_impl = (
+        context.implementations.get_odoo_version_command_impl
+    )
 
     @app.command()
     def doctor(ctx: typer.Context) -> None:

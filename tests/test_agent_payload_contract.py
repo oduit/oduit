@@ -1,12 +1,14 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
 from oduit import ConfigError
-from oduit.api_models import ModelViewInventory, ModelViewRecord
+from oduit.api_models import AddonInstallState, ModelViewInventory, ModelViewRecord
 from oduit.cli.app import app
+from oduit.config_provider import ConfigProvider
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS = ROOT / "schemas"
@@ -35,6 +37,18 @@ def _loader_with_config(config: dict[str, str], tmp_path: Path) -> MagicMock:
     loader = MagicMock()
     loader.load_config.return_value = config
     loader.resolve_config_path.return_value = (str(tmp_path / "dev.toml"), "toml")
+    details = SimpleNamespace(
+        config=config,
+        canonical_config=ConfigProvider(config).to_sectioned_dict(),
+        raw_shape="sectioned",
+        normalized_shape="sectioned",
+        shape_version="1.0",
+        format_type="toml",
+        config_path=str(tmp_path / "dev.toml"),
+        deprecation_warnings=(),
+    )
+    loader.load_config_details.return_value = details
+    loader.load_local_config_details.return_value = details
     return loader
 
 
@@ -98,6 +112,7 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "addon-inspection.schema.json",
         SCHEMAS / "agent" / "update-plan.schema.json",
         SCHEMAS / "agent" / "addon-change-context.schema.json",
+        SCHEMAS / "agent" / "addon-change-preflight.schema.json",
         SCHEMAS / "agent" / "recommended-test-plan.schema.json",
         SCHEMAS / "agent" / "query-result.schema.json",
         SCHEMAS / "agent" / "model-source-location.schema.json",
@@ -106,6 +121,11 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "addon-model-inventory.schema.json",
         SCHEMAS / "agent" / "model-extension-inventory.schema.json",
         SCHEMAS / "agent" / "model-view-inventory.schema.json",
+        SCHEMAS / "agent" / "addon-root-resolution.schema.json",
+        SCHEMAS / "agent" / "addon-file-inventory.schema.json",
+        SCHEMAS / "agent" / "addon-install-checks.schema.json",
+        SCHEMAS / "agent" / "model-existence.schema.json",
+        SCHEMAS / "agent" / "field-existence.schema.json",
         SCHEMAS / "agent" / "addon-change-validation.schema.json",
     ]
     for schema_path in expected:
@@ -178,6 +198,17 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
         patch(
             "oduit.cli.app.OdooOperations.db_exists",
             return_value={"success": True, "exists": True},
+        ),
+        patch(
+            "oduit.cli.app.OdooOperations.get_addon_install_state",
+            return_value=AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="my_partner",
+                record_found=True,
+                state="installed",
+                installed=True,
+            ),
         ),
         patch(
             "oduit.cli.app.OdooOperations.run_tests",
@@ -270,6 +301,22 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                     ],
                 ).output
             ),
+            "addon-change-preflight.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "preflight-addon-change",
+                        "my_partner",
+                        "--model",
+                        "res.partner",
+                        "--field",
+                        "email3",
+                    ],
+                ).output
+            ),
             "recommended-test-plan.schema.json": json.loads(
                 runner.invoke(
                     app,
@@ -358,6 +405,68 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                     ],
                 ).output
             ),
+            "addon-root-resolution.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "resolve-addon-root", "my_partner"],
+                ).output
+            ),
+            "addon-file-inventory.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "get-addon-files",
+                        "my_partner",
+                        "--globs",
+                        "models/*.py,tests/*.py",
+                    ],
+                ).output
+            ),
+            "addon-install-checks.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "check-addons-installed",
+                        "--modules",
+                        "my_partner,x_sale",
+                    ],
+                ).output
+            ),
+            "model-existence.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "check-model-exists",
+                        "res.partner",
+                        "--module",
+                        "my_partner",
+                    ],
+                ).output
+            ),
+            "field-existence.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "check-field-exists",
+                        "res.partner",
+                        "email3",
+                        "--module",
+                        "my_partner",
+                    ],
+                ).output
+            ),
             "addon-change-validation.schema.json": json.loads(
                 runner.invoke(
                     app,
@@ -396,6 +505,10 @@ def test_resolve_config_redacts_sensitive_values(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["type"] == "config_resolution"
     assert payload["effective_config"]["db_password"] == "***redacted***"
+    assert (
+        payload["normalized_config"]["odoo_params"]["db_password"] == "***redacted***"
+    )
+    assert payload["config_shape"]["normalized_shape"] == "sectioned"
 
 
 def test_validate_addon_change_failure_payload_validates_against_schema(

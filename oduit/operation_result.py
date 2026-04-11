@@ -17,11 +17,25 @@ class OperationResult:
     """Builder class for creating standardized operation results"""
 
     ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+    TIMESTAMP_PREFIX_PATTERN = re.compile(
+        r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+\d+\s+"
+    )
+    FAILURE_LOG_PREFIX_PATTERN = re.compile(
+        r"^(?:INFO|WARNING|ERROR|DEBUG)\s+\S+\s+[\w]+\.[\w.]+:\s*"
+    )
 
     @classmethod
     def _clean_test_log_line(cls, line: str) -> str:
         """Strip ANSI escape sequences from one test log line."""
         return cls.ANSI_ESCAPE_PATTERN.sub("", line)
+
+    @classmethod
+    def _normalize_test_failure_line(cls, line: str) -> str:
+        """Remove ANSI codes and Odoo log prefixes from traceback lines."""
+        clean_line = cls._clean_test_log_line(line).rstrip()
+        clean_line = cls.TIMESTAMP_PREFIX_PATTERN.sub("", clean_line)
+        clean_line = cls.FAILURE_LOG_PREFIX_PATTERN.sub("", clean_line)
+        return clean_line.strip()
 
     # Specific failure patterns for different operations
     FAILURE_PATTERNS = {
@@ -297,6 +311,27 @@ class OperationResult:
             k: v for k, v in parsed_results.items() if k not in self._core_fields
         }
 
+        existing_warnings = existing_custom_data.get("warnings", [])
+        parsed_warnings = filtered_parsed_results.pop("warnings", [])
+        additional_warnings = additional_data.pop("warnings", [])
+        merged_warnings = list(
+            dict.fromkeys(
+                warning
+                for warning in [
+                    *existing_warnings,
+                    *parsed_warnings,
+                    *additional_warnings,
+                ]
+                if warning
+            )
+        )
+        if merged_warnings:
+            self.result["warnings"] = merged_warnings
+        if merged_warnings:
+            existing_custom_data["warnings"] = merged_warnings
+        elif "warnings" in existing_custom_data:
+            existing_custom_data.pop("warnings", None)
+
         # Merge all custom data
         existing_custom_data.update(filtered_parsed_results)
         existing_custom_data.update(additional_data)
@@ -464,7 +499,7 @@ class OperationResult:
 
     def _parse_test_failure(self, lines: list[str], start_index: int) -> dict[str, Any]:
         """Parse one traceback block starting at a FAIL header."""
-        line = self._clean_test_log_line(lines[start_index])
+        line = self._normalize_test_failure_line(lines[start_index])
         fail_match = re.search(r"FAIL:\s+(.+)", line)
         if fail_match is None:
             return {}
@@ -480,9 +515,11 @@ class OperationResult:
             "locations": [],
             "broken_line_count": 0,
             "failure_excerpt": None,
+            "raw_failure_excerpt": [line],
             "error_message": None,
         }
         expect_source_line = False
+        expect_function_name = False
         j = start_index + 1
 
         while j < len(lines):
@@ -492,15 +529,17 @@ class OperationResult:
                 not next_line
                 or "Starting" in lines[j]
                 or ("INFO" in next_line and "ERROR" not in next_line)
+                or re.search(
+                    r"odoo\.(?:tests\.result|modules\.loading):\s+\d+\s+failed,"
+                    r"\s+\d+\s+error\(s\)\s+of\s+\d+\s+tests",
+                    next_line,
+                )
             ):
                 break
 
-            clean_line = re.sub(
-                r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+\d+\s+",
-                "",
-                next_line,
-            )
+            clean_line = self._normalize_test_failure_line(next_line)
             failure_info["traceback"].append(clean_line)
+            failure_info["raw_failure_excerpt"].append(clean_line)
 
             file_match = re.search(
                 r'File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+(.+))?',
@@ -518,8 +557,20 @@ class OperationResult:
                     failure_info["line"] = location["line"]
                     failure_info["function_name"] = location["function"]
                 expect_source_line = True
+                expect_function_name = location["function"] is None
                 j += 1
                 continue
+
+            if expect_function_name and clean_line.startswith("in "):
+                function_name = clean_line.removeprefix("in ").strip()
+                if function_name:
+                    failure_info["locations"][-1]["function"] = function_name
+                    if failure_info["function_name"] is None:
+                        failure_info["function_name"] = function_name
+                expect_function_name = False
+                j += 1
+                continue
+            expect_function_name = False
 
             is_error_line = any(
                 error_type in clean_line
@@ -555,6 +606,12 @@ class OperationResult:
                 excerpt = f"{excerpt}: {failure_info['source_line']}"
             failure_info["failure_excerpt"] = excerpt
 
+        if not failure_info["locations"] or failure_info["error_message"] is None:
+            failure_info["parser_warning"] = (
+                f"Partially parsed failure '{failure_info['test_name']}'; "
+                "preserved raw_failure_excerpt."
+            )
+
         return failure_info
 
     def _parse_test_results(self, output: str) -> dict[str, Any]:
@@ -565,6 +622,7 @@ class OperationResult:
             "failed_tests": 0,
             "error_tests": 0,
             "failures": [],
+            "warnings": [],
         }
 
         if not output:
@@ -632,7 +690,11 @@ class OperationResult:
             # Look for failure headers like: "FAIL: FastAPIDemoCase.test_no_key"
             # or "ERROR ... FAIL: AdvancedTestCase.test_workflow"
             if re.search(r"FAIL:\s+(.+)", line):
-                test_info["failures"].append(self._parse_test_failure(lines, i))
+                failure = self._parse_test_failure(lines, i)
+                parser_warning = failure.pop("parser_warning", None)
+                if parser_warning:
+                    test_info["warnings"].append(parser_warning)
+                test_info["failures"].append(failure)
 
         return test_info
 

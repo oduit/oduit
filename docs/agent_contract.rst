@@ -20,12 +20,14 @@ Default to the read-only inspection and planning commands:
 * ``context``
 * ``inspect-addon`` and ``inspect-addons``
 * ``plan-update``
+* ``preflight-addon-change``
 * ``prepare-addon-change``
 * ``locate-model`` and ``locate-field``
 * ``list-addon-tests``, ``recommend-tests``, and ``list-addon-models``
 * ``find-model-extensions`` and ``get-model-views``
-* ``doctor``, ``list-addons``, ``dependency-graph``, ``resolve-config``, and
-  ``list-duplicates``
+* ``doctor``, ``list-addons``, ``dependency-graph``, ``resolve-config``,
+  ``resolve-addon-root``, ``get-addon-files``, ``check-addons-installed``,
+  ``check-model-exists``, ``check-field-exists``, and ``list-duplicates``
 * ``query-model``, ``read-record``, ``search-count``, and ``get-model-fields``
 
 Only mutate through the controlled mutation commands:
@@ -96,6 +98,13 @@ this loop:
 For runtime spot checks after a change, prefer ``query-model``, ``read-record``,
 and ``search-count`` over arbitrary code execution.
 
+For a cheap read-only planning and health pass before mutating an addon, use
+``preflight-addon-change``:
+
+.. code-block:: bash
+
+   oduit --env dev agent preflight-addon-change my_partner --model res.partner --field email3
+
 For a single end-to-end runtime verification pass after editing one addon, use
 ``validate-addon-change``:
 
@@ -155,6 +164,16 @@ When available, commands also include:
 * ``generated_at``
 * command-specific fields such as ``module``, ``count``, or ``candidates``
 
+For source-location commands, prefer explicit decision fields over raw
+confidence alone:
+
+* ``resolution``: overall result such as ``confirmed``, ``ambiguous``,
+  ``suggested``, or ``not_found``
+* ``ambiguous`` / ``ambiguity_reason``: whether the command found multiple
+  plausible matches
+* candidate ``match_strength`` and ``evidence``: why a candidate was chosen and
+  whether it is a confirmed source hit or a best-effort suggestion
+
 ``data`` is the canonical command payload container.
 
 For ``2.x`` compatibility, command-specific fields are also flattened to the
@@ -170,8 +189,8 @@ Compatibility Policy
 * new consumers should prefer reading ``data`` first
 * existing consumers may continue using flattened top-level fields in ``2.x``
 
-Stability Tiers
----------------
+Payload Stability Tiers
+-----------------------
 
 * **stable:** ``schema_version``, ``type``, ``operation``, ``success``,
   ``read_only``, ``safety_level``, ``warnings``, ``errors``, ``remediation``,
@@ -181,6 +200,18 @@ Stability Tiers
   ``database``, and ``resolved_addons_path``
 * **experimental:** newly introduced command-specific fields not yet called out
   in the public docs
+
+Command Stability Tiers
+-----------------------
+
+Use :doc:`agent_command_inventory` for the generated command-by-command tier
+matrix.
+
+* ``stable_for_agents``: recommended machine-facing surface for coding agents
+* ``beta_for_agents``: useful for agents but still evolving in behavior,
+  heuristics, or workflow shape
+* ``human_oriented``: supported CLI surface documented primarily for humans
+* ``compatibility_only``: retained for migration or import compatibility only
 
 Safety Levels
 -------------
@@ -208,6 +239,12 @@ Published JSON Schema artifacts live under ``schemas/``:
 * ``schemas/agent/addon-model-inventory.schema.json``
 * ``schemas/agent/model-extension-inventory.schema.json``
 * ``schemas/agent/model-view-inventory.schema.json``
+* ``schemas/agent/addon-root-resolution.schema.json``
+* ``schemas/agent/addon-file-inventory.schema.json``
+* ``schemas/agent/addon-install-checks.schema.json``
+* ``schemas/agent/model-existence.schema.json``
+* ``schemas/agent/field-existence.schema.json``
+* ``schemas/agent/addon-change-preflight.schema.json``
 * ``schemas/agent/addon-change-validation.schema.json``
 * ``schemas/agent/addon-change-context.schema.json``
 * ``schemas/agent/recommended-test-plan.schema.json``
@@ -264,6 +301,8 @@ Example
          "model": "res.partner",
          "module": "my_partner",
          "addon_root": "/workspace/addons/my_partner",
+         "resolution": "confirmed",
+         "ambiguous": false,
          "candidates": [
             {
                "path": "/workspace/addons/my_partner/models/res_partner.py",
@@ -271,6 +310,15 @@ Example
                "match_kind": "inherit",
                "declared_model": "res.partner",
                "confidence": 0.98,
+               "match_strength": "confirmed",
+               "evidence": [
+                  {
+                     "kind": "model_inherit",
+                     "message": "Class inherits `res.partner` directly in addon source.",
+                     "path": "/workspace/addons/my_partner/models/res_partner.py",
+                     "line_hint": 6
+                  }
+               ],
                "line_hint": 6
             }
          ]
@@ -278,17 +326,28 @@ Example
       "meta": {
          "timestamp": "2026-04-09T12:00:00"
       },
-      "model": "res.partner",
-      "module": "my_partner",
-      "addon_root": "/workspace/addons/my_partner",
-      "candidates": [
-         {
-            "path": "/workspace/addons/my_partner/models/res_partner.py",
-            "class_name": "ResPartner",
-            "match_kind": "inherit",
-            "declared_model": "res.partner",
-            "confidence": 0.98,
-            "line_hint": 6
-         }
-      ]
+       "model": "res.partner",
+       "module": "my_partner",
+       "addon_root": "/workspace/addons/my_partner",
+       "resolution": "confirmed",
+       "ambiguous": false,
+       "candidates": [
+          {
+             "path": "/workspace/addons/my_partner/models/res_partner.py",
+             "class_name": "ResPartner",
+             "match_kind": "inherit",
+             "declared_model": "res.partner",
+             "confidence": 0.98,
+             "match_strength": "confirmed",
+             "evidence": [
+                {
+                   "kind": "model_inherit",
+                   "message": "Class inherits `res.partner` directly in addon source.",
+                   "path": "/workspace/addons/my_partner/models/res_partner.py",
+                   "line_hint": 6
+                }
+             ],
+             "line_hint": 6
+          }
+       ]
    }
