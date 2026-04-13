@@ -29,6 +29,18 @@ Trusted Code Execution
    :language: python
    :caption: Executing trusted Python through the Odoo shell interface
 
+Inspection and Database Workflows
+---------------------------------
+
+.. code-block:: bash
+
+   oduit --env dev inspect ref base.action_partner_form
+   oduit --env dev inspect model res.partner
+   oduit --env dev inspect field res.partner email --with-db
+   oduit --env dev db table res_partner
+   oduit --env dev performance slow-queries --limit 10
+   oduit --env dev manifest check sale
+
 Demo Mode
 ---------
 

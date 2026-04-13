@@ -52,6 +52,19 @@ SAFE_READ_ONLY_OPERATIONS = {
     "read_record",
     "search_count",
     "get_model_fields",
+    "inspect_ref",
+    "inspect_modules",
+    "inspect_subtypes",
+    "inspect_model",
+    "inspect_field",
+    "describe_table",
+    "describe_column",
+    "list_constraints",
+    "list_tables",
+    "inspect_m2m",
+    "performance_table_scans",
+    "performance_slow_queries",
+    "performance_indexes",
 }
 
 CONTROLLED_RUNTIME_MUTATION_OPERATIONS = {

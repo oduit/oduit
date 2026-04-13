@@ -826,11 +826,128 @@ Print the current environment configuration.
 
 .. code-block:: bash
 
-   # Print production config
-   oduit --env production print-config
+    # Print production config
+    oduit --env production print-config
 
-   # Print local config
-   oduit print-config
+    # Print local config
+    oduit print-config
+
+Trusted Execution and Inspection
+--------------------------------
+
+exec
+^^^^
+
+Execute trusted Python directly inside the Odoo runtime and return a structured
+result.
+
+.. code-block:: bash
+
+   oduit --env dev exec "env['project.task']._table"
+   oduit --env dev exec "env['res.partner'].search_count([])" --output full
+
+**Options:**
+
+- ``--database TEXT``: Override the configured database
+- ``--commit``: Commit database changes made by the code
+- ``--timeout FLOAT``: Execution timeout in seconds
+- ``--output [value|full]``: Print only the resulting value or the full result
+
+.. warning::
+   ``exec`` is a trusted arbitrary execution surface. It rolls back by default;
+   pass ``--commit`` only when mutation is explicitly intended.
+
+exec-file
+^^^^^^^^^
+
+Execute trusted Python loaded from a file.
+
+.. code-block:: bash
+
+   oduit --env dev exec-file scripts/check_runtime.py
+   oduit --env dev exec-file scripts/repair_demo_data.py --commit --output full
+
+inspect
+^^^^^^^
+
+Inspect runtime metadata without dropping into ``odoo-bin shell``.
+
+.. code-block:: bash
+
+   oduit --env dev inspect ref base.action_partner_form
+   oduit --env dev inspect cron base.ir_cron_autovacuum
+   oduit --env dev inspect cron base.ir_cron_autovacuum --trigger
+   oduit --env dev inspect modules --state installed --names-only
+   oduit --env dev inspect model res.partner
+   oduit --env dev inspect field res.partner email --with-db
+   oduit --env dev inspect subtypes crm.lead
+   oduit --env dev inspect recordset "env['sale.order'].search([], limit=3).mapped('name')"
+
+Use:
+
+- ``inspect ref`` for XMLID resolution
+- ``inspect cron`` for cron metadata and explicit triggering
+- ``inspect modules`` for runtime module state from ``ir.module.module``
+- ``inspect model`` / ``inspect field`` for ORM metadata
+- ``inspect recordset`` only as the trusted arbitrary-expression escape hatch
+
+db
+^^
+
+Inspect PostgreSQL metadata through the active Odoo connection.
+
+.. code-block:: bash
+
+   oduit --env dev db table res_partner
+   oduit --env dev db column res_partner email
+   oduit --env dev db constraints sale_order
+   oduit --env dev db tables --like sale
+   oduit --env dev db m2m res.partner category_id
+
+performance
+^^^^^^^^^^^
+
+Read PostgreSQL performance metadata through the active Odoo connection.
+
+.. code-block:: bash
+
+   oduit --env dev performance table-scans
+   oduit --env dev performance slow-queries --limit 10
+   oduit --env dev performance indexes
+
+``performance slow-queries`` reads ``pg_stat_statements`` only when the
+extension is installed and reports clearly when it is unavailable.
+
+manifest
+^^^^^^^^
+
+Use the ``manifest`` command group for path-or-addon-name manifest workflows.
+
+.. code-block:: bash
+
+   oduit --env dev manifest check sale
+   oduit --env dev manifest check ./addons/my_module
+   oduit --env dev manifest show sale
+
+Showcase Replacements
+^^^^^^^^^^^^^^^^^^^^^
+
+Use the first-class commands instead of shell-only examples:
+
+.. code-block:: bash
+
+   # Resolve an XMLID
+   oduit --env dev inspect ref base.action_partner_form
+
+   # Inspect one model or field
+   oduit --env dev inspect model project.task
+   oduit --env dev inspect field res.partner email --with-db
+
+   # Inspect PostgreSQL metadata
+   oduit --env dev db table res_partner
+
+   # Trusted one-off fallback
+   oduit --env dev exec "env['project.task']._table"
 
 Output Formats
 --------------

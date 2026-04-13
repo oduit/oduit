@@ -249,6 +249,40 @@ def test_runtime_addon_docs_use_explicit_installed_inventory_command() -> None:
     )
 
 
+def test_runtime_inspection_docs_cover_new_command_surface() -> None:
+    targets = [
+        ROOT / "README.md",
+        ROOT / "docs" / "cli.rst",
+        ROOT / "docs" / "quickstart.rst",
+    ]
+    required_markers = [
+        "oduit --env dev exec \"env['project.task']._table\"",
+        "oduit --env dev inspect ref base.action_partner_form",
+        "oduit --env dev inspect model res.partner",
+        "oduit --env dev inspect field res.partner email --with-db",
+        "oduit --env dev db table res_partner",
+        "oduit --env dev manifest check sale",
+    ]
+
+    for path in targets:
+        content = path.read_text()
+        missing = [marker for marker in required_markers if marker not in content]
+        assert not missing, f"{path.relative_to(ROOT)} missing markers:\n" + "\n".join(
+            missing
+        )
+
+
+def test_api_docs_include_odoo_inspector_surface() -> None:
+    api_index = (ROOT / "docs" / "api.rst").read_text()
+    inspector_doc = (ROOT / "docs" / "api" / "odoo_inspector.rst").read_text()
+    operations_doc = (ROOT / "docs" / "api" / "odoo_operations.rst").read_text()
+
+    assert "api/odoo_inspector" in api_index
+    assert "OdooInspector" in inspector_doc
+    assert "inspect_ref()" in operations_doc
+    assert "describe_table()" in operations_doc
+
+
 def test_public_api_inventory_lists_all_agent_commands() -> None:
     content = (ROOT / "docs" / "maintainer" / "public_api.md").read_text()
     cli_header = "## CLI commands in `oduit.cli.app`"

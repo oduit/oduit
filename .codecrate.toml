@@ -8,3 +8,5 @@ include = ["**/*.py", "**/*.toml", "**/*.rst"]
 split_max_chars = 0
 manifest = false
 layout = "full"
+profile = "portable-agent"
+emit_standalone_unpacker = true

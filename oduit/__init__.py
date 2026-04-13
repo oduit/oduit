@@ -56,6 +56,7 @@ from .module_manager import ModuleManager
 from .odoo_operations import OdooOperations
 from .odoo_embedded_manager import OdooEmbeddedManager
 from .odoo_code_executor import OdooCodeExecutor
+from .odoo_inspector import OdooInspector
 from .odoo_query import OdooQuery
 from .output import (
     OutputFormatter,
@@ -115,6 +116,7 @@ __all__ = [
     "OdooOperations",
     "OdooEmbeddedManager",
     "OdooCodeExecutor",
+    "OdooInspector",
     "OdooQuery",
     "ProcessManager",
     "OperationResult",

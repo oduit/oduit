@@ -43,6 +43,7 @@ from .builders import ConfigProvider
 from .demo_process_manager import DemoProcessManager
 from .module_manager import ModuleManager
 from .odoo_code_executor import OdooCodeExecutor
+from .odoo_inspector import OdooInspector
 from .odoo_query import OdooQuery
 from .operation_result import OperationResult
 from .process_manager import ProcessManager
@@ -59,6 +60,7 @@ class OdooOperations:
         self.env_config = env_config
         self._query_helper: OdooQuery | None = None
         self._code_executor: OdooCodeExecutor | None = None
+        self._inspector: OdooInspector | None = None
 
         self.config = ConfigProvider(env_config)
         if env_config.get("demo_mode", False):
@@ -596,6 +598,244 @@ class OdooOperations:
             log_level=log_level,
         )
 
+    def execute_code(
+        self,
+        code: str,
+        *,
+        database: str | None = None,
+        commit: bool = False,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Execute trusted arbitrary Python through the embedded executor."""
+        return self._get_inspector().execute_code(
+            code,
+            database=database,
+            commit=commit,
+            timeout=timeout,
+        )
+
+    def inspect_ref(
+        self,
+        xmlid: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Resolve one XMLID through the embedded Odoo runtime."""
+        return self._get_inspector().inspect_ref(
+            xmlid,
+            database=database,
+            timeout=timeout,
+        )
+
+    def inspect_cron(
+        self,
+        xmlid: str,
+        *,
+        trigger: bool = False,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Inspect or explicitly trigger one cron job by XMLID."""
+        return self._get_inspector().inspect_cron(
+            xmlid,
+            trigger=trigger,
+            database=database,
+            timeout=timeout,
+        )
+
+    def inspect_modules(
+        self,
+        *,
+        state: str | None = None,
+        names_only: bool = False,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Return runtime addon inventory with inspect-command semantics."""
+        return self._get_inspector().inspect_modules(
+            state=state,
+            names_only=names_only,
+            database=database,
+            timeout=timeout,
+        )
+
+    def inspect_subtypes(
+        self,
+        model: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """List message subtypes registered for one model."""
+        return self._get_inspector().inspect_subtypes(
+            model,
+            database=database,
+            timeout=timeout,
+        )
+
+    def inspect_model(
+        self,
+        model: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Inspect runtime model registration metadata."""
+        return self._get_inspector().inspect_model(
+            model,
+            database=database,
+            timeout=timeout,
+        )
+
+    def inspect_field(
+        self,
+        model: str,
+        field: str,
+        *,
+        with_db: bool = False,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Inspect runtime field metadata."""
+        return self._get_inspector().inspect_field(
+            model,
+            field,
+            with_db=with_db,
+            database=database,
+            timeout=timeout,
+        )
+
+    def inspect_recordset(
+        self,
+        expression: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Execute a trusted recordset expression as an inspection escape hatch."""
+        return self._get_inspector().inspect_recordset(
+            expression,
+            database=database,
+            timeout=timeout,
+        )
+
+    def describe_table(
+        self,
+        table_name: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Describe one PostgreSQL table through the live Odoo connection."""
+        return self._get_inspector().describe_table(
+            table_name,
+            database=database,
+            timeout=timeout,
+        )
+
+    def describe_column(
+        self,
+        table_name: str,
+        column_name: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Describe one PostgreSQL column through the live Odoo connection."""
+        return self._get_inspector().describe_column(
+            table_name,
+            column_name,
+            database=database,
+            timeout=timeout,
+        )
+
+    def list_constraints(
+        self,
+        table_name: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """List PostgreSQL constraints for one table."""
+        return self._get_inspector().list_constraints(
+            table_name,
+            database=database,
+            timeout=timeout,
+        )
+
+    def list_tables(
+        self,
+        pattern: str | None = None,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """List PostgreSQL tables through the live Odoo connection."""
+        return self._get_inspector().list_tables(
+            pattern,
+            database=database,
+            timeout=timeout,
+        )
+
+    def inspect_m2m(
+        self,
+        model: str,
+        field: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Inspect Many2many relation-table metadata."""
+        return self._get_inspector().inspect_m2m(
+            model,
+            field,
+            database=database,
+            timeout=timeout,
+        )
+
+    def performance_table_scans(
+        self,
+        *,
+        limit: int = 20,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Return sequential scan metrics for PostgreSQL tables."""
+        return self._get_inspector().performance_table_scans(
+            limit=limit,
+            database=database,
+            timeout=timeout,
+        )
+
+    def performance_slow_queries(
+        self,
+        *,
+        limit: int = 10,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Return slow-query metrics from ``pg_stat_statements`` when available."""
+        return self._get_inspector().performance_slow_queries(
+            limit=limit,
+            database=database,
+            timeout=timeout,
+        )
+
+    def performance_indexes(
+        self,
+        *,
+        limit: int = 20,
+        database: str | None = None,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Return basic index-usage metrics for PostgreSQL tables."""
+        return self._get_inspector().performance_indexes(
+            limit=limit,
+            database=database,
+            timeout=timeout,
+        )
+
     def _get_query_helper(self) -> OdooQuery:
         """Return the shared ``OdooQuery`` helper for this environment."""
         if self._query_helper is None:
@@ -607,6 +847,12 @@ class OdooOperations:
         if self._code_executor is None:
             self._code_executor = OdooCodeExecutor(self.config)
         return self._code_executor
+
+    def _get_inspector(self) -> OdooInspector:
+        """Return the shared inspector helper for this environment."""
+        if self._inspector is None:
+            self._inspector = OdooInspector(self.config)
+        return self._inspector
 
     @staticmethod
     def _normalize_config_bool(value: Any) -> bool:

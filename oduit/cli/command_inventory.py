@@ -37,6 +37,8 @@ class CommandInventoryEntry:
 
 TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
     "doctor": HUMAN_ORIENTED,
+    "exec": HUMAN_ORIENTED,
+    "exec-file": HUMAN_ORIENTED,
     "run": HUMAN_ORIENTED,
     "shell": HUMAN_ORIENTED,
     "install": HUMAN_ORIENTED,
@@ -48,6 +50,10 @@ TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
     "list-env": HUMAN_ORIENTED,
     "print-config": HUMAN_ORIENTED,
     "create-addon": HUMAN_ORIENTED,
+    "inspect": HUMAN_ORIENTED,
+    "db": HUMAN_ORIENTED,
+    "performance": HUMAN_ORIENTED,
+    "manifest": HUMAN_ORIENTED,
     "print-manifest": HUMAN_ORIENTED,
     "addon-info": HUMAN_ORIENTED,
     "list-addons": HUMAN_ORIENTED,

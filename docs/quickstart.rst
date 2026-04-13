@@ -84,6 +84,24 @@ Operations
    oduit --env dev test --test-tags /sale
    oduit --env dev shell
 
+Runtime Inspection and Trusted Execution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+   oduit --env dev exec "env['project.task']._table"
+   oduit --env dev inspect ref base.action_partner_form
+   oduit --env dev inspect model res.partner
+   oduit --env dev inspect field res.partner email --with-db
+   oduit --env dev db table res_partner
+   oduit --env dev performance table-scans
+   oduit --env dev manifest check sale
+
+Prefer the first-class ``inspect`` / ``db`` / ``performance`` commands before
+falling back to ``exec``. ``exec`` and ``inspect recordset`` are trusted
+arbitrary execution surfaces and keep rollback-by-default semantics unless
+``--commit`` is passed explicitly.
+
 Agent Workflow
 ~~~~~~~~~~~~~~
 
@@ -118,6 +136,8 @@ High-level Operations
 
    result = ops.install_module("sale")
    version = ops.get_odoo_version(suppress_output=True)
+   model = ops.inspect_model("res.partner")
+   field = ops.inspect_field("res.partner", "email", with_db=True)
 
 Addon Analysis
 ~~~~~~~~~~~~~~
@@ -147,6 +167,18 @@ Safe Read-Only Queries
        fields=["name", "email"],
        limit=5,
    )
+
+First-Class Runtime Inspection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from oduit import OdooInspector
+
+   inspector = OdooInspector(config)
+   xmlid = inspector.inspect_ref("base.action_partner_form")
+   model = inspector.inspect_model("res.partner")
+   table = inspector.describe_table("res_partner")
 
 Raw Trusted Code Execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

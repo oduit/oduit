@@ -199,6 +199,7 @@ from .init_env import (
 from .main_support import handle_no_subcommand
 from .register_agent_commands import register_agent_commands
 from .register_app_commands import register_app_commands
+from .register_inspection_commands import register_inspection_commands
 from .runtime_context import (
     AgentCommandImplementations,
     AgentRegistrationContext,
@@ -585,6 +586,7 @@ def main(
 
 
 register_app_commands(_app_registration_context)
+register_inspection_commands(_app_registration_context)
 register_agent_commands(_agent_registration_context)
 
 

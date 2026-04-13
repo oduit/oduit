@@ -5,10 +5,12 @@ OdooOperations
 Odoo, installing or updating addons, running tests, planning addon changes,
 and performing safe read-only inspection.
 
-For read-only data access inside Odoo models, prefer ``OdooQuery``. Use
-``execute_python_code()`` only for trusted shell-driven execution flows, with
-either an explicit ``shell_interface=...`` argument or ``shell_interface`` set
-in the environment configuration.
+For read-only data access inside Odoo models, prefer ``OdooQuery`` or the
+higher-level ``OdooInspector``-backed methods such as ``inspect_ref()``,
+``inspect_model()``, and ``inspect_field()``. Use ``execute_python_code()``
+only for trusted shell-driven execution flows, with either an explicit
+``shell_interface=...`` argument or ``shell_interface`` set in the environment
+configuration.
 
 .. automodule:: oduit.odoo_operations
    :members:
@@ -37,6 +39,11 @@ Usage Examples
    plan = ops.plan_update("sale")
    state = ops.get_addon_install_state("sale")
    installed_addons = ops.list_installed_addons(modules=["sale"])
+   xmlid = ops.inspect_ref("base.action_partner_form")
+   model = ops.inspect_model("res.partner")
+   field = ops.inspect_field("res.partner", "email", with_db=True)
+   table = ops.describe_table("res_partner")
+   scans = ops.performance_table_scans(limit=10)
    partners = ops.query_model("res.partner", fields=["name", "email"], limit=5)
 
 Key Methods
@@ -54,6 +61,16 @@ Key Methods
   update-planning models
 - ``get_addon_install_state()`` and ``list_installed_addons()``: typed runtime
   addon install-state inspection helpers
+- ``execute_code()``: trusted embedded arbitrary execution with structured
+  results
+- ``inspect_ref()``, ``inspect_cron()``, ``inspect_modules()``,
+  ``inspect_subtypes()``, ``inspect_model()``, ``inspect_field()``,
+  ``inspect_recordset()``: structured runtime inspection helpers
+- ``describe_table()``, ``describe_column()``, ``list_constraints()``,
+  ``list_tables()``, ``inspect_m2m()``: PostgreSQL inspection helpers through
+  the live Odoo connection
+- ``performance_table_scans()``, ``performance_slow_queries()``,
+  ``performance_indexes()``: read-only PostgreSQL performance helpers
 - ``query_model()``, ``read_record()``, ``search_count()``, ``get_model_fields()``:
   typed convenience wrappers around ``OdooQuery``
 - ``execute_python_code()``: execute arbitrary trusted Python through the Odoo
@@ -64,6 +81,7 @@ Preferred Public Python Surface
 
 - ``ConfigLoader`` for loading environment or local configuration
 - ``OdooOperations`` for the main command-oriented and typed inspection API
+- ``OdooInspector`` when you want the dedicated runtime inspection facade
 - ``OdooQuery`` when you want direct safe read-only query helpers
 - ``ModuleManager`` and ``AddonsPathManager`` for lower-level addon analysis
 
@@ -72,8 +90,12 @@ Safe vs Unsafe Paths
 
 - Prefer ``OdooOperations.get_environment_context()``, ``inspect_addon()``,
   ``plan_update()``, ``get_addon_install_state()``, ``list_installed_addons()``,
-  and the query delegation helpers for inspection and planning
+  ``inspect_ref()``, ``inspect_model()``, ``inspect_field()``,
+  ``describe_table()``, and the query delegation helpers for inspection and
+  planning
 - Prefer ``OdooQuery`` for direct structured read-only model access
+- Prefer ``execute_code()`` only for trusted arbitrary snippets when no
+  first-class inspector method fits
 - Use ``execute_python_code()`` only for trusted shell-driven snippets and set
   ``shell_interface`` explicitly or in configuration
 - Use ``OdooCodeExecutor`` only when you explicitly need arbitrary execution and

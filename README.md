@@ -16,6 +16,7 @@ intelligence:
 - `version` for Odoo version detection
 - `list-addons`, `list-installed-addons`, `print-manifest`, `list-manifest-values`
 - `list-depends`, `install-order`, `impact-of-update`
+- `exec`, `inspect`, `db`, `performance`, `manifest`
 - structured JSON output for CI and editor integrations
 
 ## Installation
@@ -85,6 +86,22 @@ oduit --env dev list-depends sale
 oduit --env dev install-order sale,purchase
 oduit --env dev impact-of-update sale
 
+# Runtime inspection and trusted execution
+oduit --env dev exec "env['project.task']._table"
+oduit --env dev exec-file scripts/check_runtime.py
+oduit --env dev inspect ref base.action_partner_form
+oduit --env dev inspect cron base.ir_cron_autovacuum
+oduit --env dev inspect modules --state installed --names-only
+oduit --env dev inspect model res.partner
+oduit --env dev inspect field res.partner email --with-db
+oduit --env dev inspect recordset "env['sale.order'].search([], limit=3).mapped('name')"
+oduit --env dev db table res_partner
+oduit --env dev db constraints sale_order
+oduit --env dev db m2m res.partner category_id
+oduit --env dev performance table-scans
+oduit --env dev performance slow-queries --limit 10
+oduit --env dev manifest check sale
+
 # Agent-first inspection
 oduit --env dev agent context
 oduit --env dev agent inspect-addon sale
@@ -113,6 +130,32 @@ oduit --env dev --non-interactive create-db
 oduit --env dev create-addon my_custom_module
 oduit --env dev export-lang sale --language de_DE
 ```
+
+## Inspection and Agent Workflows
+
+Use the first-class inspection commands before dropping to raw shell snippets.
+
+| Odoo / shell-style workflow                                        | `oduit` replacement                                                   |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `odoo-bin shell -d db -c "env.ref('base.action_partner_form').id"` | `oduit --env dev inspect ref base.action_partner_form`                |
+| `odoo-bin shell -d db -c "env['project.task']._table"`             | `oduit --env dev inspect model project.task`                          |
+| `odoo-bin shell -d db -c "env['res.partner']._fields['email']"`    | `oduit --env dev inspect field res.partner email --with-db`           |
+| `psql ... -c "\\d res_partner"`                                    | `oduit --env dev db table res_partner`                                |
+| ad hoc trusted runtime snippet                                     | `oduit --env dev exec "..."` or `oduit --env dev exec-file script.py` |
+
+Typical read-only workflow:
+
+```bash
+oduit --env dev inspect model res.partner
+oduit --env dev inspect field res.partner email --with-db
+oduit --env dev inspect modules --state installed --names-only
+oduit --env dev db table res_partner
+oduit --env dev performance table-scans
+```
+
+`exec` and `inspect recordset` are trusted arbitrary execution surfaces. They
+run with rollback by default; pass `--commit` only when mutation is explicitly
+intended.
 
 ## Coding Agents
 
@@ -178,6 +221,11 @@ addon = ops.inspect_addon("sale")
 plan = ops.plan_update("sale")
 state = ops.get_addon_install_state("sale")
 installed_addons = ops.list_installed_addons(modules=["sale"])
+xmlid = ops.inspect_ref("base.action_partner_form")
+model = ops.inspect_model("res.partner")
+field = ops.inspect_field("res.partner", "email", with_db=True)
+table = ops.describe_table("res_partner")
+slow_queries = ops.performance_slow_queries(limit=5)
 partners = ops.query_model("res.partner", fields=["name", "email"], limit=5)
 extensions = ops.find_model_extensions("res.partner")
 views = ops.get_model_views("res.partner", view_types=["form", "tree"])
@@ -187,6 +235,7 @@ The preferred Python surface is:
 
 - `ConfigLoader` for loading configuration
 - `OdooOperations` for high-level operations and typed planning/inspection
+- `OdooInspector` for first-class runtime inspection and PostgreSQL metadata
 - `OdooQuery` for direct structured read-only model access
 
 Use `execute_python_code()` only for trusted shell-driven execution paths, with
@@ -225,6 +274,20 @@ partners = query.query_model(
 
 count = query.search_count("res.partner", domain=[("is_company", "=", True)])
 fields = query.get_model_fields("res.partner", attributes=["string", "type"])
+```
+
+### First-Class Runtime Inspection
+
+```python
+from oduit import OdooInspector
+
+inspector = OdooInspector(config)
+
+xmlid = inspector.inspect_ref("base.action_partner_form")
+model = inspector.inspect_model("res.partner")
+field = inspector.inspect_field("res.partner", "email", with_db=True)
+table = inspector.describe_table("res_partner")
+indexes = inspector.performance_indexes(limit=10)
 ```
 
 ### Raw Trusted Execution

@@ -29,6 +29,7 @@ contract changes such as new stable fields or failure codes.
 - `OdooOperations`
 - `OdooEmbeddedManager`
 - `OdooCodeExecutor`
+- `OdooInspector`
 - `OdooQuery`
 - `ProcessManager`
 - `OperationResult`
@@ -69,6 +70,12 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `init`                  | `human_oriented` | Initialize a new oduit environment configuration.                    |
 | `export-lang`           | `human_oriented` | Export language module.                                              |
 | `version`               | `human_oriented` | Get Odoo version from odoo-bin.                                      |
+| `exec`                  | `human_oriented` | Execute trusted Python within Odoo and return a structured result.   |
+| `exec-file`             | `human_oriented` | Execute trusted Python from a file within Odoo.                      |
+| `inspect`               | `human_oriented` | Runtime model, field, XMLID, and module inspection                   |
+| `db`                    | `human_oriented` | Database inspection through the live Odoo connection                 |
+| `performance`           | `human_oriented` | Read-only PostgreSQL performance inspection                          |
+| `manifest`              | `human_oriented` | Manifest inspection and validation                                   |
 
 ## `oduit agent` subcommands in `oduit.cli.app`
 
@@ -133,6 +140,22 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 - `get_addon_install_state()`
 - `list_installed_dependents()`
 - `list_installed_addons()`
+- `execute_code()`
+- `inspect_ref()`
+- `inspect_cron()`
+- `inspect_modules()`
+- `inspect_subtypes()`
+- `inspect_model()`
+- `inspect_field()`
+- `inspect_recordset()`
+- `describe_table()`
+- `describe_column()`
+- `list_constraints()`
+- `list_tables()`
+- `inspect_m2m()`
+- `performance_table_scans()`
+- `performance_slow_queries()`
+- `performance_indexes()`
 - `query_model()`
 - `read_record()`
 - `search_count()`
