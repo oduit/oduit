@@ -865,9 +865,35 @@ def test_agent_plan_update_returns_risk_summary(tmp_path: Path) -> None:
     assert payload["operation"] == "plan_update"
     assert payload["impact_set"] == ["x_sale_ext"]
     assert payload["backup_advised"] is True
+    assert payload["db_risk_level"] == "dev"
+    assert payload["runtime_mutation_policy"] == "require_allow_mutation"
+    assert payload["runtime_mutation_allowed"] is True
     assert payload["risk_score"] > 0
     assert payload["risk_level"] in {"low", "medium", "high"}
     assert payload["recommended_sequence"]
+
+
+def test_agent_plan_update_uses_test_db_policy(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    _make_addon(addons_dir, "x_sale_ext", depends=["x_sale"])
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    config["db_risk_level"] = "test"
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(app, ["--env", "dev", "agent", "plan-update", "x_sale"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["backup_advised"] is False
+    assert payload["db_risk_level"] == "test"
+    assert payload["runtime_mutation_policy"] == "auto_allow"
+    assert payload["runtime_mutation_allowed"] is True
 
 
 def test_prepare_addon_change_bundles_read_only_planning_steps(tmp_path: Path) -> None:

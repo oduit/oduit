@@ -40,6 +40,9 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     agent_payload_fn = context.runtime.agent_payload_fn
     agent_emit_payload_fn = context.runtime.agent_emit_payload_fn
     agent_require_mutation_fn = context.runtime.agent_require_mutation_fn
+    agent_require_runtime_db_mutation_fn = (
+        context.runtime.agent_require_runtime_db_mutation_fn
+    )
     agent_sub_result_fn = context.runtime.agent_sub_result_fn
     build_agent_test_summary_details_fn = (
         context.runtime.build_agent_test_summary_details_fn
@@ -750,6 +753,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
             agent_require_mutation_fn=agent_require_mutation_fn,
+            agent_require_runtime_db_mutation_fn=(agent_require_runtime_db_mutation_fn),
             safe_read_only=safe_read_only,
             controlled_runtime_mutation=controlled_runtime_mutation,
         )
@@ -1110,6 +1114,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
             agent_require_mutation_fn=agent_require_mutation_fn,
+            agent_require_runtime_db_mutation_fn=(agent_require_runtime_db_mutation_fn),
             output_result_to_json_fn=output_result_to_json_fn,
             module_not_found_error_cls=module_not_found_error_cls,
             safe_read_only=safe_read_only,
@@ -1146,6 +1151,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
             agent_require_mutation_fn=agent_require_mutation_fn,
+            agent_require_runtime_db_mutation_fn=(agent_require_runtime_db_mutation_fn),
             output_result_to_json_fn=output_result_to_json_fn,
             module_not_found_error_cls=module_not_found_error_cls,
             safe_read_only=safe_read_only,
@@ -1176,6 +1182,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
             agent_require_mutation_fn=agent_require_mutation_fn,
+            agent_require_runtime_db_mutation_fn=(agent_require_runtime_db_mutation_fn),
             output_result_to_json_fn=output_result_to_json_fn,
             controlled_runtime_mutation=controlled_runtime_mutation,
             safe_read_only=safe_read_only,
@@ -1285,6 +1292,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
             agent_require_mutation_fn=agent_require_mutation_fn,
+            agent_require_runtime_db_mutation_fn=(agent_require_runtime_db_mutation_fn),
             build_agent_test_summary_details_fn=build_agent_test_summary_details_fn,
             odoo_operations_cls=get_odoo_operations_cls(),
             controlled_runtime_mutation=controlled_runtime_mutation,
@@ -1330,6 +1338,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
             agent_require_mutation_fn=agent_require_mutation_fn,
+            agent_require_runtime_db_mutation_fn=(agent_require_runtime_db_mutation_fn),
             agent_sub_result_fn=agent_sub_result_fn,
             build_agent_test_summary_details_fn=build_agent_test_summary_details_fn,
             build_validate_addon_change_payload_fn=build_validate_addon_change_payload_fn,

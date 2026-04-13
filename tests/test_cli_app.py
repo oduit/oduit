@@ -199,7 +199,9 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.install_module.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
 
-        result = self.runner.invoke(app, ["--env", "dev", "install", "sale"])
+        result = self.runner.invoke(
+            app, ["--env", "dev", "install", "sale", "--allow-mutation"]
+        )
 
         self.assertEqual(result.exit_code, 0)
         mock_ops_instance.install_module.assert_called_once()
@@ -226,6 +228,7 @@ class TestCLICommands(unittest.TestCase):
                 "dev",
                 "install",
                 "sale",
+                "--allow-mutation",
                 "--without-demo",
                 "all",
                 "--language",
@@ -249,7 +252,9 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.update_module.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
 
-        result = self.runner.invoke(app, ["--env", "dev", "update", "sale"])
+        result = self.runner.invoke(
+            app, ["--env", "dev", "update", "sale", "--allow-mutation"]
+        )
 
         self.assertEqual(result.exit_code, 0)
         mock_ops_instance.update_module.assert_called_once()
@@ -266,7 +271,7 @@ class TestCLICommands(unittest.TestCase):
         mock_odoo_ops.return_value = mock_ops_instance
 
         result = self.runner.invoke(
-            app, ["--env", "dev", "update", "sale", "--compact"]
+            app, ["--env", "dev", "update", "sale", "--allow-mutation", "--compact"]
         )
 
         self.assertEqual(result.exit_code, 0)
@@ -286,7 +291,14 @@ class TestCLICommands(unittest.TestCase):
 
         result = self.runner.invoke(
             app,
-            ["--env", "dev", "uninstall", "sale", "--allow-uninstall"],
+            [
+                "--env",
+                "dev",
+                "uninstall",
+                "sale",
+                "--allow-mutation",
+                "--allow-uninstall",
+            ],
         )
 
         self.assertEqual(result.exit_code, 1)
@@ -307,7 +319,9 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance = MagicMock()
         mock_odoo_ops.return_value = mock_ops_instance
 
-        result = self.runner.invoke(app, ["--env", "dev", "uninstall", "sale"])
+        result = self.runner.invoke(
+            app, ["--env", "dev", "uninstall", "sale", "--allow-mutation"]
+        )
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn("--allow-uninstall", result.output)
@@ -343,6 +357,7 @@ class TestCLICommands(unittest.TestCase):
                 "--json",
                 "uninstall",
                 "sale",
+                "--allow-mutation",
                 "--allow-uninstall",
             ],
         )
@@ -371,7 +386,7 @@ class TestCLICommands(unittest.TestCase):
         mock_odoo_ops.return_value = mock_ops_instance
 
         result = self.runner.invoke(
-            app, ["--env", "dev", "test", "--test-tags", "/sale"]
+            app, ["--env", "dev", "test", "--allow-mutation", "--test-tags", "/sale"]
         )
 
         self.assertEqual(result.exit_code, 0)
@@ -393,6 +408,7 @@ class TestCLICommands(unittest.TestCase):
                 "--env",
                 "dev",
                 "test",
+                "--allow-mutation",
                 "--test-tags",
                 "/sale",
                 "--coverage",
@@ -405,6 +421,61 @@ class TestCLICommands(unittest.TestCase):
         args, kwargs = mock_ops_instance.run_tests.call_args
         self.assertEqual(kwargs.get("coverage"), "sale")
         self.assertTrue(kwargs.get("compact"))
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_install_command_requires_allow_mutation_on_dev(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "install", "sale"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("--allow-mutation", result.output)
+        mock_odoo_ops.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_install_command_is_auto_allowed_on_test_db(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "db_risk_level": "test",
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.install_module.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "install", "sale"])
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.install_module.assert_called_once()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_install_command_is_blocked_on_prod_even_with_flag(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "db_risk_level": "prod",
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "install", "sale", "--allow-mutation"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("db_risk_level=prod", result.output)
+        mock_odoo_ops.assert_not_called()
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
@@ -497,6 +568,26 @@ class TestCLICommands(unittest.TestCase):
         self.assertEqual(payload["error_type"], "ConfirmationRequired")
         self.assertIn("requires confirmation", payload["error"])
         self.assertTrue(payload["remediation"])
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("builtins.input")
+    def test_create_db_is_blocked_on_prod_before_prompt(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "db_risk_level": "prod",
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "create-db"])
+
+        self.assertEqual(result.exit_code, 1)
+        mock_input.assert_not_called()
+        mock_odoo_ops.assert_not_called()
+        self.assertIn("db_risk_level=prod", result.output)
 
     @patch("oduit.cli.app.ConfigLoader")
     def test_print_config_command(self, mock_config_loader_class):
@@ -1744,7 +1835,10 @@ class TestCLICommands(unittest.TestCase):
         mock_ops_instance.install_module.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
 
-        result = self.runner.invoke(app, ["--env", "dev", "--json", "install", "sale"])
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "--json", "install", "sale", "--allow-mutation"],
+        )
 
         self.assertEqual(result.exit_code, 0)
 
@@ -1766,7 +1860,10 @@ class TestCLICommands(unittest.TestCase):
         }
         mock_odoo_ops.return_value = mock_ops_instance
 
-        result = self.runner.invoke(app, ["--env", "dev", "--json", "install", "sale"])
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "--json", "install", "sale", "--allow-mutation"],
+        )
 
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
@@ -1977,6 +2074,7 @@ class TestInitCommandHelpers(unittest.TestCase):
         self.assertEqual(config["python_bin"], "/usr/bin/python3")
         self.assertEqual(config["odoo_bin"], "/usr/bin/odoo")
         self.assertEqual(config["coverage_bin"], "/usr/bin/coverage")
+        self.assertEqual(config["db_risk_level"], "dev")
 
     def test_build_initial_config_without_odoo(self):
         """Test _build_initial_config without odoo binary."""
@@ -1987,6 +2085,7 @@ class TestInitCommandHelpers(unittest.TestCase):
         self.assertEqual(config["python_bin"], "/usr/bin/python3")
         self.assertNotIn("odoo_bin", config)
         self.assertEqual(config["coverage_bin"], "/usr/bin/coverage")
+        self.assertEqual(config["db_risk_level"], "dev")
 
     def test_build_initial_config_without_coverage(self):
         """Test _build_initial_config without coverage binary."""
@@ -1997,6 +2096,7 @@ class TestInitCommandHelpers(unittest.TestCase):
         self.assertEqual(config["python_bin"], "/usr/bin/python3")
         self.assertEqual(config["odoo_bin"], "/usr/bin/odoo")
         self.assertIsNone(config["coverage_bin"])
+        self.assertEqual(config["db_risk_level"], "dev")
 
     @patch("os.path.exists")
     @patch("oduit.cli.app.ConfigLoader")
@@ -2193,6 +2293,7 @@ class TestInitCommandHelpers(unittest.TestCase):
             },
             "odoo_params": {
                 "db_name": "test_db",
+                "db_risk_level": "dev",
                 "addons_path": ["/path/one", "/path/two"],
             },
         }

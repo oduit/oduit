@@ -149,18 +149,31 @@ def install_command(
     language: str | None,
     max_cron_threads: int | None,
     log_level: LogLevel | None,
+    allow_mutation: bool,
     compact: bool,
     include_command: bool,
     include_stdout: bool,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    require_cli_runtime_db_mutation_fn: Any,
+    confirmation_required_error_fn: Any,
+    print_command_error_result_fn: Any,
 ) -> None:
     """Install a module."""
     if not module:
         print_error("Module name is required for install")
         raise typer.Exit(1) from None
 
-    global_config, _ = resolve_command_env_config_fn(ctx)
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    require_cli_runtime_db_mutation_fn(
+        global_config=global_config,
+        env_config=env_config,
+        allow_mutation=allow_mutation,
+        operation="install_module",
+        action="module install",
+        print_command_error_result_fn=print_command_error_result_fn,
+        confirmation_required_error_fn=confirmation_required_error_fn,
+    )
     odoo_operations = build_odoo_operations_fn(global_config)
     output = odoo_operations.install_module(
         module,
@@ -203,9 +216,13 @@ def update_command(
     i18n_overwrite: bool,
     max_cron_threads: int | None,
     log_level: LogLevel | None,
+    allow_mutation: bool,
     compact: bool,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    require_cli_runtime_db_mutation_fn: Any,
+    confirmation_required_error_fn: Any,
+    print_command_error_result_fn: Any,
 ) -> None:
     """Update a module."""
     if not module:
@@ -213,6 +230,15 @@ def update_command(
         raise typer.Exit(1) from None
 
     global_config, env_config = resolve_command_env_config_fn(ctx)
+    require_cli_runtime_db_mutation_fn(
+        global_config=global_config,
+        env_config=env_config,
+        allow_mutation=allow_mutation,
+        operation="update_module",
+        action="module update",
+        print_command_error_result_fn=print_command_error_result_fn,
+        confirmation_required_error_fn=confirmation_required_error_fn,
+    )
     if i18n_overwrite:
         language = language or env_config.get("language", "de_DE")
         if language is None:
@@ -241,12 +267,14 @@ def uninstall_command(
     *,
     module: str,
     allow_uninstall: bool,
+    allow_mutation: bool,
     compact: bool,
     log_level: LogLevel | None,
     include_command: bool,
     include_stdout: bool,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
 ) -> None:
@@ -256,6 +284,15 @@ def uninstall_command(
         raise typer.Exit(1) from None
 
     global_config, env_config = resolve_command_env_config_fn(ctx)
+    require_cli_runtime_db_mutation_fn(
+        global_config=global_config,
+        env_config=env_config,
+        allow_mutation=allow_mutation,
+        operation="uninstall_module",
+        action="module uninstall",
+        print_command_error_result_fn=print_command_error_result_fn,
+        confirmation_required_error_fn=confirmation_required_error_fn,
+    )
     if not _config_flag_enabled(env_config.get("allow_uninstall", False)):
         print_command_error_result_fn(
             global_config,
@@ -323,13 +360,26 @@ def test_command(
     test_tags: str | None,
     compact: bool,
     log_level: LogLevel | None,
+    allow_mutation: bool,
     include_command: bool,
     include_stdout: bool,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    require_cli_runtime_db_mutation_fn: Any,
+    confirmation_required_error_fn: Any,
+    print_command_error_result_fn: Any,
 ) -> None:
     """Run module tests."""
-    global_config, _ = resolve_command_env_config_fn(ctx)
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    require_cli_runtime_db_mutation_fn(
+        global_config=global_config,
+        env_config=env_config,
+        allow_mutation=allow_mutation,
+        operation="test",
+        action="test execution",
+        print_command_error_result_fn=print_command_error_result_fn,
+        confirmation_required_error_fn=confirmation_required_error_fn,
+    )
     odoo_operations = build_odoo_operations_fn(global_config)
     result = odoo_operations.run_tests(
         None,

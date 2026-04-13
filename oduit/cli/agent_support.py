@@ -3,6 +3,7 @@
 from typing import Any, NoReturn, cast
 
 from ..cli_types import GlobalConfig
+from ..mutation_policy import require_agent_runtime_db_mutation
 from .agent.payloads import (
     agent_fail,
     build_error_output_excerpt,
@@ -29,6 +30,7 @@ __all__ = [
     "parse_json_list_option",
     "parse_view_types",
     "agent_require_mutation",
+    "require_agent_runtime_db_mutation",
     "build_agent_test_summary_details",
     "require_agent_addons_path",
     "resolve_agent_global_config",
@@ -55,6 +57,7 @@ def build_registration_helpers(
     get_odoo_operations_cls: Any,
     require_agent_addons_path_impl_fn: Any,
     agent_require_mutation_impl_fn: Any,
+    agent_require_runtime_db_mutation_impl_fn: Any,
     build_error_output_excerpt_impl_fn: Any,
     build_agent_test_summary_details_impl_fn: Any,
     build_validate_addon_change_payload_impl_fn: Any,
@@ -185,6 +188,25 @@ def build_registration_helpers(
             result_type,
             action,
             safety_level,
+            fail_fn=agent_fail_fn,
+        )
+
+    def agent_require_runtime_db_mutation_fn(
+        env_config: dict[str, Any],
+        *,
+        allow_mutation: bool,
+        operation: str,
+        result_type: str,
+        action: str,
+        safety_level: str,
+    ) -> None:
+        agent_require_runtime_db_mutation_impl_fn(
+            env_config=env_config,
+            allow_mutation=allow_mutation,
+            operation=operation,
+            result_type=result_type,
+            action=action,
+            safety_level=safety_level,
             fail_fn=agent_fail_fn,
         )
 
@@ -336,6 +358,7 @@ def build_registration_helpers(
         resolve_agent_ops_fn=resolve_agent_ops_fn,
         require_agent_addons_path_fn=require_agent_addons_path_fn,
         agent_require_mutation_fn=agent_require_mutation_fn,
+        agent_require_runtime_db_mutation_fn=agent_require_runtime_db_mutation_fn,
         build_agent_test_summary_details_fn=build_agent_test_summary_details_fn,
         build_validate_addon_change_payload_fn=build_validate_addon_change_payload_fn,
         run_validate_addon_change_preflight_fn=run_validate_addon_change_preflight_fn,

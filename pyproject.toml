@@ -89,3 +89,11 @@ module = [
     "odoo.cli.server"
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "odoo",
+    "odoo.*",
+    "psycopg2"
+]
+ignore_missing_imports = true

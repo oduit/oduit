@@ -582,6 +582,7 @@ def agent_validate_addon_change_command(
     agent_payload_fn: Any,
     agent_emit_payload_fn: Any,
     agent_require_mutation_fn: Any,
+    agent_require_runtime_db_mutation_fn: Any,
     agent_sub_result_fn: Any,
     build_agent_test_summary_details_fn: Any,
     build_validate_addon_change_payload_fn: Any,
@@ -601,12 +602,13 @@ def agent_validate_addon_change_command(
         agent_fail_fn(operation, result_type, "No environment configuration available")
     assert global_config.env_config is not None
 
-    agent_require_mutation_fn(
-        allow_mutation,
-        operation,
-        result_type,
-        "addon change validation",
-        controlled_runtime_mutation,
+    agent_require_runtime_db_mutation_fn(
+        global_config.env_config,
+        allow_mutation=allow_mutation,
+        operation=operation,
+        result_type=result_type,
+        action="addon change validation",
+        safety_level=controlled_runtime_mutation,
     )
 
     ops = odoo_operations_cls(global_config.env_config, verbose=False)

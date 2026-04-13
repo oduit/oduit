@@ -174,9 +174,11 @@ class ConfigProvider:
         }
 
         params_list = []
+        effective_skip_keys = set(skip_keys or [])
+        effective_skip_keys.update({"allow_uninstall", "db_risk_level"})
 
         for key, value in self._odoo_params.items():
-            if skip_keys and key in skip_keys:
+            if key in effective_skip_keys:
                 continue
 
             if key in key_mappings:

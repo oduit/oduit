@@ -8,6 +8,9 @@
     "impact_set",
     "risk_score",
     "risk_level",
+    "db_risk_level",
+    "runtime_mutation_policy",
+    "runtime_mutation_allowed",
     "verification_steps"
   ],
   "properties": {
@@ -16,6 +19,12 @@
     "impact_set": { "type": "array", "items": { "type": "string" } },
     "risk_score": { "type": "integer" },
     "risk_level": { "type": "string" },
+    "db_risk_level": { "type": "string", "enum": ["test", "dev", "prod"] },
+    "runtime_mutation_policy": {
+      "type": "string",
+      "enum": ["auto_allow", "require_allow_mutation", "forbidden"]
+    },
+    "runtime_mutation_allowed": { "type": "boolean" },
     "verification_steps": { "type": "array", "items": { "type": "string" } }
   },
   "additionalProperties": true

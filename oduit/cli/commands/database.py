@@ -22,10 +22,21 @@ def create_db_command(
     db_user: str | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    require_cli_runtime_db_mutation_fn: Any,
+    print_command_error_result_fn: Any,
     confirmation_required_error_fn: Any,
 ) -> None:
     """Create the configured database."""
     global_config, env_config = resolve_command_env_config_fn(ctx)
+    require_cli_runtime_db_mutation_fn(
+        global_config=global_config,
+        env_config=env_config,
+        allow_mutation=True,
+        operation="create_db",
+        action="database creation",
+        print_command_error_result_fn=print_command_error_result_fn,
+        confirmation_required_error_fn=confirmation_required_error_fn,
+    )
     db_name = env_config.get("db_name", "Unknown")
     effective_non_interactive = non_interactive or global_config.non_interactive
     odoo_operations = build_odoo_operations_fn(global_config)

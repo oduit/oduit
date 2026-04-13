@@ -102,7 +102,7 @@ class TestConfigLoader(unittest.TestCase):
     def test_load_toml_sectioned_config_preserves_allow_uninstall(
         self, mock_expanduser, mock_exists, mock_file
     ):
-        """Test load_config normalizes sectioned TOML and keeps allow_uninstall."""
+        """Test load_config normalizes sectioned TOML and keeps safety keys."""
         mock_expanduser.return_value = "/mocked/home/.config/oduit"
 
         def exists_side_effect(path):
@@ -117,6 +117,7 @@ class TestConfigLoader(unittest.TestCase):
                 "odoo_params": {
                     "addons_path": ["/path1", "/path2"],
                     "allow_uninstall": True,
+                    "db_risk_level": "prod",
                 },
             }
             mock_import.return_value = (mock_tomllib, None)
@@ -127,6 +128,7 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(result["python_bin"], "/usr/bin/python3")
         self.assertEqual(result["addons_path"], "/path1,/path2")
         self.assertTrue(result["allow_uninstall"])
+        self.assertEqual(result["db_risk_level"], "prod")
 
     @patch(
         "builtins.open",
@@ -157,6 +159,7 @@ class TestConfigLoader(unittest.TestCase):
                 "odoo_params": {
                     "addons_path": ["/path1", "/path2"],
                     "allow_uninstall": True,
+                    "db_risk_level": "test",
                 },
             }
             mock_import.return_value = (mock_tomllib, None)
@@ -169,6 +172,9 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(details.config["addons_path"], "/path1,/path2")
         self.assertEqual(
             details.canonical_config["odoo_params"]["addons_path"], "/path1,/path2"
+        )
+        self.assertEqual(
+            details.canonical_config["odoo_params"]["db_risk_level"], "test"
         )
         self.assertEqual(details.deprecation_warnings, ())
 
@@ -321,7 +327,7 @@ class TestConfigLoader(unittest.TestCase):
     def test_load_local_sectioned_config_preserves_allow_uninstall(
         self, mock_exists, mock_file
     ):
-        """Test load_local_config keeps allow_uninstall in sectioned TOML."""
+        """Test load_local_config keeps safety keys in sectioned TOML."""
         mock_exists.return_value = True
 
         with patch.object(ConfigLoader, "_import_toml_libs") as mock_import:
@@ -331,6 +337,7 @@ class TestConfigLoader(unittest.TestCase):
                 "odoo_params": {
                     "addons_path": ["/path1", "/path2"],
                     "allow_uninstall": True,
+                    "db_risk_level": "dev",
                 },
             }
             mock_import.return_value = (mock_tomllib, None)
@@ -340,6 +347,7 @@ class TestConfigLoader(unittest.TestCase):
 
         self.assertEqual(result["addons_path"], "/path1,/path2")
         self.assertTrue(result["allow_uninstall"])
+        self.assertEqual(result["db_risk_level"], "dev")
 
     def test_local_config_integration(self):
         """Test local config functionality with real file."""

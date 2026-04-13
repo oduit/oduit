@@ -168,6 +168,9 @@ class UpdatePlan(DictModel):
     ordering_constraints: list[str] = dataclass_field(default_factory=list)
     recommended_sequence: list[str] = dataclass_field(default_factory=list)
     backup_advised: bool = False
+    db_risk_level: str = "dev"
+    runtime_mutation_policy: str = "require_allow_mutation"
+    runtime_mutation_allowed: bool = True
     risk_score: int = 0
     risk_level: str = "low"
     risk_factors: list[str] = dataclass_field(default_factory=list)

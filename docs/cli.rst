@@ -45,13 +45,14 @@ Create a configuration file for your environment.
    coverage_bin = "/usr/bin/coverage"
 
    [odoo_params]
-   db_name = "mydb"
-   addons_path = "/opt/odoo/addons"
-   config_file = "/etc/odoo/odoo.conf"
-   http_port = 8069
-   workers = 4
-   dev = true
-   allow_uninstall = false
+    db_name = "mydb"
+    addons_path = "/opt/odoo/addons"
+    config_file = "/etc/odoo/odoo.conf"
+    db_risk_level = "dev"
+    http_port = 8069
+    workers = 4
+    dev = true
+    allow_uninstall = false
 
 **Compatibility YAML format** (``~/.config/oduit/dev.yaml``):
 
@@ -81,13 +82,20 @@ Create a ``.oduit.toml`` file in your project root:
    python_bin = "./venv/bin/python"
    odoo_bin = "./odoo/odoo-bin"
 
-   [odoo_params]
-   addons_path = "./addons"
-   db_name = "project_dev"
-   dev = true
-   allow_uninstall = false
+    [odoo_params]
+    addons_path = "./addons"
+    db_name = "project_dev"
+    db_risk_level = "dev"
+    dev = true
+    allow_uninstall = false
 
 If present, this configuration will be used when ``--env`` is not specified.
+
+Runtime DB mutation policy is controlled by ``db_risk_level``:
+
+* ``test`` auto-allows runtime DB mutation
+* ``dev`` requires ``--allow-mutation``
+* ``prod`` blocks runtime DB mutation entirely
 
 Basic Usage
 -----------
@@ -165,7 +173,7 @@ Start an Odoo shell for interactive Python execution within the Odoo environment
 install
 ^^^^^^^
 
-Install an Odoo module.
+Install an Odoo module. This is a runtime DB mutation command.
 
 .. code-block:: bash
 
@@ -178,27 +186,28 @@ Install an Odoo module.
 - ``--language TEXT``: Load specific language translations
 - ``--i18n-overwrite``: Overwrite existing translations during installation
 - ``--max-cron-threads INTEGER``: Set maximum cron threads for Odoo server
+- ``--allow-mutation``: Required on ``db_risk_level = "dev"``
 
 **Examples:**
 
 .. code-block:: bash
 
    # Install a module
-   oduit --env dev install sale
+   oduit --env dev install sale --allow-mutation
 
    # Install without demo data
-   oduit --env dev install sale --without-demo all
+   oduit --env dev install sale --allow-mutation --without-demo all
 
    # Install with specific language
-   oduit --env dev install sale --language de_DE
+   oduit --env dev install sale --allow-mutation --language de_DE
 
    # Install and overwrite translations
-   oduit --env dev install sale --language de_DE --i18n-overwrite
+   oduit --env dev install sale --allow-mutation --language de_DE --i18n-overwrite
 
 update
 ^^^^^^
 
-Update an Odoo module.
+Update an Odoo module. This is a runtime DB mutation command.
 
 .. code-block:: bash
 
@@ -211,19 +220,20 @@ Update an Odoo module.
 - ``--i18n-overwrite``: Overwrite existing translations during update
 - ``--max-cron-threads INTEGER``: Set maximum cron threads for Odoo server
 - ``--compact``: Suppress INFO logs at startup for cleaner output
+- ``--allow-mutation``: Required on ``db_risk_level = "dev"``
 
 **Examples:**
 
 .. code-block:: bash
 
    # Update a module
-   oduit --env dev update sale
+   oduit --env dev update sale --allow-mutation
 
    # Update with language overwrite
-   oduit --env dev update sale --i18n-overwrite --language de_DE
+   oduit --env dev update sale --allow-mutation --i18n-overwrite --language de_DE
 
    # Update with compact output
-   oduit --env dev update sale --compact
+   oduit --env dev update sale --allow-mutation --compact
 
 uninstall
 ^^^^^^^^^
@@ -232,12 +242,13 @@ Uninstall an Odoo module through the trusted runtime mutation path.
 
 .. code-block:: bash
 
-   oduit --env dev uninstall MODULE --allow-uninstall
+   oduit --env dev uninstall MODULE --allow-mutation --allow-uninstall
 
 **Notes:**
 
 - Uninstall is disabled by default and requires ``allow_uninstall = true`` in
   the active config.
+- Runtime DB mutation still follows ``db_risk_level`` policy.
 - The CLI requires ``--allow-uninstall`` for each destructive uninstall.
 - Uninstall may fail early if installed dependents still rely on the target
   module.
@@ -247,15 +258,15 @@ Uninstall an Odoo module through the trusted runtime mutation path.
 .. code-block:: bash
 
    # Uninstall a module after opting in at config level
-   oduit --env dev uninstall crm --allow-uninstall
+   oduit --env dev uninstall crm --allow-mutation --allow-uninstall
 
    # Machine-readable uninstall result
-   oduit --env dev --json uninstall crm --allow-uninstall
+   oduit --env dev --json uninstall crm --allow-mutation --allow-uninstall
 
 test
 ^^^^
 
-Run module tests with various options.
+Run module tests with various options. This is a runtime DB mutation command.
 
 .. code-block:: bash
 
@@ -270,13 +281,14 @@ Run module tests with various options.
 - ``--test-file TEXT``: Run a specific Python test file
 - ``--stop-on-error``: Abort test run on first detected failure in output
 - ``--compact``: Show only test progress dots, statistics, and result summaries
+- ``--allow-mutation``: Required on ``db_risk_level = "dev"``
 
 **Examples:**
 
 .. code-block:: bash
 
    # Test a specific module
-   oduit --env dev test --test-tags /sale
+   oduit --env dev test --allow-mutation --test-tags /sale
 
    # Install module and run tests
    oduit --env dev test --install sale --test-tags /sale
@@ -293,7 +305,8 @@ Run module tests with various options.
 create-db
 ^^^^^^^^^
 
-Create a new database for Odoo.
+Create a new database for Odoo. This follows ``db_risk_level`` policy and is
+blocked when ``db_risk_level = "prod"``.
 
 .. code-block:: bash
 
@@ -369,7 +382,8 @@ List all databases in PostgreSQL.
 create-addon
 ^^^^^^^^^^^^
 
-Create a new Odoo addon with a template structure.
+Create a new Odoo addon with a template structure. This is a controlled source
+mutation command and requires ``--allow-mutation``.
 
 .. code-block:: bash
 
@@ -385,13 +399,13 @@ Create a new Odoo addon with a template structure.
 .. code-block:: bash
 
    # Create basic addon
-   oduit --env dev create-addon my_custom_module
+   oduit --env dev create-addon my_custom_module --allow-mutation
 
    # Create addon with website template
-   oduit --env dev create-addon my_website_module --template website
+   oduit --env dev create-addon my_website_module --allow-mutation --template website
 
    # Create addon in specific path
-   oduit --env dev create-addon my_module --path /opt/custom/addons
+   oduit --env dev create-addon my_module --allow-mutation --path /opt/custom/addons
 
 list-addons
 ^^^^^^^^^^^
@@ -791,7 +805,8 @@ of a module update.
 export-lang
 ^^^^^^^^^^^
 
-Export language translations for a module.
+Export language translations for a module. This is a controlled source mutation
+command and requires ``--allow-mutation``.
 
 .. code-block:: bash
 
@@ -806,10 +821,10 @@ Export language translations for a module.
 .. code-block:: bash
 
    # Export default language
-   oduit --env dev export-lang sale
+   oduit --env dev export-lang sale --allow-mutation
 
    # Export specific language
-   oduit --env dev export-lang sale --language fr_FR
+   oduit --env dev export-lang sale --allow-mutation --language fr_FR
 
 The exported file will be saved to ``<module_path>/i18n/<language>.po``.
 
@@ -1144,7 +1159,8 @@ Use the structured manifest wrappers instead of ad hoc file parsing.
 plan-update
 ^^^^^^^^^^^
 
-Build a read-only update plan with impact and risk metadata.
+Build a read-only update plan with impact, risk metadata, and runtime mutation
+policy details.
 
 .. code-block:: bash
 
@@ -1436,7 +1452,7 @@ Translation Workflow
 .. code-block:: bash
 
    # Export translations
-   oduit --env dev export-lang my_module --language de_DE
+   oduit --env dev export-lang my_module --allow-mutation --language de_DE
 
    # Update module with translation overwrite
    oduit --env dev update my_module --i18n-overwrite --language de_DE

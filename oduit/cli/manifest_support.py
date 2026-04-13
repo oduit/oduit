@@ -20,10 +20,10 @@ def resolve_manifest_target(
         return str(module_path), module_path.name
 
     module_manager = ModuleManager(env_config["addons_path"])
-    module_path = module_manager.find_module_path(target)
-    if module_path is None:
+    resolved_module_path = module_manager.find_module_path(target)
+    if resolved_module_path is None:
         raise FileNotFoundError(target)
-    return module_path, target
+    return str(Path(resolved_module_path)), target
 
 
 def build_manifest_result(

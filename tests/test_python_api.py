@@ -164,6 +164,9 @@ def test_plan_update_returns_typed_object(tmp_path: Path) -> None:
     assert isinstance(plan, UpdatePlan)
     assert plan.impact_set == ["x_sale_ext"]
     assert plan.backup_advised is True
+    assert plan.db_risk_level == "dev"
+    assert plan.runtime_mutation_policy == "require_allow_mutation"
+    assert plan.runtime_mutation_allowed is True
     assert plan.risk_score > 0
     assert isinstance(plan.inspection, AddonInspection)
 

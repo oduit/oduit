@@ -144,7 +144,14 @@ Mutation Policy
   mutations.
 * ``inspect-cron`` is read-only by default; ``inspect-cron --trigger`` becomes
   a controlled runtime mutation and requires ``--allow-mutation``.
-* Controlled mutations require ``--allow-mutation``.
+* Runtime DB mutation also depends on ``db_risk_level``:
+
+  * ``test`` auto-allows runtime DB mutation
+  * ``dev`` requires ``--allow-mutation``
+  * ``prod`` forbids runtime DB mutation even if ``--allow-mutation`` is passed
+
+* Controlled source mutations still require ``--allow-mutation`` regardless of
+  ``db_risk_level``.
 * ``uninstall-module`` also requires ``--allow-uninstall`` and
   ``allow_uninstall = true`` in the active environment config.
 * ``--dry-run`` is supported by ``install-module``, ``uninstall-module``,

@@ -43,6 +43,7 @@ odoo_bin = "./odoo/odoo-bin"
 [odoo_params]
 addons_path = "./addons"
 db_name = "project_dev"
+db_risk_level = "dev"
 allow_uninstall = false
 ```
 
@@ -126,15 +127,23 @@ oduit --env dev agent test-summary --allow-mutation --module my_partner --test-t
 oduit --env dev agent uninstall-module crm --dry-run
 
 # Operations
-oduit --env dev install sale
-oduit --env dev update sale
-oduit --env dev uninstall sale --allow-uninstall
-oduit --env dev test --test-tags /sale
+oduit --env dev install sale --allow-mutation
+oduit --env dev update sale --allow-mutation
+oduit --env dev uninstall sale --allow-mutation --allow-uninstall
+oduit --env dev test --allow-mutation --test-tags /sale
 oduit --env dev shell
 oduit --env dev --non-interactive create-db
-oduit --env dev create-addon my_custom_module
-oduit --env dev export-lang sale --language de_DE
+oduit --env dev create-addon my_custom_module --allow-mutation
+oduit --env dev export-lang sale --allow-mutation --language de_DE
 ```
+
+`db_risk_level` controls runtime DB mutation policy:
+
+- `test`: runtime DB mutations are auto-allowed
+- `dev`: runtime DB mutations require `--allow-mutation`
+- `prod`: runtime DB mutations are blocked, even with `--allow-mutation`
+
+This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`) and agent runtime mutation commands. Source mutations such as `create-addon` and `export-lang` still use their own explicit mutation gate.
 
 ## Inspection and Agent Workflows
 

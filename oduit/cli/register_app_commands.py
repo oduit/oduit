@@ -35,6 +35,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     print_doctor_report_fn = context.dependencies.print_doctor_report_fn
     confirmation_required_error_fn = context.dependencies.confirmation_required_error_fn
     print_command_error_result_fn = context.dependencies.print_command_error_result_fn
+    require_cli_runtime_db_mutation_fn = (
+        context.dependencies.require_cli_runtime_db_mutation_fn
+    )
     dependency_error_details_fn = context.dependencies.dependency_error_details_fn
     get_config_loader_cls = context.dependencies.get_config_loader_cls
     get_module_manager_cls = context.dependencies.get_module_manager_cls
@@ -160,6 +163,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             help="Set maximum cron threads for Odoo server",
         ),
         log_level: LogLevel | None = log_level_option,
+        allow_mutation: bool = typer.Option(
+            False, "--allow-mutation", help="Confirm runtime database mutation"
+        ),
         compact: bool = typer.Option(
             False, "--compact", help="Suppress INFO logs at startup for cleaner output"
         ),
@@ -179,11 +185,15 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             language=language,
             max_cron_threads=max_cron_threads,
             log_level=log_level,
+            allow_mutation=allow_mutation,
             compact=compact,
             include_command=include_command,
             include_stdout=include_stdout,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
         )
 
     @app.command()
@@ -205,6 +215,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             help="Set maximum cron threads for Odoo server",
         ),
         log_level: LogLevel | None = log_level_option,
+        allow_mutation: bool = typer.Option(
+            False, "--allow-mutation", help="Confirm runtime database mutation"
+        ),
         compact: bool = typer.Option(
             False,
             "--compact",
@@ -220,9 +233,13 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             i18n_overwrite=i18n_overwrite,
             max_cron_threads=max_cron_threads,
             log_level=log_level,
+            allow_mutation=allow_mutation,
             compact=compact,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
         )
 
     @app.command()
@@ -233,6 +250,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             False,
             "--allow-uninstall",
             help="Confirm that this destructive uninstall is intended",
+        ),
+        allow_mutation: bool = typer.Option(
+            False, "--allow-mutation", help="Confirm runtime database mutation"
         ),
         log_level: LogLevel | None = log_level_option,
         compact: bool = typer.Option(
@@ -252,12 +272,14 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             ctx,
             module=module,
             allow_uninstall=allow_uninstall,
+            allow_mutation=allow_mutation,
             compact=compact,
             log_level=log_level,
             include_command=include_command,
             include_stdout=include_stdout,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
             print_command_error_result_fn=print_command_error_result_fn,
         )
@@ -301,6 +323,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             help="Show only test progress dots, statistics, and result summaries",
         ),
         log_level: LogLevel | None = log_level_option,
+        allow_mutation: bool = typer.Option(
+            False, "--allow-mutation", help="Confirm runtime database mutation"
+        ),
         include_command: bool = typer.Option(
             False, "--include-command", help="Include executed command in result JSON"
         ),
@@ -325,10 +350,14 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             test_tags=test_tags,
             compact=compact,
             log_level=log_level,
+            allow_mutation=allow_mutation,
             include_command=include_command,
             include_stdout=include_stdout,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
         )
 
     @app.command("create-db")
@@ -376,6 +405,8 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             db_user=db_user,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
         )
 

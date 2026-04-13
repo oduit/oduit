@@ -13,6 +13,12 @@ from ..config_loader import ConfigLoader
 from ..exceptions import ConfigError
 from ..exceptions import ModuleNotFoundError as OduitModuleNotFoundError
 from ..module_manager import ModuleManager
+from ..mutation_policy import (
+    require_agent_runtime_db_mutation as _require_agent_runtime_db_mutation_impl,
+)
+from ..mutation_policy import (
+    require_cli_runtime_db_mutation as _require_cli_runtime_db_mutation_impl,
+)
 from ..odoo_operations import OdooOperations
 from ..output import configure_output, print_error
 from ..schemas import (
@@ -385,6 +391,7 @@ _agent_helper_context = _agent_support.build_registration_helpers(
     get_odoo_operations_cls=lambda: OdooOperations,
     require_agent_addons_path_impl_fn=_require_agent_addons_path_impl,
     agent_require_mutation_impl_fn=_agent_require_mutation_impl,
+    agent_require_runtime_db_mutation_impl_fn=(_require_agent_runtime_db_mutation_impl),
     build_error_output_excerpt_impl_fn=_build_error_output_excerpt_impl,
     build_agent_test_summary_details_impl_fn=_build_agent_test_summary_details_impl,
     build_validate_addon_change_payload_impl_fn=(
@@ -421,6 +428,7 @@ _app_registration_context = AppRegistrationContext(
         print_doctor_report_fn=print_doctor_report,
         confirmation_required_error_fn=confirmation_required_error,
         print_command_error_result_fn=print_command_error_result,
+        require_cli_runtime_db_mutation_fn=_require_cli_runtime_db_mutation_impl,
         dependency_error_details_fn=dependency_error_details,
         get_config_loader_cls=lambda: ConfigLoader,
         get_module_manager_cls=lambda: ModuleManager,
@@ -501,6 +509,9 @@ _agent_registration_context = AgentRegistrationContext(
         agent_payload_fn=_agent_payload_impl,
         agent_emit_payload_fn=_agent_emit_payload_impl,
         agent_require_mutation_fn=_agent_helper_context.agent_require_mutation_fn,
+        agent_require_runtime_db_mutation_fn=(
+            _agent_helper_context.agent_require_runtime_db_mutation_fn
+        ),
         agent_sub_result_fn=_agent_sub_result_impl,
         build_agent_test_summary_details_fn=(
             _agent_helper_context.build_agent_test_summary_details_fn

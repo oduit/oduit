@@ -56,6 +56,7 @@ def agent_install_module_command(
     agent_payload_fn: Any,
     agent_emit_payload_fn: Any,
     agent_require_mutation_fn: Any,
+    agent_require_runtime_db_mutation_fn: Any,
     output_result_to_json_fn: Any,
     module_not_found_error_cls: Any,
     safe_read_only: str,
@@ -65,6 +66,7 @@ def agent_install_module_command(
     operation = "install_module"
     result_type = "module_installation"
     global_config, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    assert global_config.env_config is not None
 
     if dry_run:
         try:
@@ -95,12 +97,13 @@ def agent_install_module_command(
         agent_emit_payload_fn(payload)
         return
 
-    agent_require_mutation_fn(
-        allow_mutation,
-        operation,
-        result_type,
-        "module install",
-        controlled_runtime_mutation,
+    agent_require_runtime_db_mutation_fn(
+        global_config.env_config,
+        allow_mutation=allow_mutation,
+        operation=operation,
+        result_type=result_type,
+        action="module install",
+        safety_level=controlled_runtime_mutation,
     )
     result = ops.install_module(
         module,
@@ -151,6 +154,7 @@ def agent_uninstall_module_command(
     agent_payload_fn: Any,
     agent_emit_payload_fn: Any,
     agent_require_mutation_fn: Any,
+    agent_require_runtime_db_mutation_fn: Any,
     output_result_to_json_fn: Any,
     controlled_runtime_mutation: str,
     safe_read_only: str,
@@ -240,12 +244,13 @@ def agent_uninstall_module_command(
         agent_emit_payload_fn(payload)
         return
 
-    agent_require_mutation_fn(
-        allow_mutation,
-        operation,
-        result_type,
-        "module uninstall",
-        controlled_runtime_mutation,
+    agent_require_runtime_db_mutation_fn(
+        global_config.env_config,
+        allow_mutation=allow_mutation,
+        operation=operation,
+        result_type=result_type,
+        action="module uninstall",
+        safety_level=controlled_runtime_mutation,
     )
     _require_uninstall_confirmation(
         allow_uninstall=allow_uninstall,
@@ -316,6 +321,7 @@ def agent_update_module_command(
     agent_payload_fn: Any,
     agent_emit_payload_fn: Any,
     agent_require_mutation_fn: Any,
+    agent_require_runtime_db_mutation_fn: Any,
     output_result_to_json_fn: Any,
     module_not_found_error_cls: Any,
     safe_read_only: str,
@@ -325,6 +331,7 @@ def agent_update_module_command(
     operation = "update_module"
     result_type = "module_update"
     global_config, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    assert global_config.env_config is not None
 
     if dry_run:
         try:
@@ -353,12 +360,13 @@ def agent_update_module_command(
         agent_emit_payload_fn(payload)
         return
 
-    agent_require_mutation_fn(
-        allow_mutation,
-        operation,
-        result_type,
-        "module update",
-        controlled_runtime_mutation,
+    agent_require_runtime_db_mutation_fn(
+        global_config.env_config,
+        allow_mutation=allow_mutation,
+        operation=operation,
+        result_type=result_type,
+        action="module update",
+        safety_level=controlled_runtime_mutation,
     )
     result = ops.update_module(
         module,
@@ -407,21 +415,24 @@ def agent_inspect_cron_command(
     agent_payload_fn: Any,
     agent_emit_payload_fn: Any,
     agent_require_mutation_fn: Any,
+    agent_require_runtime_db_mutation_fn: Any,
     safe_read_only: str,
     controlled_runtime_mutation: str,
 ) -> None:
     """Inspect one cron job and optionally trigger it."""
     operation = "inspect_cron"
     result_type = "cron_inspection"
-    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    global_config, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    assert global_config.env_config is not None
 
     if trigger:
-        agent_require_mutation_fn(
-            allow_mutation,
-            operation,
-            result_type,
-            "cron trigger",
-            controlled_runtime_mutation,
+        agent_require_runtime_db_mutation_fn(
+            global_config.env_config,
+            allow_mutation=allow_mutation,
+            operation=operation,
+            result_type=result_type,
+            action="cron trigger",
+            safety_level=controlled_runtime_mutation,
         )
 
     result = ops.inspect_cron(
@@ -659,6 +670,7 @@ def agent_test_summary_command(
     agent_payload_fn: Any,
     agent_emit_payload_fn: Any,
     agent_require_mutation_fn: Any,
+    agent_require_runtime_db_mutation_fn: Any,
     build_agent_test_summary_details_fn: Any,
     odoo_operations_cls: Any,
     controlled_runtime_mutation: str,
@@ -671,12 +683,13 @@ def agent_test_summary_command(
         agent_fail_fn(operation, result_type, "No environment configuration available")
     assert global_config.env_config is not None
 
-    agent_require_mutation_fn(
-        allow_mutation,
-        operation,
-        result_type,
-        "test execution",
-        controlled_runtime_mutation,
+    agent_require_runtime_db_mutation_fn(
+        global_config.env_config,
+        allow_mutation=allow_mutation,
+        operation=operation,
+        result_type=result_type,
+        action="test execution",
+        safety_level=controlled_runtime_mutation,
     )
 
     ops = odoo_operations_cls(global_config.env_config, verbose=False)

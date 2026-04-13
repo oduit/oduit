@@ -17,11 +17,20 @@ Local or environment configs should look like this:
    coverage_bin = "./venv/bin/coverage"
 
    [odoo_params]
-   addons_path = "./addons,./enterprise"
-   db_name = "project_dev"
-   db_user = "odoo"
-   db_host = "localhost"
-   http_port = 8069
+    addons_path = "./addons,./enterprise"
+    db_name = "project_dev"
+    db_user = "odoo"
+    db_host = "localhost"
+    db_risk_level = "dev"
+    http_port = 8069
+
+``db_risk_level`` controls runtime DB mutation policy:
+
+* ``test``: allow runtime DB mutation without ``--allow-mutation``
+* ``dev``: require ``--allow-mutation`` for runtime DB mutation
+* ``prod``: forbid runtime DB mutation entirely
+
+If the key is omitted, oduit defaults to ``dev``.
 
 Supported Locations
 -------------------
@@ -108,6 +117,7 @@ Common Odoo keys:
 * ``db_port``
 * ``db_user``
 * ``db_password``
+* ``db_risk_level``
 * ``config_file``
 * ``without_demo``
 * ``log_level``

@@ -16,6 +16,17 @@ from .schemas import (
     infer_safety_level,
 )
 
+_SIMPLE_ERROR_CODES = {
+    "ModuleNotFoundError": "module.not_found",
+    "DuplicateModuleError": "module.duplicate_name",
+    "ConfirmationRequired": "mutation.confirmation_required",
+    "MutationForbidden": "mutation.forbidden",
+    "QueryError": "runtime.query_failed",
+    "ConnectionError": "runtime.query_failed",
+    "TestFailure": "runtime.test_failure",
+    "ModuleOperationError": "runtime.module_operation_failed",
+}
+
 
 def infer_error_code(error_type: str | None, error: str | None) -> str | None:
     """Infer a stable machine-facing error code from the payload error fields."""
@@ -29,28 +40,18 @@ def infer_error_code(error_type: str | None, error: str | None) -> str | None:
         if "environment" in normalized_error or "configuration" in normalized_error:
             return "config.environment_missing"
         return "config.invalid"
-    if error_type == "ModuleNotFoundError":
-        return "module.not_found"
-    if error_type == "DuplicateModuleError":
-        return "module.duplicate_name"
-    if error_type == "ConfirmationRequired":
-        return "mutation.confirmation_required"
+    if error_type in _SIMPLE_ERROR_CODES:
+        return _SIMPLE_ERROR_CODES[error_type]
     if error_type == "ValidationError":
         if "json" in normalized_error:
             return "input.invalid_json"
         return "input.invalid"
-    if error_type in {"QueryError", "ConnectionError"}:
-        return "runtime.query_failed"
-    if error_type == "TestFailure":
-        return "runtime.test_failure"
     if error_type == "ModuleUninstallError":
         if "dependent" in normalized_error:
             return "runtime.uninstall_dependency_blocked"
         if "not installed" in normalized_error:
             return "runtime.uninstall_not_installed"
         return "runtime.module_uninstall_failed"
-    if error_type == "ModuleOperationError":
-        return "runtime.module_operation_failed"
     if error_type == "CommandError":
         if "json" in normalized_error:
             return "input.invalid_json"

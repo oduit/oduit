@@ -65,6 +65,7 @@ def build_initial_config(
     if odoo_bin:
         env_config["odoo_bin"] = odoo_bin
 
+    env_config["db_risk_level"] = "dev"
     return env_config
 
 
@@ -158,6 +159,8 @@ def display_config_summary(env_config: dict[str, Any]) -> None:
     if isinstance(params, dict):
         if params.get("db_name"):
             print_info(f"  db_name: {params['db_name']}")
+        if params.get("db_risk_level"):
+            print_info(f"  db_risk_level: {params['db_risk_level']}")
         if params.get("addons_path"):
             addons = params["addons_path"]
             if isinstance(addons, list):

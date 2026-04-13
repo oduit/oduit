@@ -53,6 +53,7 @@ class AppRegistrationDependencies:
     print_doctor_report_fn: Any
     confirmation_required_error_fn: Any
     print_command_error_result_fn: Any
+    require_cli_runtime_db_mutation_fn: Any
     dependency_error_details_fn: Any
     get_config_loader_cls: Callable[[], Any]
     get_module_manager_cls: Callable[[], Any]
@@ -138,6 +139,7 @@ class AgentRuntimeContext:
     agent_payload_fn: Any
     agent_emit_payload_fn: Any
     agent_require_mutation_fn: Any
+    agent_require_runtime_db_mutation_fn: Any
     agent_sub_result_fn: Any
     build_agent_test_summary_details_fn: Any
     build_validate_addon_change_payload_fn: Any
@@ -157,6 +159,7 @@ class AgentHelperContext:
     resolve_agent_ops_fn: ResolveAgentOpsFn
     require_agent_addons_path_fn: Any
     agent_require_mutation_fn: Any
+    agent_require_runtime_db_mutation_fn: Any
     build_agent_test_summary_details_fn: Any
     build_validate_addon_change_payload_fn: Any
     run_validate_addon_change_preflight_fn: Any

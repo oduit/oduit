@@ -277,6 +277,38 @@ class TestConfigProvider(unittest.TestCase):
 
         self.assertTrue(provider.get_optional("allow_uninstall", False))
 
+    def test_get_odoo_params_list_skips_internal_policy_keys(self):
+        """Test config-only policy keys are not rendered as Odoo CLI args."""
+        provider = ConfigProvider(
+            {
+                "db_name": "test_db",
+                "db_risk_level": "prod",
+                "allow_uninstall": True,
+            }
+        )
+
+        params_list = provider.get_odoo_params_list([])
+
+        self.assertEqual(params_list, ["--database=test_db"])
+        self.assertNotIn("--db-risk-level=prod", params_list)
+        self.assertNotIn("--allow-uninstall", params_list)
+
+    def test_to_sectioned_dict_preserves_db_risk_level(self):
+        """Test canonical export keeps db_risk_level in odoo_params."""
+        provider = ConfigProvider(
+            {
+                "python_bin": "/usr/bin/python3",
+                "db_name": "test_db",
+                "db_risk_level": "test",
+            }
+        )
+
+        result = provider.to_sectioned_dict()
+
+        self.assertEqual(result["binaries"]["python_bin"], "/usr/bin/python3")
+        self.assertEqual(result["odoo_params"]["db_name"], "test_db")
+        self.assertEqual(result["odoo_params"]["db_risk_level"], "test")
+
 
 if __name__ == "__main__":
     unittest.main()
