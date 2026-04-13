@@ -114,6 +114,70 @@ Command tiers:
      - ``stable_for_agents``
      - ``safe_read_only``
      - Return duplicate addon names through the standard agent envelope.
+   * - ``inspect-ref``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Resolve one XMLID through the embedded Odoo runtime.
+   * - ``inspect-cron``
+     - ``stable_for_agents``
+     - ``controlled_runtime_mutation``
+     - Inspect one cron job and optionally trigger it.
+   * - ``inspect-modules``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Inspect module records from ir.module.module.
+   * - ``inspect-subtypes``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - List message subtypes registered for one model.
+   * - ``inspect-model``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Inspect runtime model registration metadata.
+   * - ``inspect-field``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Inspect runtime field metadata.
+   * - ``db-table``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Describe one PostgreSQL table through the live Odoo connection.
+   * - ``db-column``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Describe one PostgreSQL column through the live Odoo connection.
+   * - ``db-constraints``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - List PostgreSQL constraints for one table.
+   * - ``db-tables``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - List PostgreSQL tables through the live Odoo connection.
+   * - ``db-m2m``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Inspect the relation table behind a Many2many field.
+   * - ``performance-slow-queries``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Read pg_stat_statements when the extension is available.
+   * - ``performance-table-scans``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Show tables with high sequential scan counts.
+   * - ``performance-indexes``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Show basic table index-usage metrics.
+   * - ``manifest-check``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Validate a manifest file and report structural warnings.
+   * - ``manifest-show``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Show manifest metadata for an addon or addon path.
    * - ``install-module``
      - ``stable_for_agents``
      - ``controlled_runtime_mutation``

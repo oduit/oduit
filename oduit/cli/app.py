@@ -36,6 +36,7 @@ from .agent.mutate import (
     agent_create_addon_command as _agent_create_addon_command,
 )
 from .agent.mutate import agent_export_lang_command as _agent_export_lang_command
+from .agent.mutate import agent_inspect_cron_command as _agent_inspect_cron_command
 from .agent.mutate import (
     agent_install_module_command as _agent_install_module_command,
 )
@@ -83,6 +84,13 @@ from .agent.read_only import (
     agent_check_model_exists_command as _agent_check_model_exists_command,
 )
 from .agent.read_only import agent_context_command as _agent_context_command
+from .agent.read_only import agent_db_column_command as _agent_db_column_command
+from .agent.read_only import (
+    agent_db_constraints_command as _agent_db_constraints_command,
+)
+from .agent.read_only import agent_db_m2m_command as _agent_db_m2m_command
+from .agent.read_only import agent_db_table_command as _agent_db_table_command
+from .agent.read_only import agent_db_tables_command as _agent_db_tables_command
 from .agent.read_only import (
     agent_dependency_graph_command as _agent_dependency_graph_command,
 )
@@ -103,6 +111,19 @@ from .agent.read_only import (
     agent_inspect_addons_command as _agent_inspect_addons_command,
 )
 from .agent.read_only import (
+    agent_inspect_field_command as _agent_inspect_field_command,
+)
+from .agent.read_only import (
+    agent_inspect_model_command as _agent_inspect_model_command,
+)
+from .agent.read_only import (
+    agent_inspect_modules_command as _agent_inspect_modules_command,
+)
+from .agent.read_only import agent_inspect_ref_command as _agent_inspect_ref_command
+from .agent.read_only import (
+    agent_inspect_subtypes_command as _agent_inspect_subtypes_command,
+)
+from .agent.read_only import (
     agent_list_addon_models_command as _agent_list_addon_models_command,
 )
 from .agent.read_only import (
@@ -117,6 +138,21 @@ from .agent.read_only import (
 )
 from .agent.read_only import agent_locate_field_command as _agent_locate_field_command
 from .agent.read_only import agent_locate_model_command as _agent_locate_model_command
+from .agent.read_only import (
+    agent_manifest_check_command as _agent_manifest_check_command,
+)
+from .agent.read_only import (
+    agent_manifest_show_command as _agent_manifest_show_command,
+)
+from .agent.read_only import (
+    agent_performance_indexes_command as _agent_performance_indexes_command,
+)
+from .agent.read_only import (
+    agent_performance_slow_queries_command as _agent_performance_slow_queries_command,
+)
+from .agent.read_only import (
+    agent_performance_table_scans_command as _agent_performance_table_scans_command,
+)
 from .agent.read_only import agent_plan_update_command as _agent_plan_update_command
 from .agent.read_only import (
     agent_recommend_tests_command as _agent_recommend_tests_command,
@@ -518,6 +554,22 @@ _agent_registration_context = AgentRegistrationContext(
         check_model_exists_command_impl=_agent_check_model_exists_command,
         check_field_exists_command_impl=_agent_check_field_exists_command,
         list_duplicates_command_impl=_agent_list_duplicates_command,
+        inspect_ref_command_impl=_agent_inspect_ref_command,
+        inspect_cron_command_impl=_agent_inspect_cron_command,
+        inspect_modules_command_impl=_agent_inspect_modules_command,
+        inspect_subtypes_command_impl=_agent_inspect_subtypes_command,
+        inspect_model_command_impl=_agent_inspect_model_command,
+        inspect_field_command_impl=_agent_inspect_field_command,
+        db_table_command_impl=_agent_db_table_command,
+        db_column_command_impl=_agent_db_column_command,
+        db_constraints_command_impl=_agent_db_constraints_command,
+        db_tables_command_impl=_agent_db_tables_command,
+        db_m2m_command_impl=_agent_db_m2m_command,
+        performance_slow_queries_command_impl=_agent_performance_slow_queries_command,
+        performance_table_scans_command_impl=(_agent_performance_table_scans_command),
+        performance_indexes_command_impl=_agent_performance_indexes_command,
+        manifest_check_command_impl=_agent_manifest_check_command,
+        manifest_show_command_impl=_agent_manifest_show_command,
         install_module_command_impl=_agent_install_module_command,
         uninstall_module_command_impl=_agent_uninstall_module_command,
         update_module_command_impl=_agent_update_module_command,

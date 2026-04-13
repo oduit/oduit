@@ -8,6 +8,7 @@ import typer
 
 from ...addons_path_manager import AddonsPathManager
 from ...source_locator import list_model_extensions
+from ..manifest_support import build_manifest_result
 
 
 def _resolve_addon_root_candidates(addons_path: str, module: str) -> list[str]:
@@ -25,6 +26,556 @@ def _parse_runtime_modules(modules_value: Any) -> list[str]:
     if not isinstance(modules_value, str) or not modules_value.strip():
         return []
     return sorted({item.strip() for item in modules_value.split(",") if item.strip()})
+
+
+def _as_string_list(value: Any) -> list[str]:
+    """Normalize optional list values from mixed command results."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _as_error_list(value: Any) -> list[dict[str, Any]]:
+    """Normalize structured error lists from mixed command results."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _emit_operation_result_payload(
+    *,
+    operation: str,
+    result_type: str,
+    result: dict[str, Any],
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    default_read_only: bool = True,
+    default_safety_level: str,
+    failure_remediation: list[str] | None = None,
+) -> None:
+    """Emit a raw operation result through the standard agent envelope."""
+    success = bool(result.get("success", False))
+    remediation = _as_string_list(result.get("remediation"))
+    if not remediation and not success and failure_remediation:
+        remediation = failure_remediation
+
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        result,
+        success=success,
+        warnings=_as_string_list(result.get("warnings")),
+        errors=_as_error_list(result.get("errors")),
+        remediation=remediation,
+        read_only=(
+            result["read_only"]
+            if isinstance(result.get("read_only"), bool)
+            else default_read_only
+        ),
+        safety_level=(
+            result["safety_level"]
+            if isinstance(result.get("safety_level"), str)
+            and result.get("safety_level")
+            else default_safety_level
+        ),
+        error=result.get("error"),
+        error_type=result.get("error_type"),
+    )
+    agent_emit_payload_fn(payload)
+    if not success:
+        raise typer.Exit(1)
+
+
+def agent_inspect_ref_command(
+    ctx: typer.Context,
+    *,
+    xmlid: str,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Resolve one XMLID through the embedded Odoo runtime."""
+    operation = "inspect_ref"
+    result_type = "xmlid_inspection"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.inspect_ref(xmlid, database=database, timeout=timeout)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the XMLID and retry the inspection.",
+        ],
+    )
+
+
+def agent_inspect_modules_command(
+    ctx: typer.Context,
+    *,
+    state: str | None,
+    names_only: bool,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Inspect module records from ir.module.module."""
+    operation = "inspect_modules"
+    result_type = "module_inspection"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.inspect_modules(
+        state=state,
+        names_only=names_only,
+        database=database,
+        timeout=timeout,
+    )
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the runtime module-state filter and database access, then retry.",
+        ],
+    )
+
+
+def agent_inspect_subtypes_command(
+    ctx: typer.Context,
+    *,
+    model: str,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """List message subtypes registered for one model."""
+    operation = "inspect_subtypes"
+    result_type = "subtype_inventory"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.inspect_subtypes(model, database=database, timeout=timeout)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the model name and retry the subtype inspection.",
+        ],
+    )
+
+
+def agent_inspect_model_command(
+    ctx: typer.Context,
+    *,
+    model: str,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Inspect runtime model registration metadata."""
+    operation = "inspect_model"
+    result_type = "model_inspection"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.inspect_model(model, database=database, timeout=timeout)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the model name and retry the runtime inspection.",
+        ],
+    )
+
+
+def agent_inspect_field_command(
+    ctx: typer.Context,
+    *,
+    model: str,
+    field: str,
+    with_db: bool,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Inspect runtime field metadata."""
+    operation = "inspect_field"
+    result_type = "field_inspection"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.inspect_field(
+        model,
+        field,
+        with_db=with_db,
+        database=database,
+        timeout=timeout,
+    )
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the model and field names, then retry the inspection.",
+        ],
+    )
+
+
+def agent_db_table_command(
+    ctx: typer.Context,
+    *,
+    table_name: str,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Describe one PostgreSQL table through the live Odoo connection."""
+    operation = "describe_table"
+    result_type = "table_description"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.describe_table(table_name, database=database, timeout=timeout)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the table name and retry the database inspection.",
+        ],
+    )
+
+
+def agent_db_column_command(
+    ctx: typer.Context,
+    *,
+    table_name: str,
+    column_name: str,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Describe one PostgreSQL column through the live Odoo connection."""
+    operation = "describe_column"
+    result_type = "column_description"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.describe_column(
+        table_name,
+        column_name,
+        database=database,
+        timeout=timeout,
+    )
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the table and column names, then retry the inspection.",
+        ],
+    )
+
+
+def agent_db_constraints_command(
+    ctx: typer.Context,
+    *,
+    table_name: str,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """List PostgreSQL constraints for one table."""
+    operation = "list_constraints"
+    result_type = "constraint_inventory"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.list_constraints(table_name, database=database, timeout=timeout)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the table name and retry the constraint inspection.",
+        ],
+    )
+
+
+def agent_db_tables_command(
+    ctx: typer.Context,
+    *,
+    like: str | None,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """List PostgreSQL tables through the live Odoo connection."""
+    operation = "list_tables"
+    result_type = "table_inventory"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.list_tables(like, database=database, timeout=timeout)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the table filter and retry the table inventory query.",
+        ],
+    )
+
+
+def agent_db_m2m_command(
+    ctx: typer.Context,
+    *,
+    model: str,
+    field: str,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Inspect Many2many relation-table metadata."""
+    operation = "inspect_m2m"
+    result_type = "m2m_inspection"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.inspect_m2m(model, field, database=database, timeout=timeout)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the model and Many2many field, then retry the inspection.",
+        ],
+    )
+
+
+def agent_performance_slow_queries_command(
+    ctx: typer.Context,
+    *,
+    limit: int,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Read pg_stat_statements when the extension is available."""
+    operation = "performance_slow_queries"
+    result_type = "slow_query_metrics"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.performance_slow_queries(
+        limit=limit,
+        database=database,
+        timeout=timeout,
+    )
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify database access and retry the slow-query inspection.",
+        ],
+    )
+
+
+def agent_performance_table_scans_command(
+    ctx: typer.Context,
+    *,
+    limit: int,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Show tables with high sequential scan counts."""
+    operation = "performance_table_scans"
+    result_type = "table_scan_metrics"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.performance_table_scans(
+        limit=limit,
+        database=database,
+        timeout=timeout,
+    )
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify database access and retry the table-scan inspection.",
+        ],
+    )
+
+
+def agent_performance_indexes_command(
+    ctx: typer.Context,
+    *,
+    limit: int,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Show basic table index-usage metrics."""
+    operation = "performance_indexes"
+    result_type = "index_usage_metrics"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+    result = ops.performance_indexes(limit=limit, database=database, timeout=timeout)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify database access and retry the index-usage inspection.",
+        ],
+    )
+
+
+def agent_manifest_check_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Validate a manifest file and report structural warnings."""
+    operation = "manifest_check"
+    result_type = "manifest_validation"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    env_config = global_config.env_config
+    if env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert env_config is not None
+
+    result, _ = build_manifest_result(target, env_config)
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the addon target or manifest path, then retry the validation.",
+        ],
+    )
+
+
+def agent_manifest_show_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Show manifest metadata for an addon or addon path."""
+    operation = "manifest_show"
+    result_type = "manifest"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    env_config = global_config.env_config
+    if env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert env_config is not None
+
+    result, manifest = build_manifest_result(target, env_config)
+    if manifest is not None:
+        result = {
+            **result,
+            "operation": operation,
+            "name": manifest.name,
+            "version": manifest.version,
+            "summary": manifest.summary,
+            "author": manifest.author,
+            "website": manifest.website,
+            "license": manifest.license,
+            "installable": manifest.installable,
+            "auto_install": manifest.auto_install,
+            "depends": manifest.codependencies,
+            "python_dependencies": manifest.python_dependencies,
+            "binary_dependencies": manifest.binary_dependencies,
+            "manifest_data": manifest.get_raw_data(),
+        }
+    else:
+        result["operation"] = operation
+
+    _emit_operation_result_payload(
+        operation=operation,
+        result_type=result_type,
+        result=result,
+        agent_payload_fn=agent_payload_fn,
+        agent_emit_payload_fn=agent_emit_payload_fn,
+        default_safety_level=safe_read_only,
+        failure_remediation=[
+            "Verify the addon target or manifest path, then retry the inspection.",
+        ],
+    )
 
 
 def agent_context_command(

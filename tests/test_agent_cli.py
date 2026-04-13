@@ -78,6 +78,576 @@ def _loader_with_config(config: dict[str, str], tmp_path: Path) -> MagicMock:
     return loader
 
 
+READ_ONLY_PARITY_SUCCESS_CASES = [
+    pytest.param(
+        "inspect_ref",
+        ["inspect-ref", "base.action_partner_form"],
+        {
+            "success": True,
+            "operation": "inspect_ref",
+            "xmlid": "base.action_partner_form",
+            "exists": True,
+            "model": "ir.actions.act_window",
+            "res_id": 7,
+            "display_name": "Partners",
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "xmlid_inspection",
+        ("xmlid", "base.action_partner_form"),
+        id="inspect-ref",
+    ),
+    pytest.param(
+        "inspect_modules",
+        ["inspect-modules", "--state", "installed"],
+        {
+            "success": True,
+            "operation": "inspect_modules",
+            "modules": [{"name": "sale", "state": "installed"}],
+            "names": ["sale"],
+            "total": 1,
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "module_inspection",
+        ("total", 1),
+        id="inspect-modules",
+    ),
+    pytest.param(
+        "inspect_subtypes",
+        ["inspect-subtypes", "res.partner"],
+        {
+            "success": True,
+            "operation": "inspect_subtypes",
+            "model": "res.partner",
+            "subtypes": [{"name": "Partner Created"}],
+            "total": 1,
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "subtype_inventory",
+        ("model", "res.partner"),
+        id="inspect-subtypes",
+    ),
+    pytest.param(
+        "inspect_model",
+        ["inspect-model", "res.partner"],
+        {
+            "success": True,
+            "operation": "inspect_model",
+            "model": "res.partner",
+            "exists": True,
+            "table": "res_partner",
+            "field_count": 5,
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "model_inspection",
+        ("table", "res_partner"),
+        id="inspect-model",
+    ),
+    pytest.param(
+        "inspect_field",
+        ["inspect-field", "res.partner", "email", "--with-db"],
+        {
+            "success": True,
+            "operation": "inspect_field",
+            "model": "res.partner",
+            "field": "email",
+            "exists": True,
+            "field_type": "char",
+            "db_table_name": "res_partner",
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "field_inspection",
+        ("field_type", "char"),
+        id="inspect-field",
+    ),
+    pytest.param(
+        "describe_table",
+        ["db-table", "res_partner"],
+        {
+            "success": True,
+            "operation": "describe_table",
+            "table_name": "res_partner",
+            "columns": [{"column_name": "id", "ordinal_position": 1}],
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "table_description",
+        ("table_name", "res_partner"),
+        id="db-table",
+    ),
+    pytest.param(
+        "describe_column",
+        ["db-column", "res_partner", "email"],
+        {
+            "success": True,
+            "operation": "describe_column",
+            "table_name": "res_partner",
+            "column": {"column_name": "email", "data_type": "character varying"},
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "column_description",
+        ("table_name", "res_partner"),
+        id="db-column",
+    ),
+    pytest.param(
+        "list_constraints",
+        ["db-constraints", "sale_order"],
+        {
+            "success": True,
+            "operation": "list_constraints",
+            "table_name": "sale_order",
+            "constraints": [{"name": "sale_order_pkey"}],
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "constraint_inventory",
+        ("table_name", "sale_order"),
+        id="db-constraints",
+    ),
+    pytest.param(
+        "list_tables",
+        ["db-tables", "--like", "res_%"],
+        {
+            "success": True,
+            "operation": "list_tables",
+            "pattern": "res_%",
+            "tables": ["res_partner"],
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "table_inventory",
+        ("pattern", "res_%"),
+        id="db-tables",
+    ),
+    pytest.param(
+        "inspect_m2m",
+        ["db-m2m", "res.partner", "category_id"],
+        {
+            "success": True,
+            "operation": "inspect_m2m",
+            "model": "res.partner",
+            "field": "category_id",
+            "relation_table": "res_partner_res_category_rel",
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "m2m_inspection",
+        ("relation_table", "res_partner_res_category_rel"),
+        id="db-m2m",
+    ),
+    pytest.param(
+        "performance_slow_queries",
+        ["performance-slow-queries", "--limit", "5"],
+        {
+            "success": True,
+            "operation": "performance_slow_queries",
+            "queries": [{"calls": 3, "total_time": 12.5}],
+            "limit": 5,
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "slow_query_metrics",
+        ("limit", 5),
+        id="performance-slow-queries",
+    ),
+    pytest.param(
+        "performance_table_scans",
+        ["performance-table-scans", "--limit", "7"],
+        {
+            "success": True,
+            "operation": "performance_table_scans",
+            "tables": [{"table_name": "res_partner", "seq_scan": 3}],
+            "limit": 7,
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "table_scan_metrics",
+        ("limit", 7),
+        id="performance-table-scans",
+    ),
+    pytest.param(
+        "performance_indexes",
+        ["performance-indexes", "--limit", "9"],
+        {
+            "success": True,
+            "operation": "performance_indexes",
+            "tables": [{"table_name": "res_partner", "idx_scan": 9}],
+            "limit": 9,
+            "read_only": True,
+            "safety_level": "safe_read_only",
+        },
+        "index_usage_metrics",
+        ("limit", 9),
+        id="performance-indexes",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "method_name,command_args,method_result,result_type,expected_pair",
+    READ_ONLY_PARITY_SUCCESS_CASES,
+)
+def test_agent_read_only_parity_commands_wrap_operation_results(
+    tmp_path: Path,
+    method_name: str,
+    command_args: list[str],
+    method_result: dict[str, object],
+    result_type: str,
+    expected_pair: tuple[str, object],
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(OdooOperations, method_name, return_value=method_result),
+    ):
+        result = runner.invoke(app, ["--env", "dev", "agent", *command_args])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == result_type
+    assert payload["success"] is True
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    assert payload[expected_pair[0]] == expected_pair[1]
+
+
+@pytest.mark.parametrize(
+    "method_name,command_args,result_type",
+    [
+        pytest.param(
+            "inspect_ref", ["inspect-ref", "base.missing"], "xmlid_inspection"
+        ),
+        pytest.param(
+            "inspect_modules",
+            ["inspect-modules", "--state", "installed"],
+            "module_inspection",
+        ),
+        pytest.param(
+            "inspect_subtypes", ["inspect-subtypes", "res.partner"], "subtype_inventory"
+        ),
+        pytest.param(
+            "inspect_model", ["inspect-model", "res.partner"], "model_inspection"
+        ),
+        pytest.param(
+            "inspect_field",
+            ["inspect-field", "res.partner", "email"],
+            "field_inspection",
+        ),
+        pytest.param(
+            "describe_table", ["db-table", "res_partner"], "table_description"
+        ),
+        pytest.param(
+            "describe_column",
+            ["db-column", "res_partner", "email"],
+            "column_description",
+        ),
+        pytest.param(
+            "list_constraints", ["db-constraints", "sale_order"], "constraint_inventory"
+        ),
+        pytest.param("list_tables", ["db-tables"], "table_inventory"),
+        pytest.param(
+            "inspect_m2m", ["db-m2m", "res.partner", "category_id"], "m2m_inspection"
+        ),
+        pytest.param(
+            "performance_slow_queries",
+            ["performance-slow-queries"],
+            "slow_query_metrics",
+        ),
+        pytest.param(
+            "performance_table_scans",
+            ["performance-table-scans"],
+            "table_scan_metrics",
+        ),
+        pytest.param(
+            "performance_indexes",
+            ["performance-indexes"],
+            "index_usage_metrics",
+        ),
+    ],
+)
+def test_agent_read_only_parity_commands_surface_failures(
+    tmp_path: Path,
+    method_name: str,
+    command_args: list[str],
+    result_type: str,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+    method_result = {
+        "success": False,
+        "operation": method_name,
+        "error": "runtime unavailable",
+        "error_type": "QueryError",
+        "read_only": True,
+        "safety_level": "safe_read_only",
+    }
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(OdooOperations, method_name, return_value=method_result),
+    ):
+        result = runner.invoke(app, ["--env", "dev", "agent", *command_args])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["type"] == result_type
+    assert payload["success"] is False
+    assert payload["error"] == "runtime unavailable"
+    assert payload["error_type"] == "QueryError"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+
+
+def test_agent_inspect_cron_defaults_to_read_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(
+            OdooOperations,
+            "inspect_cron",
+            return_value={
+                "success": True,
+                "operation": "inspect_cron",
+                "xmlid": "base.ir_cron_autovacuum",
+                "trigger_requested": False,
+                "triggered": False,
+                "read_only": True,
+                "safety_level": "safe_read_only",
+            },
+        ) as inspect_cron,
+    ):
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "inspect-cron", "base.ir_cron_autovacuum"],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "cron_inspection"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    inspect_cron.assert_called_once_with(
+        "base.ir_cron_autovacuum",
+        trigger=False,
+        database=None,
+        timeout=30.0,
+    )
+
+
+def test_agent_inspect_cron_requires_allow_mutation_for_trigger(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(OdooOperations, "inspect_cron") as inspect_cron,
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "inspect-cron",
+                "base.ir_cron_autovacuum",
+                "--trigger",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["type"] == "cron_inspection"
+    assert payload["error_type"] == "ConfirmationRequired"
+    assert payload["read_only"] is False
+    assert payload["safety_level"] == "controlled_runtime_mutation"
+    inspect_cron.assert_not_called()
+
+
+def test_agent_inspect_cron_reports_runtime_mutation_when_triggered(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(
+            OdooOperations,
+            "inspect_cron",
+            return_value={
+                "success": True,
+                "operation": "inspect_cron",
+                "xmlid": "base.ir_cron_autovacuum",
+                "trigger_requested": True,
+                "triggered": True,
+                "read_only": False,
+                "safety_level": "controlled_runtime_mutation",
+            },
+        ) as inspect_cron,
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "inspect-cron",
+                "base.ir_cron_autovacuum",
+                "--trigger",
+                "--allow-mutation",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "cron_inspection"
+    assert payload["triggered"] is True
+    assert payload["read_only"] is False
+    assert payload["safety_level"] == "controlled_runtime_mutation"
+    inspect_cron.assert_called_once_with(
+        "base.ir_cron_autovacuum",
+        trigger=True,
+        database=None,
+        timeout=30.0,
+    )
+
+
+def test_agent_manifest_commands_use_shared_manifest_resolution(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+    manifest = SimpleNamespace(
+        name="Sale",
+        version="17.0.1.0.0",
+        summary="Sales",
+        author="The Team",
+        website="https://example.com",
+        license="LGPL-3",
+        installable=True,
+        auto_install=False,
+        codependencies=["base"],
+        python_dependencies=[],
+        binary_dependencies=[],
+        get_raw_data=lambda: {"name": "Sale"},
+    )
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.agent.read_only.build_manifest_result",
+            return_value=(
+                {
+                    "success": True,
+                    "operation": "manifest_check",
+                    "target": "sale",
+                    "module": "sale",
+                    "module_path": "/addons/sale",
+                    "warning_count": 0,
+                    "warnings": [],
+                    "read_only": True,
+                },
+                manifest,
+            ),
+        ),
+    ):
+        check_result = runner.invoke(
+            app, ["--env", "dev", "agent", "manifest-check", "sale"]
+        )
+        show_result = runner.invoke(
+            app, ["--env", "dev", "agent", "manifest-show", "sale"]
+        )
+
+    check_payload = json.loads(check_result.output)
+    show_payload = json.loads(show_result.output)
+    assert check_result.exit_code == 0
+    assert check_payload["type"] == "manifest_validation"
+    assert check_payload["warning_count"] == 0
+    assert show_result.exit_code == 0
+    assert show_payload["type"] == "manifest"
+    assert show_payload["manifest_data"]["name"] == "Sale"
+    assert show_payload["read_only"] is True
+    assert show_payload["safety_level"] == "safe_read_only"
+
+
+@pytest.mark.parametrize(
+    "command_name,result_type",
+    [
+        ("manifest-check", "manifest_validation"),
+        ("manifest-show", "manifest"),
+    ],
+)
+def test_agent_manifest_commands_surface_shared_failures(
+    tmp_path: Path,
+    command_name: str,
+    result_type: str,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.agent.read_only.build_manifest_result",
+            return_value=(
+                {
+                    "success": False,
+                    "operation": "manifest_check",
+                    "target": "missing",
+                    "error": "manifest missing",
+                    "error_type": "ManifestNotFoundError",
+                    "read_only": True,
+                },
+                None,
+            ),
+        ),
+    ):
+        result = runner.invoke(app, ["--env", "dev", "agent", command_name, "missing"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["type"] == result_type
+    assert payload["success"] is False
+    assert payload["error_type"] == "ManifestNotFoundError"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+
+
 def test_agent_context_returns_structured_snapshot(tmp_path: Path) -> None:
     runner = CliRunner()
     addons_a = tmp_path / "addons_a"

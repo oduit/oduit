@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/subtype-inventory.schema.json",
+  "type": "object",
+  "required": ["type", "operation", "model", "subtypes", "total"],
+  "properties": {
+    "type": { "const": "subtype_inventory" },
+    "operation": { "const": "inspect_subtypes" },
+    "model": { "type": "string" },
+    "subtypes": { "type": "array", "items": { "type": "object" } },
+    "total": { "type": "integer" }
+  },
+  "additionalProperties": true
+}

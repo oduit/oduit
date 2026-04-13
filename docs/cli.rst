@@ -1042,6 +1042,18 @@ reference.
 Use :doc:`agent_command_inventory` for the generated agent command matrix and
 ``docs/maintainer/agent_contract_changes.md`` for machine-facing change notes.
 
+When an agent needs exact parity with the human inspection / DB / performance /
+manifest surface, use the direct structured wrappers instead of shell snippets:
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-ref base.action_partner_form
+   oduit --env dev agent inspect-cron base.ir_cron_autovacuum
+   oduit --env dev agent inspect-model res.partner
+   oduit --env dev agent inspect-field res.partner email --with-db
+   oduit --env dev agent db-table res_partner
+   oduit --env dev agent manifest-check sale
+
 context
 ^^^^^^^
 
@@ -1068,6 +1080,66 @@ Inspect multiple addons in one call.
 .. code-block:: bash
 
    oduit --env dev agent inspect-addons --modules sale,stock
+
+inspect-ref
+^^^^^^^^^^^
+
+Resolve one XMLID through the structured agent envelope.
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-ref base.action_partner_form
+
+inspect-cron
+^^^^^^^^^^^^
+
+Inspect one cron record, or trigger it explicitly with mutation approval.
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-cron base.ir_cron_autovacuum
+   oduit --env dev agent inspect-cron base.ir_cron_autovacuum --trigger --allow-mutation
+
+inspect-model
+^^^^^^^^^^^^^
+
+Inspect runtime model registration metadata with the agent envelope.
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-model res.partner
+
+inspect-field
+^^^^^^^^^^^^^
+
+Inspect runtime field metadata, optionally including DB-level details.
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-field res.partner email --with-db
+
+db-table / db-column / db-constraints / db-tables / db-m2m
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Use the structured DB wrappers when an agent needs direct schema parity.
+
+.. code-block:: bash
+
+   oduit --env dev agent db-table res_partner
+   oduit --env dev agent db-column res_partner email
+   oduit --env dev agent db-constraints res_partner
+   oduit --env dev agent db-tables --like res_%
+   oduit --env dev agent db-m2m res.partner category_id
+
+manifest-check / manifest-show
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Use the structured manifest wrappers instead of ad hoc file parsing.
+
+.. code-block:: bash
+
+   oduit --env dev agent manifest-check sale
+   oduit --env dev agent manifest-show sale
 
 plan-update
 ^^^^^^^^^^^

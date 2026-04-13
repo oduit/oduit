@@ -9,10 +9,9 @@ from typing import Any
 import typer
 
 from ..cli_types import OutputFormat
-from ..manifest import InvalidManifestError, Manifest, ManifestNotFoundError
-from ..module_manager import ModuleManager
 from ..output import print_error, print_warning
 from ..utils import output_result_to_json
+from .manifest_support import build_manifest_result
 from .runtime_context import AppRegistrationContext
 
 EXEC_FILE_PATH_ARGUMENT = typer.Argument(help="Path to a trusted Python file")
@@ -250,84 +249,6 @@ def register_inspection_commands(context: AppRegistrationContext) -> None:  # no
                 if record.get(field_name) is not None
             )
             print(line)
-
-    def _resolve_manifest_target(
-        env_config: dict[str, Any],
-        target: str,
-    ) -> tuple[str, str]:
-        target_path = Path(target).expanduser()
-        if target_path.exists():
-            module_path = target_path if target_path.is_dir() else target_path.parent
-            return str(module_path), module_path.name
-
-        module_manager = ModuleManager(env_config["addons_path"])
-        module_path = module_manager.find_module_path(target)
-        if module_path is None:
-            raise FileNotFoundError(target)
-        return module_path, target
-
-    def _manifest_result(
-        target: str,
-        env_config: dict[str, Any],
-    ) -> tuple[dict[str, Any], Manifest | None]:
-        try:
-            module_path, module_name = _resolve_manifest_target(env_config, target)
-        except FileNotFoundError:
-            return (
-                {
-                    "success": False,
-                    "operation": "manifest_check",
-                    "target": target,
-                    "error": f"Manifest target {target!r} was not found",
-                    "error_type": "NotFoundError",
-                    "read_only": True,
-                },
-                None,
-            )
-
-        try:
-            manifest = Manifest(module_path)
-        except ManifestNotFoundError as exc:
-            return (
-                {
-                    "success": False,
-                    "operation": "manifest_check",
-                    "target": target,
-                    "module": module_name,
-                    "module_path": module_path,
-                    "error": str(exc),
-                    "error_type": "ManifestNotFoundError",
-                    "read_only": True,
-                },
-                None,
-            )
-        except InvalidManifestError as exc:
-            return (
-                {
-                    "success": False,
-                    "operation": "manifest_check",
-                    "target": target,
-                    "module": module_name,
-                    "module_path": module_path,
-                    "error": str(exc),
-                    "error_type": "InvalidManifestError",
-                    "read_only": True,
-                },
-                None,
-            )
-
-        warnings = manifest.validate_structure()
-        result = {
-            "success": True,
-            "operation": "manifest_check",
-            "target": target,
-            "module": module_name,
-            "module_path": module_path,
-            "warnings": warnings,
-            "warning_count": len(warnings),
-            "read_only": True,
-        }
-        return result, manifest
 
     @app.command(name="exec")
     def exec_command(
@@ -848,7 +769,7 @@ def register_inspection_commands(context: AppRegistrationContext) -> None:  # no
     ) -> None:
         """Validate a manifest file and report structural warnings."""
         global_config, env_config = resolve_command_env_config_fn(ctx)
-        result, _ = _manifest_result(target, env_config)
+        result, _ = build_manifest_result(target, env_config)
 
         def _render_manifest_check(payload: dict[str, Any]) -> None:
             if not payload.get("warnings"):
@@ -872,7 +793,7 @@ def register_inspection_commands(context: AppRegistrationContext) -> None:  # no
     ) -> None:
         """Show manifest metadata for an addon or addon path."""
         global_config, env_config = resolve_command_env_config_fn(ctx)
-        result, manifest = _manifest_result(target, env_config)
+        result, manifest = build_manifest_result(target, env_config)
         if manifest is not None:
             result = {
                 **result,

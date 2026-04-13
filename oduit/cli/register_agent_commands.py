@@ -107,6 +107,30 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
         context.implementations.check_field_exists_command_impl
     )
     list_duplicates_command_impl = context.implementations.list_duplicates_command_impl
+    inspect_ref_command_impl = context.implementations.inspect_ref_command_impl
+    inspect_cron_command_impl = context.implementations.inspect_cron_command_impl
+    inspect_modules_command_impl = context.implementations.inspect_modules_command_impl
+    inspect_subtypes_command_impl = (
+        context.implementations.inspect_subtypes_command_impl
+    )
+    inspect_model_command_impl = context.implementations.inspect_model_command_impl
+    inspect_field_command_impl = context.implementations.inspect_field_command_impl
+    db_table_command_impl = context.implementations.db_table_command_impl
+    db_column_command_impl = context.implementations.db_column_command_impl
+    db_constraints_command_impl = context.implementations.db_constraints_command_impl
+    db_tables_command_impl = context.implementations.db_tables_command_impl
+    db_m2m_command_impl = context.implementations.db_m2m_command_impl
+    performance_slow_queries_command_impl = (
+        context.implementations.performance_slow_queries_command_impl
+    )
+    performance_table_scans_command_impl = (
+        context.implementations.performance_table_scans_command_impl
+    )
+    performance_indexes_command_impl = (
+        context.implementations.performance_indexes_command_impl
+    )
+    manifest_check_command_impl = context.implementations.manifest_check_command_impl
+    manifest_show_command_impl = context.implementations.manifest_show_command_impl
     install_module_command_impl = context.implementations.install_module_command_impl
     uninstall_module_command_impl = (
         context.implementations.uninstall_module_command_impl
@@ -674,6 +698,386 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
             config_error_cls=config_error_cls,
+        )
+
+    @agent_app.command("inspect-ref")
+    def agent_inspect_ref(
+        ctx: typer.Context,
+        xmlid: str = typer.Argument(help="XMLID to inspect"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Resolve one XMLID through the embedded Odoo runtime."""
+        inspect_ref_command_impl(
+            ctx,
+            xmlid=xmlid,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("inspect-cron")
+    def agent_inspect_cron(
+        ctx: typer.Context,
+        xmlid: str = typer.Argument(help="Cron XMLID to inspect"),
+        trigger: bool = typer.Option(
+            False, "--trigger", help="Trigger the cron after resolving it"
+        ),
+        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Inspect one cron job and optionally trigger it."""
+        inspect_cron_command_impl(
+            ctx,
+            xmlid=xmlid,
+            trigger=trigger,
+            allow_mutation=allow_mutation,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_mutation_fn=agent_require_mutation_fn,
+            safe_read_only=safe_read_only,
+            controlled_runtime_mutation=controlled_runtime_mutation,
+        )
+
+    @agent_app.command("inspect-modules")
+    def agent_inspect_modules(
+        ctx: typer.Context,
+        state: str | None = typer.Option(
+            None, "--state", help="Filter by module state"
+        ),
+        names_only: bool = typer.Option(
+            False, "--names-only", help="Return only module names in the payload"
+        ),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Inspect module records from ir.module.module."""
+        inspect_modules_command_impl(
+            ctx,
+            state=state,
+            names_only=names_only,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("inspect-subtypes")
+    def agent_inspect_subtypes(
+        ctx: typer.Context,
+        model: str = typer.Argument(help="Model to inspect"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """List message subtypes registered for one model."""
+        inspect_subtypes_command_impl(
+            ctx,
+            model=model,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("inspect-model")
+    def agent_inspect_model(
+        ctx: typer.Context,
+        model: str = typer.Argument(help="Model to inspect"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Inspect runtime model registration metadata."""
+        inspect_model_command_impl(
+            ctx,
+            model=model,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("inspect-field")
+    def agent_inspect_field(
+        ctx: typer.Context,
+        model: str = typer.Argument(help="Model to inspect"),
+        field: str = typer.Argument(help="Field to inspect"),
+        with_db: bool = typer.Option(
+            False, "--with-db", help="Include DB-level metadata when available"
+        ),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Inspect runtime field metadata."""
+        inspect_field_command_impl(
+            ctx,
+            model=model,
+            field=field,
+            with_db=with_db,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("db-table")
+    def agent_db_table(
+        ctx: typer.Context,
+        table_name: str = typer.Argument(help="Table to inspect"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Describe one PostgreSQL table through the live Odoo connection."""
+        db_table_command_impl(
+            ctx,
+            table_name=table_name,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("db-column")
+    def agent_db_column(
+        ctx: typer.Context,
+        table_name: str = typer.Argument(help="Table to inspect"),
+        column_name: str = typer.Argument(help="Column to inspect"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Describe one PostgreSQL column through the live Odoo connection."""
+        db_column_command_impl(
+            ctx,
+            table_name=table_name,
+            column_name=column_name,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("db-constraints")
+    def agent_db_constraints(
+        ctx: typer.Context,
+        table_name: str = typer.Argument(help="Table to inspect"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """List PostgreSQL constraints for one table."""
+        db_constraints_command_impl(
+            ctx,
+            table_name=table_name,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("db-tables")
+    def agent_db_tables(
+        ctx: typer.Context,
+        like: str | None = typer.Option(
+            None, "--like", help="Filter table names with a case-insensitive pattern"
+        ),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """List PostgreSQL tables through the live Odoo connection."""
+        db_tables_command_impl(
+            ctx,
+            like=like,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("db-m2m")
+    def agent_db_m2m(
+        ctx: typer.Context,
+        model: str = typer.Argument(help="Model to inspect"),
+        field: str = typer.Argument(help="Many2many field to inspect"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Inspect the relation table behind a Many2many field."""
+        db_m2m_command_impl(
+            ctx,
+            model=model,
+            field=field,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("performance-slow-queries")
+    def agent_performance_slow_queries(
+        ctx: typer.Context,
+        limit: int = typer.Option(10, "--limit", help="Number of queries to show"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Read pg_stat_statements when the extension is available."""
+        performance_slow_queries_command_impl(
+            ctx,
+            limit=limit,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("performance-table-scans")
+    def agent_performance_table_scans(
+        ctx: typer.Context,
+        limit: int = typer.Option(20, "--limit", help="Number of tables to show"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Show tables with high sequential scan counts."""
+        performance_table_scans_command_impl(
+            ctx,
+            limit=limit,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("performance-indexes")
+    def agent_performance_indexes(
+        ctx: typer.Context,
+        limit: int = typer.Option(20, "--limit", help="Number of tables to show"),
+        database: str | None = typer.Option(
+            None, "--database", help="Override database name"
+        ),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Execution timeout in seconds"
+        ),
+    ) -> None:
+        """Show basic table index-usage metrics."""
+        performance_indexes_command_impl(
+            ctx,
+            limit=limit,
+            database=database,
+            timeout=timeout,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("manifest-check")
+    def agent_manifest_check(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or filesystem path"),
+    ) -> None:
+        """Validate a manifest file and report structural warnings."""
+        manifest_check_command_impl(
+            ctx,
+            target=target,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("manifest-show")
+    def agent_manifest_show(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or filesystem path"),
+    ) -> None:
+        """Show manifest metadata for an addon or addon path."""
+        manifest_show_command_impl(
+            ctx,
+            target=target,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("install-module")

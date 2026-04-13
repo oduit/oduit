@@ -395,6 +395,70 @@ def agent_update_module_command(
         raise typer.Exit(1)
 
 
+def agent_inspect_cron_command(
+    ctx: typer.Context,
+    *,
+    xmlid: str,
+    trigger: bool,
+    allow_mutation: bool,
+    database: str | None,
+    timeout: float,
+    resolve_agent_ops_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    agent_require_mutation_fn: Any,
+    safe_read_only: str,
+    controlled_runtime_mutation: str,
+) -> None:
+    """Inspect one cron job and optionally trigger it."""
+    operation = "inspect_cron"
+    result_type = "cron_inspection"
+    _, ops = resolve_agent_ops_fn(ctx, operation, result_type)
+
+    if trigger:
+        agent_require_mutation_fn(
+            allow_mutation,
+            operation,
+            result_type,
+            "cron trigger",
+            controlled_runtime_mutation,
+        )
+
+    result = ops.inspect_cron(
+        xmlid,
+        trigger=trigger,
+        database=database,
+        timeout=timeout,
+    )
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        result,
+        success=bool(result.get("success", False)),
+        warnings=[item for item in result.get("warnings", []) if isinstance(item, str)],
+        errors=[item for item in result.get("errors", []) if isinstance(item, dict)],
+        remediation=[
+            item for item in result.get("remediation", []) if isinstance(item, str)
+        ],
+        read_only=(
+            result["read_only"]
+            if isinstance(result.get("read_only"), bool)
+            else not trigger
+        ),
+        safety_level=(
+            result["safety_level"]
+            if isinstance(result.get("safety_level"), str)
+            and result.get("safety_level")
+            else (controlled_runtime_mutation if trigger else safe_read_only)
+        ),
+        error=result.get("error"),
+        error_type=result.get("error_type"),
+    )
+    agent_emit_payload_fn(payload)
+    if not result.get("success", False):
+        raise typer.Exit(1)
+
+
 def agent_create_addon_command(
     ctx: typer.Context,
     *,

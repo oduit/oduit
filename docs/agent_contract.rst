@@ -28,6 +28,12 @@ Default to the read-only inspection and planning commands:
 * ``doctor``, ``list-addons``, ``dependency-graph``, ``resolve-config``,
   ``resolve-addon-root``, ``get-addon-files``, ``check-addons-installed``,
   ``check-model-exists``, ``check-field-exists``, and ``list-duplicates``
+* direct parity wrappers when exact runtime / DB metadata is needed:
+  ``inspect-ref``, ``inspect-modules``, ``inspect-subtypes``,
+  ``inspect-model``, ``inspect-field``, ``db-table``, ``db-column``,
+  ``db-constraints``, ``db-tables``, ``db-m2m``,
+  ``performance-slow-queries``, ``performance-table-scans``,
+  ``performance-indexes``, ``manifest-check``, and ``manifest-show``
 * ``query-model``, ``read-record``, ``search-count``, and ``get-model-fields``
 
 Only mutate through the controlled mutation commands:
@@ -98,6 +104,18 @@ this loop:
 For runtime spot checks after a change, prefer ``query-model``, ``read-record``,
 and ``search-count`` over arbitrary code execution.
 
+When an agent needs direct parity with the human inspection / DB / manifest
+commands, use the structured wrappers instead of shell snippets:
+
+.. code-block:: bash
+
+   oduit --env dev agent inspect-ref base.action_partner_form
+   oduit --env dev agent inspect-cron base.ir_cron_autovacuum
+   oduit --env dev agent inspect-model res.partner
+   oduit --env dev agent inspect-field res.partner email --with-db
+   oduit --env dev agent db-table res_partner
+   oduit --env dev agent manifest-check sale
+
 For a cheap read-only planning and health pass before mutating an addon, use
 ``preflight-addon-change``:
 
@@ -124,6 +142,8 @@ Mutation Policy
 * ``install-module``, ``uninstall-module``, ``update-module``,
   ``create-addon``, ``export-lang``, and ``test-summary`` are controlled
   mutations.
+* ``inspect-cron`` is read-only by default; ``inspect-cron --trigger`` becomes
+  a controlled runtime mutation and requires ``--allow-mutation``.
 * Controlled mutations require ``--allow-mutation``.
 * ``uninstall-module`` also requires ``--allow-uninstall`` and
   ``allow_uninstall = true`` in the active environment config.
@@ -248,6 +268,22 @@ Published JSON Schema artifacts live under ``schemas/``:
 * ``schemas/agent/addon-change-validation.schema.json``
 * ``schemas/agent/addon-change-context.schema.json``
 * ``schemas/agent/recommended-test-plan.schema.json``
+* ``schemas/agent/xmlid-inspection.schema.json``
+* ``schemas/agent/cron-inspection.schema.json``
+* ``schemas/agent/module-inspection.schema.json``
+* ``schemas/agent/subtype-inventory.schema.json``
+* ``schemas/agent/model-inspection.schema.json``
+* ``schemas/agent/field-inspection.schema.json``
+* ``schemas/agent/table-description.schema.json``
+* ``schemas/agent/column-description.schema.json``
+* ``schemas/agent/constraint-inventory.schema.json``
+* ``schemas/agent/table-inventory.schema.json``
+* ``schemas/agent/m2m-inspection.schema.json``
+* ``schemas/agent/slow-query-metrics.schema.json``
+* ``schemas/agent/table-scan-metrics.schema.json``
+* ``schemas/agent/index-usage-metrics.schema.json``
+* ``schemas/agent/manifest-validation.schema.json``
+* ``schemas/agent/manifest.schema.json``
 
 Failure Handling
 ----------------

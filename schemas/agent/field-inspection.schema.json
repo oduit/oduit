@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/field-inspection.schema.json",
+  "type": "object",
+  "required": ["type", "operation", "model", "field", "exists"],
+  "properties": {
+    "type": { "const": "field_inspection" },
+    "operation": { "const": "inspect_field" },
+    "model": { "type": "string" },
+    "field": { "type": "string" },
+    "exists": { "type": "boolean" },
+    "field_type": { "type": "string" },
+    "db_table_name": { "type": "string" }
+  },
+  "additionalProperties": true
+}

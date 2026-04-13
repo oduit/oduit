@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/index-usage-metrics.schema.json",
+  "type": "object",
+  "required": ["type", "operation", "tables", "limit"],
+  "properties": {
+    "type": { "const": "index_usage_metrics" },
+    "operation": { "const": "performance_indexes" },
+    "tables": { "type": "array", "items": { "type": "object" } },
+    "limit": { "type": "integer" }
+  },
+  "additionalProperties": true
+}

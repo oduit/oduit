@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/xmlid-inspection.schema.json",
+  "type": "object",
+  "required": ["type", "operation", "xmlid", "exists"],
+  "properties": {
+    "type": { "const": "xmlid_inspection" },
+    "operation": { "const": "inspect_ref" },
+    "xmlid": { "type": "string" },
+    "exists": { "type": "boolean" },
+    "model": { "type": "string" },
+    "res_id": { "type": "integer" }
+  },
+  "additionalProperties": true
+}

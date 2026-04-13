@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/slow-query-metrics.schema.json",
+  "type": "object",
+  "required": ["type", "operation", "queries", "limit"],
+  "properties": {
+    "type": { "const": "slow_query_metrics" },
+    "operation": { "const": "performance_slow_queries" },
+    "queries": { "type": "array", "items": { "type": "object" } },
+    "limit": { "type": "integer" }
+  },
+  "additionalProperties": true
+}

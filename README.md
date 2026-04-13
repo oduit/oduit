@@ -106,6 +106,11 @@ oduit --env dev manifest check sale
 oduit --env dev agent context
 oduit --env dev agent inspect-addon sale
 oduit --env dev agent plan-update sale
+oduit --env dev agent inspect-ref base.action_partner_form
+oduit --env dev agent inspect-model res.partner
+oduit --env dev agent inspect-field res.partner email --with-db
+oduit --env dev agent db-table res_partner
+oduit --env dev agent manifest-check sale
 oduit --env dev agent list-installed-addons --modules sale
 oduit --env dev agent get-model-fields res.partner --attributes string,type,required
 oduit --env dev agent list-addon-models my_partner
@@ -180,6 +185,11 @@ Structured payloads include an explicit `schema_version`, currently `2.0`.
 Prefer the read-only planning path first: `context`, `resolve-config`,
 `resolve-addon-root`, `get-addon-files`, `preflight-addon-change`, and only then
 controlled mutation commands such as `validate-addon-change`.
+When exact runtime or database parity with the human CLI is needed, use
+structured agent commands such as `inspect-ref`, `inspect-model`,
+`inspect-field`, `db-table`, `db-column`, `db-constraints`, `db-m2m`,
+`performance-slow-queries`, `performance-table-scans`, `performance-indexes`,
+`manifest-check`, and `manifest-show`.
 For one-shot verification after an addon change, prefer
 `oduit --env <env> agent validate-addon-change <module> --allow-mutation`.
 Destructive uninstall support is disabled by default and requires both
@@ -198,6 +208,17 @@ oduit --env dev agent locate-field res.partner email3 --module my_partner
 oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
 oduit --env dev agent validate-addon-change my_partner --allow-mutation --install-if-needed --update --discover-tests
 oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
+```
+
+For exact runtime/database parity checks during an investigation, use:
+
+```bash
+oduit --env dev agent inspect-ref base.action_partner_form
+oduit --env dev agent inspect-cron base.ir_cron_autovacuum
+oduit --env dev agent inspect-model res.partner
+oduit --env dev agent inspect-field res.partner email --with-db
+oduit --env dev agent db-table res_partner
+oduit --env dev agent manifest-check sale
 ```
 
 ## Python API

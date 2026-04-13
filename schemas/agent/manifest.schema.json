@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/manifest.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "operation",
+    "target",
+    "module",
+    "module_path",
+    "manifest_data"
+  ],
+  "properties": {
+    "type": { "const": "manifest" },
+    "operation": { "const": "manifest_show" },
+    "target": { "type": "string" },
+    "module": { "type": "string" },
+    "module_path": { "type": "string" },
+    "manifest_data": { "type": "object" },
+    "depends": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

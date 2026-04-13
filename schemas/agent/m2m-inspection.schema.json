@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/m2m-inspection.schema.json",
+  "type": "object",
+  "required": ["type", "operation", "model", "field", "relation_table"],
+  "properties": {
+    "type": { "const": "m2m_inspection" },
+    "operation": { "const": "inspect_m2m" },
+    "model": { "type": "string" },
+    "field": { "type": "string" },
+    "relation_table": { "type": "string" }
+  },
+  "additionalProperties": true
+}

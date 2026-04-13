@@ -113,6 +113,11 @@ agents. For the full workflow and JSON contract, see
 
    oduit --env dev agent context
    oduit --env dev agent inspect-addon my_partner
+   oduit --env dev agent inspect-ref base.action_partner_form
+   oduit --env dev agent inspect-model res.partner
+   oduit --env dev agent inspect-field res.partner email --with-db
+   oduit --env dev agent db-table res_partner
+   oduit --env dev agent manifest-check sale
    oduit --env dev agent get-model-fields res.partner --attributes string,type,required
    oduit --env dev agent locate-model res.partner --module my_partner
    oduit --env dev agent locate-field res.partner email3 --module my_partner

@@ -218,6 +218,22 @@ class AgentCommandImplementations:
     check_model_exists_command_impl: Any
     check_field_exists_command_impl: Any
     list_duplicates_command_impl: Any
+    inspect_ref_command_impl: Any
+    inspect_cron_command_impl: Any
+    inspect_modules_command_impl: Any
+    inspect_subtypes_command_impl: Any
+    inspect_model_command_impl: Any
+    inspect_field_command_impl: Any
+    db_table_command_impl: Any
+    db_column_command_impl: Any
+    db_constraints_command_impl: Any
+    db_tables_command_impl: Any
+    db_m2m_command_impl: Any
+    performance_slow_queries_command_impl: Any
+    performance_table_scans_command_impl: Any
+    performance_indexes_command_impl: Any
+    manifest_check_command_impl: Any
+    manifest_show_command_impl: Any
     install_module_command_impl: Any
     uninstall_module_command_impl: Any
     update_module_command_impl: Any

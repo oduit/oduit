@@ -262,6 +262,11 @@ def test_runtime_inspection_docs_cover_new_command_surface() -> None:
         "oduit --env dev inspect field res.partner email --with-db",
         "oduit --env dev db table res_partner",
         "oduit --env dev manifest check sale",
+        "oduit --env dev agent inspect-ref base.action_partner_form",
+        "oduit --env dev agent inspect-model res.partner",
+        "oduit --env dev agent inspect-field res.partner email --with-db",
+        "oduit --env dev agent db-table res_partner",
+        "oduit --env dev agent manifest-check sale",
     ]
 
     for path in targets:

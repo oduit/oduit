@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/table-scan-metrics.schema.json",
+  "type": "object",
+  "required": ["type", "operation", "tables", "limit"],
+  "properties": {
+    "type": { "const": "table_scan_metrics" },
+    "operation": { "const": "performance_table_scans" },
+    "tables": { "type": "array", "items": { "type": "object" } },
+    "limit": { "type": "integer" }
+  },
+  "additionalProperties": true
+}

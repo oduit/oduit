@@ -127,6 +127,22 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "model-existence.schema.json",
         SCHEMAS / "agent" / "field-existence.schema.json",
         SCHEMAS / "agent" / "addon-change-validation.schema.json",
+        SCHEMAS / "agent" / "xmlid-inspection.schema.json",
+        SCHEMAS / "agent" / "cron-inspection.schema.json",
+        SCHEMAS / "agent" / "module-inspection.schema.json",
+        SCHEMAS / "agent" / "subtype-inventory.schema.json",
+        SCHEMAS / "agent" / "model-inspection.schema.json",
+        SCHEMAS / "agent" / "field-inspection.schema.json",
+        SCHEMAS / "agent" / "table-description.schema.json",
+        SCHEMAS / "agent" / "column-description.schema.json",
+        SCHEMAS / "agent" / "constraint-inventory.schema.json",
+        SCHEMAS / "agent" / "table-inventory.schema.json",
+        SCHEMAS / "agent" / "m2m-inspection.schema.json",
+        SCHEMAS / "agent" / "slow-query-metrics.schema.json",
+        SCHEMAS / "agent" / "table-scan-metrics.schema.json",
+        SCHEMAS / "agent" / "index-usage-metrics.schema.json",
+        SCHEMAS / "agent" / "manifest-validation.schema.json",
+        SCHEMAS / "agent" / "manifest.schema.json",
     ]
     for schema_path in expected:
         assert schema_path.exists(), schema_path
@@ -156,108 +172,252 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
 
     with (
         patch("oduit.cli.app.ConfigLoader", return_value=loader),
-        patch(
-            "oduit.cli.app.OdooOperations.get_odoo_version",
-            return_value={"success": True, "version": "17.0"},
-        ),
-        patch(
-            "oduit.odoo_operations.OdooOperations.query_model",
-            side_effect=[
-                MagicMock(
-                    success=True,
-                    records=[
-                        {
-                            "name": "email3",
-                            "ttype": "char",
-                            "relation": False,
-                            "modules": "my_partner",
-                            "state": "base",
-                        }
-                    ],
-                    error=None,
-                ),
-                MagicMock(success=True, records=[], error=None),
-                MagicMock(
-                    success=True,
-                    records=[{"name": "my_partner", "state": "installed"}],
-                    error=None,
-                    error_type=None,
-                ),
-                MagicMock(
-                    success=True,
-                    records=[{"name": "my_partner", "state": "installed"}],
-                    error=None,
-                    error_type=None,
-                ),
-            ],
-        ),
-        patch(
-            "oduit.cli.app.OdooOperations.get_odoo_version",
-            return_value={"success": True, "version": "17.0"},
-        ),
-        patch(
-            "oduit.cli.app.OdooOperations.db_exists",
-            return_value={"success": True, "exists": True},
-        ),
-        patch(
-            "oduit.cli.app.OdooOperations.get_addon_install_state",
-            return_value=AddonInstallState(
-                success=True,
-                operation="get_addon_install_state",
-                module="my_partner",
-                record_found=True,
-                state="installed",
-                installed=True,
+        patch.multiple(
+            "oduit.cli.app.OdooOperations",
+            get_odoo_version=MagicMock(
+                return_value={"success": True, "version": "17.0"}
             ),
-        ),
-        patch(
-            "oduit.cli.app.OdooOperations.run_tests",
-            return_value={
-                "success": True,
-                "operation": "test",
-                "return_code": 0,
-                "total_tests": 1,
-                "passed_tests": 1,
-                "failed_tests": 0,
-                "error_tests": 0,
-                "failures": [],
-            },
-        ),
-        patch(
-            "oduit.cli.app.OdooOperations.get_model_fields",
-            return_value=MagicMock(
-                success=True,
-                error=None,
-                error_type=None,
-                to_dict=lambda: {
+            query_model=MagicMock(
+                side_effect=[
+                    MagicMock(
+                        success=True,
+                        records=[
+                            {
+                                "name": "email3",
+                                "ttype": "char",
+                                "relation": False,
+                                "modules": "my_partner",
+                                "state": "base",
+                            }
+                        ],
+                        error=None,
+                    ),
+                    MagicMock(success=True, records=[], error=None),
+                    MagicMock(
+                        success=True,
+                        records=[{"name": "my_partner", "state": "installed"}],
+                        error=None,
+                        error_type=None,
+                    ),
+                    MagicMock(
+                        success=True,
+                        records=[{"name": "my_partner", "state": "installed"}],
+                        error=None,
+                        error_type=None,
+                    ),
+                ]
+            ),
+            db_exists=MagicMock(return_value={"success": True, "exists": True}),
+            get_addon_install_state=MagicMock(
+                return_value=AddonInstallState(
+                    success=True,
+                    operation="get_addon_install_state",
+                    module="my_partner",
+                    record_found=True,
+                    state="installed",
+                    installed=True,
+                )
+            ),
+            run_tests=MagicMock(
+                return_value={
                     "success": True,
-                    "operation": "get_model_fields",
-                    "model": "res.partner",
-                    "attributes": ["string", "type", "required"],
-                    "field_names": ["email3", "name"],
-                    "field_definitions": {
-                        "email3": {"type": "char", "required": False},
-                        "name": {"type": "char", "required": True},
-                    },
-                },
+                    "operation": "test",
+                    "return_code": 0,
+                    "total_tests": 1,
+                    "passed_tests": 1,
+                    "failed_tests": 0,
+                    "error_tests": 0,
+                    "failures": [],
+                }
             ),
-        ),
-        patch(
-            "oduit.cli.app.OdooOperations.get_model_views",
-            return_value=ModelViewInventory(
-                model="res.partner",
-                requested_types=["form"],
-                primary_views=[
-                    ModelViewRecord(
-                        id=7,
-                        name="res.partner.form",
-                        view_type="form",
-                        mode="primary",
-                        priority=16,
-                        arch_db="<form/>",
-                    )
-                ],
-                view_counts={"total": 1, "primary": 1, "extension": 0, "form": 1},
+            get_model_fields=MagicMock(
+                return_value=MagicMock(
+                    success=True,
+                    error=None,
+                    error_type=None,
+                    to_dict=lambda: {
+                        "success": True,
+                        "operation": "get_model_fields",
+                        "model": "res.partner",
+                        "attributes": ["string", "type", "required"],
+                        "field_names": ["email3", "name"],
+                        "field_definitions": {
+                            "email3": {"type": "char", "required": False},
+                            "name": {"type": "char", "required": True},
+                        },
+                    },
+                )
+            ),
+            get_model_views=MagicMock(
+                return_value=ModelViewInventory(
+                    model="res.partner",
+                    requested_types=["form"],
+                    primary_views=[
+                        ModelViewRecord(
+                            id=7,
+                            name="res.partner.form",
+                            view_type="form",
+                            mode="primary",
+                            priority=16,
+                            arch_db="<form/>",
+                        )
+                    ],
+                    view_counts={"total": 1, "primary": 1, "extension": 0, "form": 1},
+                )
+            ),
+            inspect_ref=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "inspect_ref",
+                    "xmlid": "base.action_partner_form",
+                    "exists": True,
+                    "model": "ir.actions.act_window",
+                    "res_id": 7,
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            inspect_cron=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "inspect_cron",
+                    "xmlid": "base.ir_cron_autovacuum",
+                    "trigger_requested": False,
+                    "triggered": False,
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            inspect_modules=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "inspect_modules",
+                    "modules": [{"name": "my_partner", "state": "installed"}],
+                    "names": ["my_partner"],
+                    "total": 1,
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            inspect_subtypes=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "inspect_subtypes",
+                    "model": "res.partner",
+                    "subtypes": [{"name": "Partner Updated"}],
+                    "total": 1,
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            inspect_model=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "inspect_model",
+                    "model": "res.partner",
+                    "exists": True,
+                    "table": "res_partner",
+                    "field_count": 2,
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            inspect_field=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "inspect_field",
+                    "model": "res.partner",
+                    "field": "email3",
+                    "exists": True,
+                    "field_type": "char",
+                    "db_table_name": "res_partner",
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            describe_table=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "describe_table",
+                    "table_name": "res_partner",
+                    "columns": [{"column_name": "id", "ordinal_position": 1}],
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            describe_column=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "describe_column",
+                    "table_name": "res_partner",
+                    "column": {
+                        "column_name": "email3",
+                        "data_type": "character varying",
+                    },
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            list_constraints=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "list_constraints",
+                    "table_name": "res_partner",
+                    "constraints": [{"name": "res_partner_pkey"}],
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            list_tables=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "list_tables",
+                    "pattern": "res_%",
+                    "tables": ["res_partner"],
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            inspect_m2m=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "inspect_m2m",
+                    "model": "res.partner",
+                    "field": "category_id",
+                    "relation_table": "res_partner_res_category_rel",
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            performance_slow_queries=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "performance_slow_queries",
+                    "queries": [{"calls": 1, "total_time": 4.2}],
+                    "limit": 10,
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            performance_table_scans=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "performance_table_scans",
+                    "tables": [{"table_name": "res_partner", "seq_scan": 1}],
+                    "limit": 20,
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
+            ),
+            performance_indexes=MagicMock(
+                return_value={
+                    "success": True,
+                    "operation": "performance_indexes",
+                    "tables": [{"table_name": "res_partner", "idx_scan": 3}],
+                    "limit": 20,
+                    "read_only": True,
+                    "safety_level": "safe_read_only",
+                }
             ),
         ),
     ):
@@ -478,6 +638,157 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                         "my_partner",
                         "--allow-mutation",
                     ],
+                ).output
+            ),
+            "xmlid-inspection.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "inspect-ref",
+                        "base.action_partner_form",
+                    ],
+                ).output
+            ),
+            "cron-inspection.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "inspect-cron",
+                        "base.ir_cron_autovacuum",
+                    ],
+                ).output
+            ),
+            "module-inspection.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "inspect-modules",
+                        "--state",
+                        "installed",
+                    ],
+                ).output
+            ),
+            "subtype-inventory.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "inspect-subtypes",
+                        "res.partner",
+                    ],
+                ).output
+            ),
+            "model-inspection.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "inspect-model", "res.partner"],
+                ).output
+            ),
+            "field-inspection.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "inspect-field",
+                        "res.partner",
+                        "email3",
+                        "--with-db",
+                    ],
+                ).output
+            ),
+            "table-description.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "db-table", "res_partner"],
+                ).output
+            ),
+            "column-description.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "db-column", "res_partner", "email3"],
+                ).output
+            ),
+            "constraint-inventory.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "db-constraints", "res_partner"],
+                ).output
+            ),
+            "table-inventory.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "db-tables", "--like", "res_%"],
+                ).output
+            ),
+            "m2m-inspection.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "db-m2m",
+                        "res.partner",
+                        "category_id",
+                    ],
+                ).output
+            ),
+            "slow-query-metrics.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "performance-slow-queries",
+                    ],
+                ).output
+            ),
+            "table-scan-metrics.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "performance-table-scans",
+                    ],
+                ).output
+            ),
+            "index-usage-metrics.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "performance-indexes",
+                    ],
+                ).output
+            ),
+            "manifest-validation.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "manifest-check", "my_partner"],
+                ).output
+            ),
+            "manifest.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "manifest-show", "my_partner"],
                 ).output
             ),
         }

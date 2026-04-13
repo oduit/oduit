@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/module-inspection.schema.json",
+  "type": "object",
+  "required": ["type", "operation", "modules", "names", "total"],
+  "properties": {
+    "type": { "const": "module_inspection" },
+    "operation": { "const": "inspect_modules" },
+    "modules": { "type": "array", "items": { "type": "object" } },
+    "names": { "type": "array", "items": { "type": "string" } },
+    "total": { "type": "integer" }
+  },
+  "additionalProperties": true
+}
