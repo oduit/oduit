@@ -1,6 +1,112 @@
 Changelog
 =========
 
+0.4.0
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Start working on agent mode
+
+- Improve agent capabilities
+
+- Add api models for better parsing available odoo models
+
+- New find-model-extensions command
+
+- Add summary
+
+- Add command for getting model views
+
+- Improved right management for agents
+
+- New command validate-addon-change
+
+- Cleanup after refactoring
+
+- Add command to get installed addons
+
+- Add uninstall command
+
+- New addon-info command
+
+- Improved structure
+
+- New runtime inspection and review commands
+
+- Adapt new rjntime inspection for agent mode
+
+- Add mutation policy
+
+- Edit config command
+
+- New right management, db risk level removed
+
+- Use next port when http port is blocked
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- Improve test parsing for agents
+
+- Better error output
+
+- Integration tests
+
+- Unit test
+
+- Fix for windows
+
+- Integration test
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update changelog
+
+- Update doc
+
+- Update readme
+
+- Use common odoo model
+
+- Add example for model and view inspection
+
+- Update doc for agent commands
+
+
+
+Refactor
+~~~~~~~~~~~~~~~~~~~~~
+
+- Part 1
+
+- Part 2
+
+- Part 3
+
+- Part 4
+
+- Part 5
+
+- Part 6
+
+
+
+Miscellaneous
+~~~~~~~~~~~~~~~~~~~~~
+
+- Fix package
+
+- Add missing logs
+
+
 0.3.0
 ----------
 
