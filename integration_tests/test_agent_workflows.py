@@ -256,8 +256,8 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         tests_payload,
         payload_type="test_summary",
         operation="test_summary",
-        read_only=False,
-        safety_level="controlled_runtime_mutation",
+        read_only=True,
+        safety_level="safe_read_only",
     )
     assert tests_payload["selected_modules"] == ["e"]
 

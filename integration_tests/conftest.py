@@ -27,25 +27,42 @@ def _ensure_integration_database(config: dict[str, Any]) -> None:
 
     ops = OdooOperations(config, verbose=False)
     exists_result = ops.db_exists(with_sudo=False, suppress_output=True)
-    if exists_result.get("success", False) and exists_result.get("exists", False):
+    create_result: dict[str, Any] = {}
+    if not (exists_result.get("success", False) and exists_result.get("exists", False)):
+        create_result = ops.create_db(
+            with_sudo=True,
+            suppress_output=True,
+            db_user=str(config.get("db_user")) if config.get("db_user") else None,
+        )
+        exists_after_create = ops.db_exists(with_sudo=False, suppress_output=True)
+        if not (
+            exists_after_create.get("success", False)
+            and exists_after_create.get("exists", False)
+        ):
+            reason = (
+                create_result.get("error")
+                or exists_after_create.get("error")
+                or exists_result.get("error")
+                or f"Database '{db_name}' is unavailable"
+            )
+            pytest.skip(f"Integration database is unavailable: {reason}")
+
+    base_state = ops.get_addon_install_state("base")
+    if base_state.success and base_state.installed:
         return
 
-    create_result = ops.create_db(
-        with_sudo=True,
-        suppress_output=True,
-        db_user=str(config.get("db_user")) if config.get("db_user") else None,
-    )
-    exists_after_create = ops.db_exists(with_sudo=False, suppress_output=True)
-    if exists_after_create.get("success", False) and exists_after_create.get(
-        "exists", False
-    ):
+    init_result = ops.install_module("base", suppress_output=True)
+    base_state_after_init = ops.get_addon_install_state("base")
+    if base_state_after_init.success and base_state_after_init.installed:
         return
 
     reason = (
-        create_result.get("error")
-        or exists_after_create.get("error")
+        init_result.get("error")
+        or base_state_after_init.error
+        or base_state.error
+        or create_result.get("error")
         or exists_result.get("error")
-        or f"Database '{db_name}' is unavailable"
+        or f"Database '{db_name}' is unavailable or not initialized"
     )
     pytest.skip(f"Integration database is unavailable: {reason}")
 
