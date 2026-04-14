@@ -1,0 +1,8 @@
+2026-04-10 08:12:12,100 1413297 INFO test_db odoo.addons.test_module.tests.test_basic: ======================================================================
+2026-04-10 08:12:12,101 1413297 ERROR test_db odoo.addons.test_module.tests.test_basic: FAIL: BasicTestCase.test_update_record
+Traceback (most recent call last):
+  File "/custom/addons/test_module/tests/test_basic.py", line 28,
+in test_update_record
+    self.assertTrue(record.active)
+AssertionError: False is not true
+2026-04-10 08:12:12,300 1413297 ERROR test_db odoo.tests.result: 1 failed, 0 error(s) of 6 tests when loading database 'test_db'

@@ -1,0 +1,8 @@
+2026-04-09 13:39:42,270 1413297 INFO odoo17 odoo.addons.dvo.tests.test_dvo: Starting TestDVO.test_find_dvo_id ...
+2026-04-09 13:39:42,280 1413297 INFO odoo17 odoo.addons.dvo.tests.test_dvo: ======================================================================
+2026-04-09 13:39:42,280 1413297 ERROR odoo17 odoo.addons.dvo.tests.test_dvo: FAIL: TestDVO.test_find_dvo_id
+Traceback (most recent call last):
+  File "/home/nahrstaedt/src/odoo17/odoo-17-addons/addons/dvo/tests/test_dvo.py", line 28, in test_find_dvo_id
+    self.assertEqual(self.dvo_set1_team1.zone_count, 2)
+AssertionError: 1 != 2
+2026-04-09 13:41:01,686 1414549 ERROR odoo17 odoo.tests.result: 1 failed, 0 error(s) of 37 tests when loading database 'odoo17'

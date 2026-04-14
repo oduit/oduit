@@ -1,0 +1,4 @@
+2025-09-10 08:04:38,822 65826 INFO test_db_17_itcos2 odoo.modules.graph: module fastapi_reseller: Unmet dependencies: ti4health_shopify
+2025-09-10 08:04:38,822 65826 INFO test_db_17_itcos2 odoo.modules.loading: loading 88 modules...
+2025-09-10 08:04:39,605 65826 INFO test_db_17_itcos2 odoo.modules.loading: 88 modules loaded in 0.78s, 0 queries (+0 extra)
+2025-09-10 08:04:39,773 65826 ERROR test_db_17_itcos2 odoo.modules.loading: Some modules are not loaded, some dependencies or manifest may be missing: ['fastapi_reseller']
