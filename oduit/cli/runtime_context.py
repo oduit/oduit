@@ -200,6 +200,7 @@ class AgentCommandImplementations:
 
     context_command_impl: Any
     addon_info_command_impl: Any
+    addon_doc_command_impl: Any
     inspect_addon_command_impl: Any
     plan_update_command_impl: Any
     prepare_addon_change_command_impl: Any

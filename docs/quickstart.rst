@@ -73,6 +73,8 @@ Addon Intelligence
    oduit --env dev list-depends sale
    oduit --env dev install-order sale,purchase
    oduit --env dev impact-of-update sale
+   oduit --env dev docs addon sale --source-only
+   oduit --env dev docs dependency-graph --modules sale,purchase
 
 Operations
 ~~~~~~~~~~
@@ -113,6 +115,7 @@ agents. For the full workflow and JSON contract, see
 
    oduit --env dev agent context
    oduit --env dev agent inspect-addon my_partner
+   oduit --env dev agent addon-doc my_partner
    oduit --env dev agent inspect-ref base.action_partner_form
    oduit --env dev agent inspect-model res.partner
    oduit --env dev agent inspect-field res.partner email --with-db
@@ -148,6 +151,7 @@ High-level Operations
    version = ops.get_odoo_version(suppress_output=True)
    model = ops.inspect_model("res.partner")
    field = ops.inspect_field("res.partner", "email", with_db=True)
+   addon_docs = ops.build_addon_documentation("sale", source_only=True)
 
 Addon Analysis
 ~~~~~~~~~~~~~~

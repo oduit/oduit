@@ -613,3 +613,89 @@ class ModelExtensionInventory(DictModel):
     scanned_python_files: list[str] = dataclass_field(default_factory=list)
     warnings: list[str] = dataclass_field(default_factory=list)
     remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class DocumentationDiagram(DictModel):
+    """Rendered documentation diagram artifact."""
+
+    kind: str
+    title: str
+    format: str
+    content: str
+
+
+@dataclass
+class DocumentSection(DictModel):
+    """Rendered documentation section."""
+
+    title: str
+    markdown: str
+    summary: str = ""
+    order: int = 0
+
+
+@dataclass
+class ModelDocumentation(DictModel):
+    """Documentation bundle for one model."""
+
+    model: str
+    database: str | None = None
+    source_only: bool = False
+    field_attributes: list[str] = dataclass_field(default_factory=list)
+    requested_view_types: list[str] = dataclass_field(default_factory=list)
+    extension_inventory: ModelExtensionInventory | None = None
+    field_metadata: ModelFieldsResult | None = None
+    view_inventory: ModelViewInventory | None = None
+    diagrams: list[DocumentationDiagram] = dataclass_field(default_factory=list)
+    sections: list[DocumentSection] = dataclass_field(default_factory=list)
+    markdown: str = ""
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class AddonDocumentationModel(DictModel):
+    """Per-model documentation detail inside one addon bundle."""
+
+    model: str
+    relation_kinds: list[str] = dataclass_field(default_factory=list)
+    source_entries: list[AddonModelEntry] = dataclass_field(default_factory=list)
+    documentation: ModelDocumentation | None = None
+
+
+@dataclass
+class AddonDocumentation(DictModel):
+    """Documentation bundle for one addon."""
+
+    module: str
+    database: str | None = None
+    source_only: bool = False
+    addon_info: AddonInfo | None = None
+    dependency_graph: dict[str, Any] = dataclass_field(default_factory=dict)
+    model_inventory: AddonModelInventory | None = None
+    models: list[AddonDocumentationModel] = dataclass_field(default_factory=list)
+    recommended_tests: dict[str, Any] = dataclass_field(default_factory=dict)
+    diagrams: list[DocumentationDiagram] = dataclass_field(default_factory=list)
+    sections: list[DocumentSection] = dataclass_field(default_factory=list)
+    markdown: str = ""
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class DependencyGraphDocumentation(DictModel):
+    """Documentation bundle for addon dependency graphs."""
+
+    modules: list[str] = dataclass_field(default_factory=list)
+    database: str | None = None
+    source_only: bool = False
+    installed_only: bool = False
+    transitive: bool = True
+    dependency_graph: dict[str, Any] = dataclass_field(default_factory=dict)
+    installed_addons: InstalledAddonInventory | None = None
+    diagrams: list[DocumentationDiagram] = dataclass_field(default_factory=list)
+    sections: list[DocumentSection] = dataclass_field(default_factory=list)
+    markdown: str = ""
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)

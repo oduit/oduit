@@ -30,6 +30,10 @@ Command tiers:
      - ``stable_for_agents``
      - ``safe_read_only``
      - Return a combined manifest, source, and runtime addon summary.
+   * - ``addon-doc``
+     - ``stable_for_agents``
+     - ``safe_read_only``
+     - Return a structured addon documentation bundle.
    * - ``plan-update``
      - ``stable_for_agents``
      - ``safe_read_only``

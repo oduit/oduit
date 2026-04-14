@@ -1,5 +1,6 @@
 from .database import DatabaseOperationsService
 from .discovery import DiscoveryOperationsService
+from .documentation import DocumentationOperationsService
 from .query import QueryOperationsService
 from .runtime import RuntimeOperationsService
 from .source_analysis import SourceAnalysisOperationsService

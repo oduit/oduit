@@ -18,7 +18,7 @@ Command Families
 Default to the read-only inspection and planning commands:
 
 * ``context``
-* ``inspect-addon`` and ``inspect-addons``
+* ``inspect-addon``, ``inspect-addons``, and ``addon-doc``
 * ``plan-update``
 * ``preflight-addon-change``
 * ``prepare-addon-change``
@@ -57,6 +57,7 @@ this loop:
 
       oduit --env dev agent context
       oduit --env dev agent inspect-addon my_partner
+      oduit --env dev agent addon-doc my_partner
 
 2. Inspect the model from the database and the addon source tree.
 
@@ -258,6 +259,8 @@ Published JSON Schema artifacts live under ``schemas/``:
 
 * ``schemas/result-envelope.schema.json``
 * ``schemas/agent/environment-context.schema.json``
+* ``schemas/agent/addon-info.schema.json``
+* ``schemas/agent/addon-documentation.schema.json``
 * ``schemas/agent/addon-inspection.schema.json``
 * ``schemas/agent/update-plan.schema.json``
 * ``schemas/agent/query-result.schema.json``

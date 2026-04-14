@@ -78,6 +78,9 @@ from .agent.query import agent_query_model_command as _agent_query_model_command
 from .agent.query import agent_read_record_command as _agent_read_record_command
 from .agent.query import agent_search_count_command as _agent_search_count_command
 from .agent.read_only import (
+    agent_addon_doc_command as _agent_addon_doc_command,
+)
+from .agent.read_only import (
     agent_addon_info_command as _agent_addon_info_command,
 )
 from .agent.read_only import (
@@ -242,6 +245,7 @@ from .init_env import (
 from .main_support import handle_no_subcommand
 from .register_agent_commands import register_agent_commands
 from .register_app_commands import register_app_commands
+from .register_documentation_commands import register_documentation_commands
 from .register_inspection_commands import register_inspection_commands
 from .runtime_context import (
     AgentCommandImplementations,
@@ -545,6 +549,7 @@ _agent_registration_context = AgentRegistrationContext(
     implementations=AgentCommandImplementations(
         context_command_impl=_agent_context_command,
         addon_info_command_impl=_agent_addon_info_command,
+        addon_doc_command_impl=_agent_addon_doc_command,
         inspect_addon_command_impl=_agent_inspect_addon_command,
         plan_update_command_impl=_agent_plan_update_command,
         prepare_addon_change_command_impl=_agent_prepare_addon_change_command,
@@ -651,6 +656,7 @@ def main(
 
 
 register_app_commands(_app_registration_context)
+register_documentation_commands(_app_registration_context)
 register_inspection_commands(_app_registration_context)
 register_agent_commands(_agent_registration_context)
 

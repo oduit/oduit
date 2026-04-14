@@ -16,9 +16,14 @@ contract changes such as new stable fields or failure codes.
 - `ManifestCollection`
 - `AddonsPathManager`
 - `EnvironmentSource`, `BinaryProbe`, `AddonsPathStatus`, `OdooVersionInfo`
-- `DatabaseSummary`, `EnvironmentContext`, `AddonInstallState`, `AddonInspection`
-- `AddonInfo`
+- `DatabaseSummary`, `EnvironmentContext`, `DocumentationDiagram`, `DocumentSection`
+- `AddonInfo`, `AddonInstallState`, `AddonInspection`
+- `AddonDocumentationModel`, `AddonDocumentation`, `ModelDocumentation`
+- `DependencyGraphDocumentation`
 - `InstalledAddonRecord`, `InstalledAddonInventory`, `UpdatePlan`
+- `ModelSourceCandidate`, `ModelSourceLocation`
+- `FieldSourceCandidate`, `FieldSourceLocation`
+- `AddonTestFile`, `AddonTestInventory`
 - `QueryModelResult`, `RecordReadResult`, `SearchCountResult`, `ModelFieldsResult`
 - `ModuleManager`
 - `ConfigError`
@@ -73,6 +78,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `version`               | `human_oriented` | Get Odoo version from odoo-bin.                                      |
 | `exec`                  | `human_oriented` | Execute trusted Python within Odoo and return a structured result.   |
 | `exec-file`             | `human_oriented` | Execute trusted Python from a file within Odoo.                      |
+| `docs`                  | `human_oriented` | Generate addon and model documentation                               |
 | `inspect`               | `human_oriented` | Runtime model, field, XMLID, and module inspection                   |
 | `db`                    | `human_oriented` | Database inspection through the live Odoo connection                 |
 | `performance`           | `human_oriented` | Read-only PostgreSQL performance inspection                          |
@@ -85,6 +91,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `context`                  | `stable_for_agents` | `safe_read_only`              | Return a structured environment snapshot for automation.               |
 | `inspect-addon`            | `stable_for_agents` | `safe_read_only`              | Return a one-shot addon inspection payload.                            |
 | `addon-info`               | `stable_for_agents` | `safe_read_only`              | Return a combined manifest, source, and runtime addon summary.         |
+| `addon-doc`                | `stable_for_agents` | `safe_read_only`              | Return a structured addon documentation bundle.                        |
 | `plan-update`              | `stable_for_agents` | `safe_read_only`              | Return a structured, read-only update plan for a module.               |
 | `prepare-addon-change`     | `beta_for_agents`   | `safe_read_only`              | Bundle the common read-only planning steps for one addon change.       |
 | `locate-model`             | `beta_for_agents`   | `safe_read_only`              | Locate likely source files for a model extension inside one addon.     |
@@ -139,8 +146,8 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 
 - `run_odoo()`
 - `run_shell()`
-- `update_module()`
 - `install_module()`
+- `update_module()`
 - `uninstall_module()`
 - `export_module_language()`
 - `run_tests()`
@@ -154,9 +161,28 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 - `inspect_addon()`
 - `addon_info()`
 - `plan_update()`
+- `inspect_addons()`
+- `locate_model()`
+- `locate_field()`
+- `list_addon_tests()`
+- `list_addon_models()`
+- `recommend_tests()`
+- `find_model_extensions()`
+- `list_duplicates()`
+- `list_addons_inventory()`
 - `get_addon_install_state()`
 - `list_installed_dependents()`
 - `list_installed_addons()`
+- `dependency_graph()`
+- `build_addon_documentation()`
+- `build_model_documentation()`
+- `build_dependency_graph_documentation()`
+- `query_model()`
+- `read_record()`
+- `search_count()`
+- `get_model_fields()`
+- `get_model_views()`
+- `execute_python_code()`
 - `execute_code()`
 - `inspect_ref()`
 - `inspect_cron()`
@@ -173,11 +199,6 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 - `performance_table_scans()`
 - `performance_slow_queries()`
 - `performance_indexes()`
-- `query_model()`
-- `read_record()`
-- `search_count()`
-- `get_model_fields()`
-- `execute_python_code()`
 
 ## `ModuleManager` methods
 

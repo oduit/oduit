@@ -68,6 +68,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     os_module = context.dependencies.os_module
     context_command_impl = context.implementations.context_command_impl
     addon_info_command_impl = context.implementations.addon_info_command_impl
+    addon_doc_command_impl = context.implementations.addon_doc_command_impl
     inspect_addon_command_impl = context.implementations.inspect_addon_command_impl
     plan_update_command_impl = context.implementations.plan_update_command_impl
     prepare_addon_change_command_impl = (
@@ -196,6 +197,62 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             module=module,
             database=database,
             timeout=timeout,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            odoo_operations_cls=get_odoo_operations_cls(),
+            module_not_found_error_cls=module_not_found_error_cls,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("addon-doc")
+    def agent_addon_doc(
+        ctx: typer.Context,
+        module: str = typer.Argument(help="Addon to document"),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Runtime query timeout in seconds"
+        ),
+        source_only: bool = typer.Option(
+            False, "--source-only", help="Skip runtime/database enrichment"
+        ),
+        include_arch: bool = typer.Option(
+            False, "--include-arch", help="Include raw view XML in payloads"
+        ),
+        attributes: str | None = typer.Option(
+            "string,type,required,readonly,store,relation",
+            "--attributes",
+            help="Comma-separated field metadata attributes",
+        ),
+        types: str | None = typer.Option(
+            None,
+            "--types",
+            help="Comma-separated view types, e.g. form,tree,kanban,search",
+        ),
+        max_models: int | None = typer.Option(
+            None,
+            "--max-models",
+            help="Limit the number of per-model documentation sections",
+        ),
+        max_fields_per_model: int | None = typer.Option(
+            None,
+            "--max-fields-per-model",
+            help="Limit the number of runtime fields shown per model",
+        ),
+    ) -> None:
+        """Return a structured addon documentation bundle."""
+        addon_doc_command_impl(
+            ctx,
+            module=module,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            attributes=attributes,
+            types=types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
             resolve_agent_global_config_fn=resolve_agent_global_config_fn,
             agent_fail_fn=agent_fail_fn,
             agent_payload_fn=agent_payload_fn,

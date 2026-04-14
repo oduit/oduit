@@ -69,12 +69,14 @@ TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
     "init": HUMAN_ORIENTED,
     "export-lang": HUMAN_ORIENTED,
     "version": HUMAN_ORIENTED,
+    "docs": HUMAN_ORIENTED,
 }
 
 AGENT_COMMAND_METADATA: dict[str, tuple[CommandTier, str]] = {
     "context": (STABLE_FOR_AGENTS, "safe_read_only"),
     "inspect-addon": (STABLE_FOR_AGENTS, "safe_read_only"),
     "addon-info": (STABLE_FOR_AGENTS, "safe_read_only"),
+    "addon-doc": (STABLE_FOR_AGENTS, "safe_read_only"),
     "plan-update": (STABLE_FOR_AGENTS, "safe_read_only"),
     "prepare-addon-change": (BETA_FOR_AGENTS, "safe_read_only"),
     "locate-model": (BETA_FOR_AGENTS, "safe_read_only"),

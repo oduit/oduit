@@ -14,22 +14,26 @@ from manifestoo_core.odoo_series import OdooSeries
 from ._operations import (
     DatabaseOperationsService,
     DiscoveryOperationsService,
+    DocumentationOperationsService,
     QueryOperationsService,
     RuntimeOperationsService,
     SourceAnalysisOperationsService,
     UnsafeExecutionOperationsService,
 )
 from .api_models import (
+    AddonDocumentation,
     AddonInfo,
     AddonInspection,
     AddonInstallState,
     AddonModelInventory,
     AddonTestInventory,
     BinaryProbe,
+    DependencyGraphDocumentation,
     EnvironmentContext,
     FieldSourceLocation,
     InstalledAddonInventory,
     InstalledAddonRecord,
+    ModelDocumentation,
     ModelExtensionInventory,
     ModelFieldsResult,
     ModelSourceLocation,
@@ -74,6 +78,7 @@ class OdooOperations:
         self._runtime_service = RuntimeOperationsService(self)
         self._database_service = DatabaseOperationsService(self)
         self._discovery_service = DiscoveryOperationsService(self)
+        self._documentation_service = DocumentationOperationsService(self)
         self._source_analysis_service = SourceAnalysisOperationsService(self)
         self._query_service = QueryOperationsService(self)
         self._unsafe_execution_service = UnsafeExecutionOperationsService(self)
@@ -499,6 +504,78 @@ class OdooOperations:
     def dependency_graph(self, module_names: list[str]) -> dict[str, Any]:
         """Return dependency graph data for one or more addons."""
         return self._discovery_service.dependency_graph(module_names=module_names)
+
+    def build_addon_documentation(
+        self,
+        module_name: str,
+        *,
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+    ) -> AddonDocumentation:
+        """Build one addon documentation bundle."""
+        return self._documentation_service.build_addon_documentation(
+            module_name,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+        )
+
+    def build_model_documentation(
+        self,
+        model: str,
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_fields: int | None = None,
+    ) -> ModelDocumentation:
+        """Build one model documentation bundle."""
+        return self._documentation_service.build_model_documentation(
+            model,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_fields=max_fields,
+        )
+
+    def build_dependency_graph_documentation(
+        self,
+        module_names: list[str],
+        *,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        installed_only: bool = False,
+        transitive: bool = True,
+    ) -> DependencyGraphDocumentation:
+        """Build dependency graph documentation for one or more addons."""
+        return self._documentation_service.build_dependency_graph_documentation(
+            module_names,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            installed_only=installed_only,
+            transitive=transitive,
+        )
 
     def query_model(
         self,

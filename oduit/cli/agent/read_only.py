@@ -723,6 +723,84 @@ def agent_addon_info_command(
     agent_emit_payload_fn(payload)
 
 
+def agent_addon_doc_command(
+    ctx: typer.Context,
+    *,
+    module: str,
+    database: str | None,
+    timeout: float,
+    source_only: bool,
+    include_arch: bool,
+    attributes: str | None,
+    types: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    odoo_operations_cls: Any,
+    module_not_found_error_cls: Any,
+    safe_read_only: str,
+) -> None:
+    """Return a structured addon documentation bundle."""
+    operation = "addon_doc"
+    result_type = "addon_documentation"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    field_attributes = (
+        sorted({item.strip() for item in attributes.split(",") if item.strip()})
+        if attributes
+        else []
+    )
+    view_types = (
+        sorted({item.strip() for item in types.split(",") if item.strip()})
+        if types
+        else []
+    )
+
+    ops = odoo_operations_cls(global_config.env_config, verbose=False)
+    try:
+        bundle = ops.build_addon_documentation(
+            module,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+        )
+    except module_not_found_error_cls as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ModuleNotFoundError",
+            details={"module": module},
+            remediation=[
+                "Verify that the addon exists in the configured addons paths.",
+                "Run `oduit agent context` to inspect the resolved addons paths.",
+            ],
+        )
+
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        bundle.to_dict(),
+        warnings=list(bundle.warnings),
+        remediation=list(bundle.remediation),
+        read_only=True,
+        safety_level=safe_read_only,
+    )
+    agent_emit_payload_fn(payload)
+
+
 def agent_plan_update_command(
     ctx: typer.Context,
     *,

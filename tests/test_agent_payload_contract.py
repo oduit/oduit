@@ -6,7 +6,16 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from oduit import ConfigError
-from oduit.api_models import AddonInstallState, ModelViewInventory, ModelViewRecord
+from oduit.api_models import (
+    AddonDocumentation,
+    AddonDocumentationModel,
+    AddonInstallState,
+    DocumentationDiagram,
+    ModelDocumentation,
+    ModelExtensionInventory,
+    ModelViewInventory,
+    ModelViewRecord,
+)
 from oduit.cli.app import app
 from oduit.config_provider import ConfigProvider
 
@@ -109,6 +118,7 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "result-envelope.schema.json",
         SCHEMAS / "agent" / "environment-context.schema.json",
         SCHEMAS / "agent" / "addon-info.schema.json",
+        SCHEMAS / "agent" / "addon-documentation.schema.json",
         SCHEMAS / "agent" / "addon-inspection.schema.json",
         SCHEMAS / "agent" / "update-plan.schema.json",
         SCHEMAS / "agent" / "addon-change-context.schema.json",
@@ -263,6 +273,40 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                         )
                     ],
                     view_counts={"total": 1, "primary": 1, "extension": 0, "form": 1},
+                )
+            ),
+            build_addon_documentation=MagicMock(
+                return_value=AddonDocumentation(
+                    module="my_partner",
+                    source_only=True,
+                    addon_info=None,
+                    dependency_graph={
+                        "nodes": ["base", "my_partner"],
+                        "edges": [{"source": "my_partner", "target": "base"}],
+                        "missing_dependencies": {},
+                    },
+                    models=[
+                        AddonDocumentationModel(
+                            model="res.partner",
+                            relation_kinds=["extends"],
+                            documentation=ModelDocumentation(
+                                model="res.partner",
+                                source_only=True,
+                                extension_inventory=ModelExtensionInventory(
+                                    model="res.partner"
+                                ),
+                            ),
+                        )
+                    ],
+                    diagrams=[
+                        DocumentationDiagram(
+                            kind="dependency_graph",
+                            title="Dependency graph",
+                            format="mermaid",
+                            content="flowchart LR",
+                        )
+                    ],
+                    markdown="# Addon documentation: my_partner\n",
                 )
             ),
             inspect_ref=MagicMock(
@@ -435,6 +479,12 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                 runner.invoke(
                     app,
                     ["--env", "dev", "agent", "addon-info", "my_partner"],
+                ).output
+            ),
+            "addon-documentation.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "addon-doc", "my_partner"],
                 ).output
             ),
             "update-plan.schema.json": json.loads(

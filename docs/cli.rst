@@ -981,6 +981,23 @@ Use the ``manifest`` command group for path-or-addon-name manifest workflows.
    oduit --env dev manifest check ./addons/my_module
    oduit --env dev manifest show sale
 
+docs
+^^^^
+
+Generate Markdown, Mermaid-backed, or JSON documentation bundles from addon and
+model metadata.
+
+.. code-block:: bash
+
+   oduit --env dev docs addon sale --source-only
+   oduit --env dev docs addon sale --output sale.md
+   oduit --env dev docs model res.partner --source-only --format json
+   oduit --env dev docs dependency-graph --modules sale,purchase
+
+Use ``--format markdown`` for rendered docs, ``--format json`` for structured
+automation output, and ``--output`` to write the generated Markdown directly to
+a file.
+
 Showcase Replacements
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -1123,6 +1140,16 @@ Inspect one addon with manifest, dependency, and impact data.
 .. code-block:: bash
 
    oduit --env dev agent inspect-addon sale
+
+addon-doc
+^^^^^^^^^
+
+Return a documentation bundle for one addon, including Mermaid diagram strings,
+model summaries, and optional rendered Markdown.
+
+.. code-block:: bash
+
+   oduit --env dev agent addon-doc sale
 
 inspect-addons
 ^^^^^^^^^^^^^^

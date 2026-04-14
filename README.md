@@ -16,6 +16,7 @@ intelligence:
 - `version` for Odoo version detection
 - `list-addons`, `list-installed-addons`, `print-manifest`, `list-manifest-values`
 - `list-depends`, `install-order`, `impact-of-update`
+- `docs addon`, `docs model`, `docs dependency-graph`
 - `exec`, `inspect`, `db`, `performance`, `manifest`
 - structured JSON output for CI and editor integrations
 
@@ -90,6 +91,8 @@ oduit --env dev list-manifest-values category
 oduit --env dev list-depends sale
 oduit --env dev install-order sale,purchase
 oduit --env dev impact-of-update sale
+oduit --env dev docs addon sale --source-only
+oduit --env dev docs dependency-graph --modules sale,purchase
 
 # Runtime inspection and trusted execution
 oduit --env dev exec "env['res.partner']._table"
@@ -110,6 +113,7 @@ oduit --env dev manifest check sale
 # Agent-first inspection
 oduit --env dev agent context
 oduit --env dev agent inspect-addon sale
+oduit --env dev agent addon-doc sale
 oduit --env dev agent plan-update sale
 oduit --env dev agent inspect-ref base.action_partner_form
 oduit --env dev agent inspect-model res.partner
@@ -255,6 +259,7 @@ db_result = ops.db_exists(suppress_output=True)
 
 context = ops.get_environment_context(env_name="dev", config_source="env")
 addon = ops.inspect_addon("sale")
+addon_docs = ops.build_addon_documentation("sale", source_only=True)
 plan = ops.plan_update("sale")
 state = ops.get_addon_install_state("sale")
 installed_addons = ops.list_installed_addons(modules=["sale"])

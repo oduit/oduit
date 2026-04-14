@@ -67,6 +67,10 @@ SAFE_READ_ONLY_OPERATIONS = {
     "performance_table_scans",
     "performance_slow_queries",
     "performance_indexes",
+    "docs_addon",
+    "docs_model",
+    "docs_dependency_graph",
+    "addon_doc",
 }
 
 CONTROLLED_RUNTIME_MUTATION_OPERATIONS = {
@@ -134,6 +138,9 @@ SAFE_READ_ONLY_TYPES = {
     "table_scan_metrics",
     "index_usage_metrics",
     "manifest_validation",
+    "addon_documentation",
+    "model_documentation",
+    "dependency_graph_documentation",
 }
 
 COMMON_ENVELOPE_KEYS = {

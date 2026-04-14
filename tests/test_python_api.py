@@ -4,12 +4,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from oduit import (
+    AddonDocumentation,
     AddonInfo,
     AddonInspection,
     AddonInstallState,
+    DependencyGraphDocumentation,
     EnvironmentContext,
     InstalledAddonInventory,
     InstalledAddonRecord,
+    ModelDocumentation,
     ModelFieldsResult,
     ModuleNotFoundError,
     ModuleUninstallError,
@@ -195,6 +198,75 @@ def test_plan_update_returns_typed_object(tmp_path: Path) -> None:
     assert plan.agent_runtime_db_mutation_requires_flag is False
     assert plan.risk_score > 0
     assert isinstance(plan.inspection, AddonInspection)
+
+
+def test_build_addon_documentation_returns_typed_bundle(tmp_path: Path) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+    (addon_dir / "tests").mkdir()
+    (addon_dir / "tests" / "test_partner.py").write_text("assert True\n")
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    bundle = ops.build_addon_documentation("my_partner", source_only=True)
+
+    assert isinstance(bundle, AddonDocumentation)
+    assert bundle.module == "my_partner"
+    assert bundle.addon_info is not None
+    assert bundle.addon_info.installed_state is None
+    assert any(diagram.kind == "dependency_graph" for diagram in bundle.diagrams)
+    assert "Addon documentation: my_partner" in bundle.markdown
+
+
+def test_build_model_documentation_returns_typed_bundle(tmp_path: Path) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    bundle = ops.build_model_documentation("res.partner", source_only=True)
+
+    assert isinstance(bundle, ModelDocumentation)
+    assert bundle.model == "res.partner"
+    assert bundle.field_metadata is None
+    assert bundle.extension_inventory is not None
+    assert "Model documentation: res.partner" in bundle.markdown
+
+
+def test_build_dependency_graph_documentation_returns_typed_bundle(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    _make_addon(addons_dir, "x_sale_ext", depends=["x_sale"])
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    bundle = ops.build_dependency_graph_documentation(["x_sale"], source_only=True)
+
+    assert isinstance(bundle, DependencyGraphDocumentation)
+    assert bundle.modules == ["x_sale"]
+    assert bundle.dependency_graph["nodes"] == ["base", "x_sale"]
+    assert "Dependency graph documentation" in bundle.markdown
 
 
 def test_inspect_addon_missing_module_raises(tmp_path: Path) -> None:

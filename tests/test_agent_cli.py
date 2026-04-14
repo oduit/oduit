@@ -9,9 +9,13 @@ from typer.testing import CliRunner
 
 from oduit import ConfigError
 from oduit.api_models import (
+    AddonDocumentation,
+    AddonDocumentationModel,
     AddonInstallState,
     InstalledAddonInventory,
     InstalledAddonRecord,
+    ModelDocumentation,
+    ModelExtensionInventory,
     ModelViewInventory,
     ModelViewRecord,
     QueryModelResult,
@@ -1396,6 +1400,57 @@ def test_agent_query_subcommands_use_odoo_query(
     assert payload["operation"] == expected_operation
     assert payload["read_only"] is True
     assert getattr(ops, ops_method).called
+
+
+def test_agent_addon_doc_returns_structured_bundle(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    bundle = AddonDocumentation(
+        module="my_partner",
+        source_only=True,
+        addon_info=None,
+        dependency_graph={
+            "nodes": ["base", "my_partner"],
+            "edges": [{"source": "my_partner", "target": "base"}],
+            "missing_dependencies": {},
+        },
+        models=[
+            AddonDocumentationModel(
+                model="res.partner",
+                relation_kinds=["extends"],
+                documentation=ModelDocumentation(
+                    model="res.partner",
+                    source_only=True,
+                    extension_inventory=ModelExtensionInventory(model="res.partner"),
+                ),
+            )
+        ],
+        markdown="# Addon documentation: my_partner\n",
+    )
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_addon_documentation.return_value = bundle
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "addon-doc", "my_partner"],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "addon_documentation"
+    assert payload["operation"] == "addon_doc"
+    assert payload["module"] == "my_partner"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    assert payload["markdown"] == "# Addon documentation: my_partner\n"
 
 
 def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
