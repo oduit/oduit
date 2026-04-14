@@ -168,9 +168,16 @@ class UpdatePlan(DictModel):
     ordering_constraints: list[str] = dataclass_field(default_factory=list)
     recommended_sequence: list[str] = dataclass_field(default_factory=list)
     backup_advised: bool = False
-    db_risk_level: str = "dev"
-    runtime_mutation_policy: str = "require_allow_mutation"
-    runtime_mutation_allowed: bool = True
+    write_protect_db: bool = False
+    agent_write_protect_db: bool = False
+    needs_mutation_flag: bool = False
+    agent_needs_mutation_flag: bool = False
+    human_runtime_db_mutation_policy: str = "allow"
+    human_runtime_db_mutation_allowed: bool = True
+    human_runtime_db_mutation_requires_flag: bool = False
+    agent_runtime_db_mutation_policy: str = "allow"
+    agent_runtime_db_mutation_allowed: bool = True
+    agent_runtime_db_mutation_requires_flag: bool = False
     risk_score: int = 0
     risk_level: str = "low"
     risk_factors: list[str] = dataclass_field(default_factory=list)

@@ -24,6 +24,7 @@ def create_db_command(
     with_sudo: bool,
     drop: bool,
     non_interactive: bool,
+    allow_mutation: bool,
     db_user: str | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
@@ -36,7 +37,7 @@ def create_db_command(
     require_cli_runtime_db_mutation_fn(
         global_config=global_config,
         env_config=env_config,
-        allow_mutation=True,
+        allow_mutation=allow_mutation,
         operation="create_db",
         action="database creation",
         print_command_error_result_fn=print_command_error_result_fn,

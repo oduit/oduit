@@ -733,7 +733,11 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
         trigger: bool = typer.Option(
             False, "--trigger", help="Trigger the cron after resolving it"
         ),
-        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm source mutation",
+        ),
         database: str | None = typer.Option(
             None, "--database", help="Override database name"
         ),
@@ -1088,7 +1092,14 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     def agent_install_module(
         ctx: typer.Context,
         module: str = typer.Argument(help="Module to install"),
-        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
+        ),
         dry_run: bool = typer.Option(False, "--dry-run"),
         without_demo: str | None = typer.Option(None, "--without-demo"),
         with_demo: bool = typer.Option(False, "--with-demo"),
@@ -1125,7 +1136,14 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     def agent_update_module(
         ctx: typer.Context,
         module: str = typer.Argument(help="Module to update"),
-        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
+        ),
         dry_run: bool = typer.Option(False, "--dry-run"),
         without_demo: str | None = typer.Option(None, "--without-demo"),
         language: str | None = language_option,
@@ -1162,7 +1180,14 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     def agent_uninstall_module(
         ctx: typer.Context,
         module: str = typer.Argument(help="Module to uninstall"),
-        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
+        ),
         allow_uninstall: bool = typer.Option(False, "--allow-uninstall"),
         dry_run: bool = typer.Option(False, "--dry-run"),
         compact: bool = typer.Option(False, "--compact"),
@@ -1192,7 +1217,14 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     def agent_create_addon(
         ctx: typer.Context,
         addon_name: str = typer.Argument(help="Addon to create"),
-        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
+        ),
         dry_run: bool = typer.Option(False, "--dry-run"),
         path: str | None = typer.Option(None, "--path"),
         template: AddonTemplate = addon_template_option,
@@ -1274,7 +1306,11 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
         compact: bool = typer.Option(False, "--compact"),
         log_level: LogLevel | None = log_level_option,
     ) -> None:
-        """Run tests and emit a normalized summary payload."""
+        """Run tests and emit a normalized summary payload.
+
+        `--allow-mutation` only matters when `--install` or `--update` is used
+        and config requires explicit mutation confirmation.
+        """
         test_summary_command_impl(
             ctx,
             module=module,
@@ -1295,6 +1331,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_require_runtime_db_mutation_fn=(agent_require_runtime_db_mutation_fn),
             build_agent_test_summary_details_fn=build_agent_test_summary_details_fn,
             odoo_operations_cls=get_odoo_operations_cls(),
+            safe_read_only=safe_read_only,
             controlled_runtime_mutation=controlled_runtime_mutation,
         )
 
@@ -1302,7 +1339,14 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     def agent_validate_addon_change(
         ctx: typer.Context,
         module: str = typer.Argument(help="Addon to validate end-to-end"),
-        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
+        ),
         install_if_needed: bool = typer.Option(False, "--install-if-needed"),
         update: bool = typer.Option(False, "--update"),
         test_tags: str | None = typer.Option(
@@ -1350,6 +1394,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             odoo_operations_cls=get_odoo_operations_cls(),
             module_not_found_error_cls=module_not_found_error_cls,
             config_error_cls=config_error_cls,
+            safe_read_only=safe_read_only,
             controlled_runtime_mutation=controlled_runtime_mutation,
         )
 

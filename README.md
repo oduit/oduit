@@ -43,8 +43,11 @@ odoo_bin = "./odoo/odoo-bin"
 [odoo_params]
 addons_path = "./addons"
 db_name = "project_dev"
-db_risk_level = "dev"
 allow_uninstall = false
+write_protect_db = false
+agent_write_protect_db = false
+needs_mutation_flag = false
+agent_needs_mutation_flag = false
 ```
 
 Then run:
@@ -124,27 +127,29 @@ oduit --env dev agent list-addon-tests my_partner --model res.partner --field em
 oduit --env dev agent resolve-config
 oduit --env dev agent query-model res.partner --fields name,email --limit 5
 oduit --env dev agent validate-addon-change my_partner --allow-mutation --update --discover-tests
-oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
+oduit --env dev agent test-summary --module my_partner --test-tags /my_partner
 oduit --env dev agent uninstall-module crm --dry-run
 
 # Operations
-oduit --env dev install sale --allow-mutation
-oduit --env dev update sale --allow-mutation
-oduit --env dev uninstall sale --allow-mutation --allow-uninstall
-oduit --env dev test --allow-mutation --test-tags /sale
+oduit --env dev install sale
+oduit --env dev update sale
+oduit --env dev uninstall sale --allow-uninstall
+oduit --env dev test --test-tags /sale
 oduit --env dev shell
 oduit --env dev --non-interactive create-db
 oduit --env dev create-addon my_custom_module --allow-mutation
 oduit --env dev export-lang sale --allow-mutation --language de_DE
 ```
 
-`db_risk_level` controls runtime DB mutation policy:
+Runtime DB mutation policy is controlled by explicit config flags:
 
-- `test`: runtime DB mutations are auto-allowed
-- `dev`: runtime DB mutations require `--allow-mutation`
-- `prod`: runtime DB mutations are blocked, even with `--allow-mutation`
+- `write_protect_db`: block runtime DB mutation for every caller
+- `needs_mutation_flag`: require `--allow-mutation` for human runtime DB mutations
+- `agent_write_protect_db`: block agent runtime DB mutation even when human mutation is allowed
+- `agent_needs_mutation_flag`: require `--allow-mutation` for agent runtime DB mutations
 
 This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`) and agent runtime mutation commands. Source mutations such as `create-addon` and `export-lang` still use their own explicit mutation gate.
+Plain `test` runs stay read-only; only `test --install/--update`, `agent test-summary --install/--update`, and `agent validate-addon-change` with install/update options enter the runtime DB mutation path.
 
 ## Inspection and Agent Workflows
 
@@ -201,7 +206,8 @@ structured agent commands such as `inspect-ref`, `inspect-model`,
 `performance-slow-queries`, `performance-table-scans`, `performance-indexes`,
 `manifest-check`, and `manifest-show`.
 For one-shot verification after an addon change, prefer
-`oduit --env <env> agent validate-addon-change <module> --allow-mutation`.
+`oduit --env <env> agent validate-addon-change <module>`, and add
+`--allow-mutation` only when using `--install-if-needed` or `--update`.
 Destructive uninstall support is disabled by default and requires both
 `allow_uninstall = true` in config and `--allow-uninstall` at execution time.
 Do not use `execute_python_code()` or `OdooCodeExecutor` for routine agent
@@ -217,7 +223,7 @@ oduit --env dev agent locate-model res.partner --module my_partner
 oduit --env dev agent locate-field res.partner email3 --module my_partner
 oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
 oduit --env dev agent validate-addon-change my_partner --allow-mutation --install-if-needed --update --discover-tests
-oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
+oduit --env dev agent test-summary --module my_partner --test-tags /my_partner
 ```
 
 For exact runtime/database parity checks during an investigation, use:

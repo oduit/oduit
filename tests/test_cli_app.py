@@ -424,29 +424,90 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
-    def test_install_command_requires_allow_mutation_on_dev(
-        self, mock_config_loader_class, mock_odoo_ops
-    ):
-        mock_loader_instance = MagicMock()
-        mock_loader_instance.load_config.return_value = self.mock_config
-        mock_config_loader_class.return_value = mock_loader_instance
-
-        result = self.runner.invoke(app, ["--env", "dev", "install", "sale"])
-
-        self.assertEqual(result.exit_code, 1)
-        self.assertIn("--allow-mutation", result.output)
-        mock_odoo_ops.assert_not_called()
-
-    @patch("oduit.cli.app.OdooOperations")
-    @patch("oduit.cli.app.ConfigLoader")
-    def test_install_command_is_auto_allowed_on_test_db(
+    def test_plain_test_command_ignores_mutation_flag_policy(
         self, mock_config_loader_class, mock_odoo_ops
     ):
         mock_loader_instance = MagicMock()
         mock_loader_instance.load_config.return_value = {
             **self.mock_config,
-            "db_risk_level": "test",
+            "needs_mutation_flag": True,
         }
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "test", "--test-tags", "/sale"]
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.run_tests.assert_called_once()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_test_install_requires_allow_mutation_when_configured(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "needs_mutation_flag": True,
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "test", "--install", "sale", "--test-tags", "/sale"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("needs_mutation_flag=true", result.output)
+        mock_odoo_ops.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_test_update_requires_allow_mutation_when_configured(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "needs_mutation_flag": True,
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "test", "--update", "sale", "--test-tags", "/sale"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("needs_mutation_flag=true", result.output)
+        mock_odoo_ops.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_install_command_requires_allow_mutation_when_configured(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "needs_mutation_flag": True,
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "install", "sale"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("needs_mutation_flag=true", result.output)
+        mock_odoo_ops.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_install_command_is_allowed_without_flag_by_default(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
         mock_ops_instance.install_module.return_value = {"success": True}
@@ -459,13 +520,13 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
-    def test_install_command_is_blocked_on_prod_even_with_flag(
+    def test_install_command_is_blocked_when_write_protected(
         self, mock_config_loader_class, mock_odoo_ops
     ):
         mock_loader_instance = MagicMock()
         mock_loader_instance.load_config.return_value = {
             **self.mock_config,
-            "db_risk_level": "prod",
+            "write_protect_db": True,
         }
         mock_config_loader_class.return_value = mock_loader_instance
 
@@ -474,7 +535,7 @@ class TestCLICommands(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 1)
-        self.assertIn("db_risk_level=prod", result.output)
+        self.assertIn("write_protect_db=true", result.output)
         mock_odoo_ops.assert_not_called()
 
     @patch("oduit.cli.app.OdooOperations")
@@ -572,13 +633,13 @@ class TestCLICommands(unittest.TestCase):
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("builtins.input")
-    def test_create_db_is_blocked_on_prod_before_prompt(
+    def test_create_db_is_blocked_when_write_protected(
         self, mock_input, mock_config_loader_class, mock_odoo_ops
     ):
         mock_loader_instance = MagicMock()
         mock_loader_instance.load_config.return_value = {
             **self.mock_config,
-            "db_risk_level": "prod",
+            "write_protect_db": True,
         }
         mock_config_loader_class.return_value = mock_loader_instance
 
@@ -587,7 +648,25 @@ class TestCLICommands(unittest.TestCase):
         self.assertEqual(result.exit_code, 1)
         mock_input.assert_not_called()
         mock_odoo_ops.assert_not_called()
-        self.assertIn("db_risk_level=prod", result.output)
+        self.assertIn("write_protect_db=true", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_create_db_requires_allow_mutation_when_configured(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "needs_mutation_flag": True,
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "create-db"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("needs_mutation_flag=true", result.output)
+        mock_odoo_ops.assert_not_called()
 
     @patch("oduit.cli.app.ConfigLoader")
     def test_print_config_command(self, mock_config_loader_class):
@@ -2117,7 +2196,10 @@ class TestInitCommandHelpers(unittest.TestCase):
         self.assertEqual(config["python_bin"], "/usr/bin/python3")
         self.assertEqual(config["odoo_bin"], "/usr/bin/odoo")
         self.assertEqual(config["coverage_bin"], "/usr/bin/coverage")
-        self.assertEqual(config["db_risk_level"], "dev")
+        self.assertFalse(config["write_protect_db"])
+        self.assertFalse(config["agent_write_protect_db"])
+        self.assertFalse(config["needs_mutation_flag"])
+        self.assertFalse(config["agent_needs_mutation_flag"])
 
     def test_build_initial_config_without_odoo(self):
         """Test _build_initial_config without odoo binary."""
@@ -2128,7 +2210,10 @@ class TestInitCommandHelpers(unittest.TestCase):
         self.assertEqual(config["python_bin"], "/usr/bin/python3")
         self.assertNotIn("odoo_bin", config)
         self.assertEqual(config["coverage_bin"], "/usr/bin/coverage")
-        self.assertEqual(config["db_risk_level"], "dev")
+        self.assertFalse(config["write_protect_db"])
+        self.assertFalse(config["agent_write_protect_db"])
+        self.assertFalse(config["needs_mutation_flag"])
+        self.assertFalse(config["agent_needs_mutation_flag"])
 
     def test_build_initial_config_without_coverage(self):
         """Test _build_initial_config without coverage binary."""
@@ -2139,7 +2224,10 @@ class TestInitCommandHelpers(unittest.TestCase):
         self.assertEqual(config["python_bin"], "/usr/bin/python3")
         self.assertEqual(config["odoo_bin"], "/usr/bin/odoo")
         self.assertIsNone(config["coverage_bin"])
-        self.assertEqual(config["db_risk_level"], "dev")
+        self.assertFalse(config["write_protect_db"])
+        self.assertFalse(config["agent_write_protect_db"])
+        self.assertFalse(config["needs_mutation_flag"])
+        self.assertFalse(config["agent_needs_mutation_flag"])
 
     @patch("os.path.exists")
     @patch("oduit.cli.app.ConfigLoader")
@@ -2336,7 +2424,10 @@ class TestInitCommandHelpers(unittest.TestCase):
             },
             "odoo_params": {
                 "db_name": "test_db",
-                "db_risk_level": "dev",
+                "write_protect_db": False,
+                "agent_write_protect_db": False,
+                "needs_mutation_flag": False,
+                "agent_needs_mutation_flag": False,
                 "addons_path": ["/path/one", "/path/two"],
             },
         }

@@ -371,15 +371,17 @@ def test_command(
 ) -> None:
     """Run module tests."""
     global_config, env_config = resolve_command_env_config_fn(ctx)
-    require_cli_runtime_db_mutation_fn(
-        global_config=global_config,
-        env_config=env_config,
-        allow_mutation=allow_mutation,
-        operation="test",
-        action="test execution",
-        print_command_error_result_fn=print_command_error_result_fn,
-        confirmation_required_error_fn=confirmation_required_error_fn,
-    )
+    is_runtime_db_mutation = bool(install or update)
+    if is_runtime_db_mutation:
+        require_cli_runtime_db_mutation_fn(
+            global_config=global_config,
+            env_config=env_config,
+            allow_mutation=allow_mutation,
+            operation="test",
+            action="test execution",
+            print_command_error_result_fn=print_command_error_result_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+        )
     odoo_operations = build_odoo_operations_fn(global_config)
     result = odoo_operations.run_tests(
         None,

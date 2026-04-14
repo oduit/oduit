@@ -592,6 +592,7 @@ def agent_validate_addon_change_command(
     odoo_operations_cls: Any,
     module_not_found_error_cls: Any,
     config_error_cls: Any,
+    safe_read_only: str,
     controlled_runtime_mutation: str,
 ) -> None:
     """Validate an addon change with one aggregate structured payload."""
@@ -602,14 +603,16 @@ def agent_validate_addon_change_command(
         agent_fail_fn(operation, result_type, "No environment configuration available")
     assert global_config.env_config is not None
 
-    agent_require_runtime_db_mutation_fn(
-        global_config.env_config,
-        allow_mutation=allow_mutation,
-        operation=operation,
-        result_type=result_type,
-        action="addon change validation",
-        safety_level=controlled_runtime_mutation,
-    )
+    is_runtime_db_mutation = bool(install_if_needed or update)
+    if is_runtime_db_mutation:
+        agent_require_runtime_db_mutation_fn(
+            global_config.env_config,
+            allow_mutation=allow_mutation,
+            operation=operation,
+            result_type=result_type,
+            action="addon change validation",
+            safety_level=controlled_runtime_mutation,
+        )
 
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
     resolved_test_tags = test_tags or f"/{module}"
@@ -705,8 +708,12 @@ def agent_validate_addon_change_command(
                     remediation=remediation,
                     error=result.get("error"),
                     error_type=result.get("error_type"),
-                    read_only=False,
-                    safety_level=controlled_runtime_mutation,
+                    read_only=not is_runtime_db_mutation,
+                    safety_level=(
+                        controlled_runtime_mutation
+                        if is_runtime_db_mutation
+                        else safe_read_only
+                    ),
                 ),
                 module_action_started,
             )
@@ -747,8 +754,12 @@ def agent_validate_addon_change_command(
                 remediation=test_remediation,
                 error=test_result.get("error"),
                 error_type=test_result.get("error_type"),
-                read_only=False,
-                safety_level=controlled_runtime_mutation,
+                read_only=not is_runtime_db_mutation,
+                safety_level=(
+                    controlled_runtime_mutation
+                    if is_runtime_db_mutation
+                    else safe_read_only
+                ),
             ),
             module_tests_started,
         )
@@ -795,8 +806,10 @@ def agent_validate_addon_change_command(
         warnings=warnings,
         errors=errors,
         remediation=remediation,
-        read_only=False,
-        safety_level=controlled_runtime_mutation,
+        read_only=not is_runtime_db_mutation,
+        safety_level=(
+            controlled_runtime_mutation if is_runtime_db_mutation else safe_read_only
+        ),
         error=error,
         error_type=error_type,
     )

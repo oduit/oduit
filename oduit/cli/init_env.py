@@ -60,12 +60,15 @@ def build_initial_config(
     env_config: dict[str, Any] = {
         "python_bin": python_bin,
         "coverage_bin": coverage_bin,
+        "write_protect_db": False,
+        "agent_write_protect_db": False,
+        "needs_mutation_flag": False,
+        "agent_needs_mutation_flag": False,
     }
 
     if odoo_bin:
         env_config["odoo_bin"] = odoo_bin
 
-    env_config["db_risk_level"] = "dev"
     return env_config
 
 
@@ -159,8 +162,14 @@ def display_config_summary(env_config: dict[str, Any]) -> None:
     if isinstance(params, dict):
         if params.get("db_name"):
             print_info(f"  db_name: {params['db_name']}")
-        if params.get("db_risk_level"):
-            print_info(f"  db_risk_level: {params['db_risk_level']}")
+        for key in (
+            "write_protect_db",
+            "agent_write_protect_db",
+            "needs_mutation_flag",
+            "agent_needs_mutation_flag",
+        ):
+            if key in params:
+                print_info(f"  {key}: {params[key]}")
         if params.get("addons_path"):
             addons = params["addons_path"]
             if isinstance(addons, list):

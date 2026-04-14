@@ -19,8 +19,8 @@ from ..api_models import (
 from ..exceptions import ModuleNotFoundError
 from ..module_manager import ModuleManager
 from ..mutation_policy import (
-    resolve_runtime_mutation_policy,
-    runtime_mutation_policy_details,
+    resolve_runtime_db_mutation_policy,
+    runtime_db_mutation_policy_details,
 )
 from ..source_locator import list_addon_languages
 from .base import OperationsService
@@ -469,8 +469,8 @@ class DiscoveryOperationsService(OperationsService):
         reverse_dependency_count = inspection.reverse_dependency_count
         missing_dependencies = list(inspection.missing_dependencies)
         dependency_cycle = list(inspection.dependency_cycle)
-        mutation_policy = resolve_runtime_mutation_policy(self.operations.env_config)
-        policy_details = runtime_mutation_policy_details(self.operations.env_config)
+        mutation_policy = resolve_runtime_db_mutation_policy(self.operations.env_config)
+        policy_details = runtime_db_mutation_policy_details(self.operations.env_config)
 
         risk_factors: list[str] = []
         risk_score = 0
@@ -500,11 +500,7 @@ class DiscoveryOperationsService(OperationsService):
         elif risk_score >= 20:
             risk_level = "medium"
 
-        backup_advised = (
-            False
-            if mutation_policy.risk_level.value == "test"
-            else reverse_dependency_count > 0 or duplicate_name_risk
-        )
+        backup_advised = reverse_dependency_count > 0 or duplicate_name_risk
         verification_steps = [
             f"Run targeted tests for `{module_name}` before and after the update.",
             f"Inspect reverse dependencies for `{module_name}` before "
@@ -521,14 +517,20 @@ class DiscoveryOperationsService(OperationsService):
                 "Take a database backup before updating this module in a "
                 "shared environment."
             )
-        elif mutation_policy.risk_level.value == "test":
+        if mutation_policy.write_protect_db:
             remediation.append(
-                "A dedicated database backup is usually unnecessary for "
-                "disposable test databases."
+                "Runtime DB mutation is blocked for all callers because "
+                "write_protect_db=true."
             )
-        if mutation_policy.forbidden:
+        if mutation_policy.agent_write_protect_db:
             remediation.append(
-                "Runtime DB mutation is blocked by policy because db_risk_level=prod."
+                "Runtime DB mutation is blocked for agent callers because "
+                "agent_write_protect_db=true."
+            )
+        if mutation_policy.agent_needs_mutation_flag:
+            remediation.append(
+                "Runtime DB mutation requires explicit confirmation for agents "
+                "because agent_needs_mutation_flag=true."
             )
 
         return UpdatePlan(
@@ -547,27 +549,58 @@ class DiscoveryOperationsService(OperationsService):
                 *(
                     ["Take a database backup."]
                     if backup_advised
-                    else (
-                        [
-                            "A dedicated backup is usually unnecessary on a "
-                            "disposable test database."
-                        ]
-                        if mutation_policy.risk_level.value == "test"
-                        else ["A dedicated backup is optional for this change."]
-                    )
+                    else ["A dedicated backup is optional for this change."]
                 ),
                 *(
-                    ["Runtime DB mutation is blocked by policy in this environment."]
-                    if mutation_policy.forbidden
+                    [
+                        "Runtime DB mutation is blocked for all callers because "
+                        "write_protect_db=true."
+                    ]
+                    if mutation_policy.write_protect_db
+                    else []
+                ),
+                *(
+                    [
+                        "Runtime DB mutation is blocked for agent callers because "
+                        "agent_write_protect_db=true."
+                    ]
+                    if mutation_policy.agent_write_protect_db
+                    else []
+                ),
+                *(
+                    [
+                        "Runtime DB mutation requires explicit confirmation for agents "
+                        "because agent_needs_mutation_flag=true."
+                    ]
+                    if mutation_policy.agent_needs_mutation_flag
                     else []
                 ),
                 f"Update `{module_name}`.",
                 "Run targeted validation and tests.",
             ],
             backup_advised=backup_advised,
-            db_risk_level=policy_details["db_risk_level"],
-            runtime_mutation_policy=policy_details["runtime_mutation_policy"],
-            runtime_mutation_allowed=policy_details["runtime_mutation_allowed"],
+            write_protect_db=policy_details["write_protect_db"],
+            agent_write_protect_db=policy_details["agent_write_protect_db"],
+            needs_mutation_flag=policy_details["needs_mutation_flag"],
+            agent_needs_mutation_flag=policy_details["agent_needs_mutation_flag"],
+            human_runtime_db_mutation_policy=policy_details[
+                "human_runtime_db_mutation_policy"
+            ],
+            human_runtime_db_mutation_allowed=policy_details[
+                "human_runtime_db_mutation_allowed"
+            ],
+            human_runtime_db_mutation_requires_flag=policy_details[
+                "human_runtime_db_mutation_requires_flag"
+            ],
+            agent_runtime_db_mutation_policy=policy_details[
+                "agent_runtime_db_mutation_policy"
+            ],
+            agent_runtime_db_mutation_allowed=policy_details[
+                "agent_runtime_db_mutation_allowed"
+            ],
+            agent_runtime_db_mutation_requires_flag=policy_details[
+                "agent_runtime_db_mutation_requires_flag"
+            ],
             risk_score=risk_score,
             risk_level=risk_level,
             risk_factors=risk_factors,

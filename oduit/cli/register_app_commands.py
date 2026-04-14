@@ -165,7 +165,12 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         ),
         log_level: LogLevel | None = log_level_option,
         allow_mutation: bool = typer.Option(
-            False, "--allow-mutation", help="Confirm runtime database mutation"
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
         ),
         compact: bool = typer.Option(
             False, "--compact", help="Suppress INFO logs at startup for cleaner output"
@@ -217,7 +222,12 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         ),
         log_level: LogLevel | None = log_level_option,
         allow_mutation: bool = typer.Option(
-            False, "--allow-mutation", help="Confirm runtime database mutation"
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
         ),
         compact: bool = typer.Option(
             False,
@@ -253,7 +263,12 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             help="Confirm that this destructive uninstall is intended",
         ),
         allow_mutation: bool = typer.Option(
-            False, "--allow-mutation", help="Confirm runtime database mutation"
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
         ),
         log_level: LogLevel | None = log_level_option,
         compact: bool = typer.Option(
@@ -325,7 +340,12 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         ),
         log_level: LogLevel | None = log_level_option,
         allow_mutation: bool = typer.Option(
-            False, "--allow-mutation", help="Confirm runtime database mutation"
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
         ),
         include_command: bool = typer.Option(
             False, "--include-command", help="Include executed command in result JSON"
@@ -340,6 +360,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
           oduit test --test-tags /sale                     # Test sale
           oduit test --test-tags /sale --coverage sale     # With coverage
           oduit test --install sale --test-tags /sale      # Install & test
+
+        `--allow-mutation` only matters when `--install` or `--update` is used
+        and config requires explicit mutation confirmation.
         """
         test_command_impl(
             ctx,
@@ -389,6 +412,14 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--non-interactive",
             help="Run without confirmation prompt (use with caution)",
         ),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
+        ),
         db_user: str | None = typer.Option(
             None,
             "--db-user",
@@ -403,6 +434,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             with_sudo=with_sudo,
             drop=drop,
             non_interactive=non_interactive,
+            allow_mutation=allow_mutation,
             db_user=db_user,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,

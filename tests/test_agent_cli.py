@@ -305,6 +305,7 @@ def test_agent_read_only_parity_commands_wrap_operation_results(
     addons_dir.mkdir()
     _make_addon(addons_dir, "base", depends=[])
     config = _agent_config(tmp_path, str(addons_dir))
+    config["needs_mutation_flag"] = True
     loader = _loader_with_config(config, tmp_path)
 
     with (
@@ -387,6 +388,7 @@ def test_agent_read_only_parity_commands_surface_failures(
     addons_dir.mkdir()
     _make_addon(addons_dir, "base", depends=[])
     config = _agent_config(tmp_path, str(addons_dir))
+    config["needs_mutation_flag"] = True
     loader = _loader_with_config(config, tmp_path)
     method_result = {
         "success": False,
@@ -461,6 +463,7 @@ def test_agent_inspect_cron_requires_allow_mutation_for_trigger(tmp_path: Path) 
     addons_dir.mkdir()
     _make_addon(addons_dir, "base", depends=[])
     config = _agent_config(tmp_path, str(addons_dir))
+    config["needs_mutation_flag"] = True
     loader = _loader_with_config(config, tmp_path)
 
     with (
@@ -865,15 +868,22 @@ def test_agent_plan_update_returns_risk_summary(tmp_path: Path) -> None:
     assert payload["operation"] == "plan_update"
     assert payload["impact_set"] == ["x_sale_ext"]
     assert payload["backup_advised"] is True
-    assert payload["db_risk_level"] == "dev"
-    assert payload["runtime_mutation_policy"] == "require_allow_mutation"
-    assert payload["runtime_mutation_allowed"] is True
+    assert payload["write_protect_db"] is False
+    assert payload["agent_write_protect_db"] is False
+    assert payload["needs_mutation_flag"] is False
+    assert payload["agent_needs_mutation_flag"] is False
+    assert payload["human_runtime_db_mutation_policy"] == "allow"
+    assert payload["human_runtime_db_mutation_allowed"] is True
+    assert payload["human_runtime_db_mutation_requires_flag"] is False
+    assert payload["agent_runtime_db_mutation_policy"] == "allow"
+    assert payload["agent_runtime_db_mutation_allowed"] is True
+    assert payload["agent_runtime_db_mutation_requires_flag"] is False
     assert payload["risk_score"] > 0
     assert payload["risk_level"] in {"low", "medium", "high"}
     assert payload["recommended_sequence"]
 
 
-def test_agent_plan_update_uses_test_db_policy(tmp_path: Path) -> None:
+def test_agent_plan_update_exposes_explicit_policy_flags(tmp_path: Path) -> None:
     runner = CliRunner()
     addons_dir = tmp_path / "addons"
     addons_dir.mkdir()
@@ -882,7 +892,10 @@ def test_agent_plan_update_uses_test_db_policy(tmp_path: Path) -> None:
     _make_addon(addons_dir, "x_sale_ext", depends=["x_sale"])
 
     config = _agent_config(tmp_path, str(addons_dir))
-    config["db_risk_level"] = "test"
+    config["write_protect_db"] = True
+    config["agent_write_protect_db"] = True
+    config["needs_mutation_flag"] = True
+    config["agent_needs_mutation_flag"] = True
     loader = _loader_with_config(config, tmp_path)
 
     with patch("oduit.cli.app.ConfigLoader", return_value=loader):
@@ -890,10 +903,17 @@ def test_agent_plan_update_uses_test_db_policy(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["backup_advised"] is False
-    assert payload["db_risk_level"] == "test"
-    assert payload["runtime_mutation_policy"] == "auto_allow"
-    assert payload["runtime_mutation_allowed"] is True
+    assert payload["backup_advised"] is True
+    assert payload["write_protect_db"] is True
+    assert payload["agent_write_protect_db"] is True
+    assert payload["needs_mutation_flag"] is True
+    assert payload["agent_needs_mutation_flag"] is True
+    assert payload["human_runtime_db_mutation_policy"] == "forbidden"
+    assert payload["human_runtime_db_mutation_allowed"] is False
+    assert payload["human_runtime_db_mutation_requires_flag"] is False
+    assert payload["agent_runtime_db_mutation_policy"] == "forbidden"
+    assert payload["agent_runtime_db_mutation_allowed"] is False
+    assert payload["agent_runtime_db_mutation_requires_flag"] is False
 
 
 def test_prepare_addon_change_bundles_read_only_planning_steps(tmp_path: Path) -> None:
@@ -1439,8 +1459,8 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["type"] == "test_summary"
     assert payload["operation"] == "test_summary"
-    assert payload["read_only"] is False
-    assert payload["safety_level"] == "controlled_runtime_mutation"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
     assert payload["error_code"] == "runtime.test_failure"
     assert payload["generated_at"] == payload["timestamp"]
     assert payload["selected_modules"] == ["x_sale"]

@@ -233,6 +233,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             self._make_addon(addons_dir, "base", depends=[])
             self._make_addon(addons_dir, "sale")
             config = self._agent_config(tmp_path, str(addons_dir))
+            config["needs_mutation_flag"] = True
             loader = self._loader_with_config(config, tmp_path)
 
             with patch("oduit.cli.app.ConfigLoader", return_value=loader):
@@ -247,7 +248,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self.assertFalse(payload["read_only"])
         self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
 
-    def test_agent_test_summary_requires_allow_mutation(self) -> None:
+    def test_agent_test_summary_is_read_only_without_install_or_update(self) -> None:
         runner = CliRunner()
         with runner.isolated_filesystem():
             tmp_path = Path.cwd()
@@ -258,7 +259,14 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             config = self._agent_config(tmp_path, str(addons_dir))
             loader = self._loader_with_config(config, tmp_path)
 
-            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            with (
+                patch("oduit.cli.app.ConfigLoader", return_value=loader),
+                patch.object(
+                    OdooOperations,
+                    "run_tests",
+                    return_value={"success": True, "operation": "test"},
+                ),
+            ):
                 result = runner.invoke(
                     app,
                     [
@@ -271,13 +279,45 @@ class TestSec4AgentBoundaries(unittest.TestCase):
                     ],
                 )
 
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertTrue(payload["read_only"])
+        self.assertEqual(payload["safety_level"], "safe_read_only")
+
+    def test_agent_test_summary_requires_allow_mutation_for_install(self) -> None:
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            tmp_path = Path.cwd()
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            self._make_addon(addons_dir, "sale")
+            config = self._agent_config(tmp_path, str(addons_dir))
+            config["needs_mutation_flag"] = True
+            loader = self._loader_with_config(config, tmp_path)
+
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+                result = runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "test-summary",
+                        "--module",
+                        "sale",
+                        "--install",
+                        "sale",
+                    ],
+                )
+
         self.assertEqual(result.exit_code, 1)
         payload = json.loads(result.output)
         self.assertEqual(payload["error_type"], "ConfirmationRequired")
         self.assertFalse(payload["read_only"])
         self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
 
-    def test_agent_runtime_mutation_is_auto_allowed_on_test_db(self) -> None:
+    def test_agent_runtime_mutation_is_blocked_when_write_protected(self) -> None:
         runner = CliRunner()
         with runner.isolated_filesystem():
             tmp_path = Path.cwd()
@@ -286,35 +326,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             self._make_addon(addons_dir, "base", depends=[])
             self._make_addon(addons_dir, "sale")
             config = self._agent_config(tmp_path, str(addons_dir))
-            config["db_risk_level"] = "test"
-            loader = self._loader_with_config(config, tmp_path)
-
-            with (
-                patch("oduit.cli.app.ConfigLoader", return_value=loader),
-                patch.object(
-                    OdooOperations,
-                    "update_module",
-                    return_value={"success": True, "operation": "update_module"},
-                ) as mock_update,
-            ):
-                result = runner.invoke(
-                    app,
-                    ["--env", "dev", "agent", "update-module", "sale"],
-                )
-
-        self.assertEqual(result.exit_code, 0)
-        mock_update.assert_called_once()
-
-    def test_agent_runtime_mutation_is_blocked_on_prod_even_with_flag(self) -> None:
-        runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
-            addons_dir = tmp_path / "addons"
-            addons_dir.mkdir()
-            self._make_addon(addons_dir, "base", depends=[])
-            self._make_addon(addons_dir, "sale")
-            config = self._agent_config(tmp_path, str(addons_dir))
-            config["db_risk_level"] = "prod"
+            config["write_protect_db"] = True
             loader = self._loader_with_config(config, tmp_path)
 
             with patch("oduit.cli.app.ConfigLoader", return_value=loader):
@@ -335,7 +347,9 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self.assertEqual(payload["error_type"], "MutationForbidden")
         self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
 
-    def test_agent_plan_update_stays_read_only_on_prod(self) -> None:
+    def test_agent_runtime_mutation_is_blocked_for_agent_only_write_protect(
+        self,
+    ) -> None:
         runner = CliRunner()
         with runner.isolated_filesystem():
             tmp_path = Path.cwd()
@@ -344,7 +358,61 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             self._make_addon(addons_dir, "base", depends=[])
             self._make_addon(addons_dir, "sale")
             config = self._agent_config(tmp_path, str(addons_dir))
-            config["db_risk_level"] = "prod"
+            config["agent_write_protect_db"] = True
+            loader = self._loader_with_config(config, tmp_path)
+
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+                result = runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "update-module",
+                        "sale",
+                        "--allow-mutation",
+                    ],
+                )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["error_type"], "MutationForbidden")
+        self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
+
+    def test_agent_runtime_mutation_requires_agent_specific_flag(self) -> None:
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            tmp_path = Path.cwd()
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            self._make_addon(addons_dir, "sale")
+            config = self._agent_config(tmp_path, str(addons_dir))
+            config["agent_needs_mutation_flag"] = True
+            loader = self._loader_with_config(config, tmp_path)
+
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+                result = runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "update-module", "sale"],
+                )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["error_type"], "ConfirmationRequired")
+        self.assertFalse(payload["read_only"])
+        self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
+
+    def test_agent_plan_update_stays_read_only_when_write_protected(self) -> None:
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            tmp_path = Path.cwd()
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            self._make_addon(addons_dir, "sale")
+            config = self._agent_config(tmp_path, str(addons_dir))
+            config["write_protect_db"] = True
             loader = self._loader_with_config(config, tmp_path)
 
             with patch("oduit.cli.app.ConfigLoader", return_value=loader):
@@ -356,10 +424,12 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
         self.assertTrue(payload["read_only"])
-        self.assertEqual(payload["db_risk_level"], "prod")
-        self.assertFalse(payload["runtime_mutation_allowed"])
+        self.assertTrue(payload["write_protect_db"])
+        self.assertFalse(payload["agent_runtime_db_mutation_allowed"])
 
-    def test_agent_create_addon_still_requires_allow_mutation_on_test_db(self) -> None:
+    def test_agent_create_addon_still_requires_allow_mutation_on_write_protected_db(
+        self,
+    ) -> None:
         runner = CliRunner()
         with runner.isolated_filesystem():
             tmp_path = Path.cwd()
@@ -367,7 +437,7 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
             config = self._agent_config(tmp_path, str(addons_dir))
-            config["db_risk_level"] = "test"
+            config["write_protect_db"] = True
             loader = self._loader_with_config(config, tmp_path)
 
             with patch("oduit.cli.app.ConfigLoader", return_value=loader):
@@ -414,12 +484,20 @@ class TestSec4AgentBoundaries(unittest.TestCase):
             self._make_addon(addons_dir, "base", depends=[])
             self._make_addon(addons_dir, "sale")
             config = self._agent_config(tmp_path, str(addons_dir))
+            config["needs_mutation_flag"] = True
             loader = self._loader_with_config(config, tmp_path)
 
             with patch("oduit.cli.app.ConfigLoader", return_value=loader):
                 result = runner.invoke(
                     app,
-                    ["--env", "dev", "agent", "validate-addon-change", "sale"],
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "validate-addon-change",
+                        "sale",
+                        "--install-if-needed",
+                    ],
                 )
 
         self.assertEqual(result.exit_code, 1)
@@ -427,6 +505,60 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self.assertEqual(payload["error_type"], "ConfirmationRequired")
         self.assertFalse(payload["read_only"])
         self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
+
+    def test_agent_validate_addon_change_is_read_only_without_module_action(
+        self,
+    ) -> None:
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            tmp_path = Path.cwd()
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            self._make_addon(addons_dir, "sale")
+            config = self._agent_config(tmp_path, str(addons_dir))
+            config["needs_mutation_flag"] = True
+            loader = self._loader_with_config(config, tmp_path)
+
+            with (
+                patch("oduit.cli.app.ConfigLoader", return_value=loader),
+                patch.object(
+                    OdooOperations,
+                    "get_addon_install_state",
+                    return_value=AddonInstallState(
+                        success=True,
+                        operation="get_addon_install_state",
+                        module="sale",
+                        record_found=True,
+                        state="installed",
+                        installed=True,
+                    ),
+                ),
+                patch.object(
+                    OdooOperations,
+                    "run_tests",
+                    return_value={"success": True, "operation": "test"},
+                ),
+                patch.object(
+                    OdooOperations,
+                    "get_odoo_version",
+                    return_value={"success": True, "version": "17.0"},
+                ),
+                patch.object(
+                    OdooOperations,
+                    "db_exists",
+                    return_value={"success": True, "exists": True},
+                ),
+            ):
+                result = runner.invoke(
+                    app,
+                    ["--env", "dev", "agent", "validate-addon-change", "sale"],
+                )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertTrue(payload["read_only"])
+        self.assertEqual(payload["safety_level"], "safe_read_only")
 
     def test_agent_locate_model_does_not_use_runtime_execution(self) -> None:
         runner = CliRunner()

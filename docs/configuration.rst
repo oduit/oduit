@@ -16,21 +16,29 @@ Local or environment configs should look like this:
    odoo_bin = "./odoo/odoo-bin"
    coverage_bin = "./venv/bin/coverage"
 
-   [odoo_params]
+    [odoo_params]
     addons_path = "./addons,./enterprise"
     db_name = "project_dev"
     db_user = "odoo"
     db_host = "localhost"
-    db_risk_level = "dev"
     http_port = 8069
+    write_protect_db = false
+    agent_write_protect_db = false
+    needs_mutation_flag = false
+    agent_needs_mutation_flag = false
 
-``db_risk_level`` controls runtime DB mutation policy:
+Runtime DB mutation policy is controlled by explicit flags:
 
-* ``test``: allow runtime DB mutation without ``--allow-mutation``
-* ``dev``: require ``--allow-mutation`` for runtime DB mutation
-* ``prod``: forbid runtime DB mutation entirely
+* ``write_protect_db`` blocks runtime DB mutation for every caller
+* ``needs_mutation_flag`` requires ``--allow-mutation`` for human runtime DB mutation
+* ``agent_write_protect_db`` blocks runtime DB mutation for agent commands
+* ``agent_needs_mutation_flag`` requires ``--allow-mutation`` for agent runtime DB mutation
 
-If the key is omitted, oduit defaults to ``dev``.
+Plain test runs stay read-only. Only runtime flows that install, update,
+uninstall, create a database, or explicitly trigger runtime actions consult these
+flags.
+
+The legacy risk-level key is no longer supported and now raises a config error.
 
 Supported Locations
 -------------------
@@ -117,7 +125,10 @@ Common Odoo keys:
 * ``db_port``
 * ``db_user``
 * ``db_password``
-* ``db_risk_level``
+* ``write_protect_db``
+* ``agent_write_protect_db``
+* ``needs_mutation_flag``
+* ``agent_needs_mutation_flag``
 * ``config_file``
 * ``without_demo``
 * ``log_level``

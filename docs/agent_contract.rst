@@ -99,7 +99,7 @@ this loop:
 
    .. code-block:: bash
 
-      oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
+      oduit --env dev agent test-summary --module my_partner --test-tags /my_partner
 
 For runtime spot checks after a change, prefer ``query-model``, ``read-record``,
 and ``search-count`` over arbitrary code execution.
@@ -140,25 +140,26 @@ Mutation Policy
 
 * Default to read-only commands.
 * ``install-module``, ``uninstall-module``, ``update-module``,
-  ``create-addon``, ``export-lang``, and ``test-summary`` are controlled
-  mutations.
+  ``create-addon``, and ``export-lang`` are controlled mutations.
 * ``inspect-cron`` is read-only by default; ``inspect-cron --trigger`` becomes
-  a controlled runtime mutation and requires ``--allow-mutation``.
-* Runtime DB mutation also depends on ``db_risk_level``:
+  a controlled runtime mutation and may require ``--allow-mutation``.
+* Runtime DB mutation uses explicit flags:
 
-  * ``test`` auto-allows runtime DB mutation
-  * ``dev`` requires ``--allow-mutation``
-  * ``prod`` forbids runtime DB mutation even if ``--allow-mutation`` is passed
+  * ``write_protect_db`` blocks runtime DB mutation for every caller
+  * ``needs_mutation_flag`` requires ``--allow-mutation`` for human runtime DB mutation
+  * ``agent_write_protect_db`` blocks runtime DB mutation for agent commands
+  * ``agent_needs_mutation_flag`` requires ``--allow-mutation`` for agent runtime DB mutation
 
 * Controlled source mutations still require ``--allow-mutation`` regardless of
-  ``db_risk_level``.
+  runtime DB policy flags.
 * ``uninstall-module`` also requires ``--allow-uninstall`` and
   ``allow_uninstall = true`` in the active environment config.
 * ``--dry-run`` is supported by ``install-module``, ``uninstall-module``,
   ``update-module``, ``create-addon``, and ``export-lang``. Their dry runs
   return read-only planning payloads.
-* ``test-summary`` is mutation-gated because it can drive install, update, and
-  database-backed test flows.
+* ``test-summary`` stays read-only unless you pass ``--install`` or
+  ``--update``. ``validate-addon-change`` only consults runtime DB mutation
+  policy when you request install or update work.
 * If ``context``, ``resolve-config``, or ``list-duplicates`` reports blockers,
   fix them before mutating.
 * Do not use ``execute_python_code()`` or ``OdooCodeExecutor`` for routine

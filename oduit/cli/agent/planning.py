@@ -92,7 +92,7 @@ def _build_recommended_next_steps(
         "--install-if-needed --update --discover-tests` after editing."
     )
     recommendations.append(
-        f"Run `{prefix} agent test-summary --allow-mutation --module {module} "
+        f"Run `{prefix} agent test-summary --module {module} "
         f"--test-tags /{module}` for focused verification."
     )
     return recommendations

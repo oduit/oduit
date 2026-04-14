@@ -282,24 +282,33 @@ class TestConfigProvider(unittest.TestCase):
         provider = ConfigProvider(
             {
                 "db_name": "test_db",
-                "db_risk_level": "prod",
                 "allow_uninstall": True,
+                "write_protect_db": True,
+                "agent_write_protect_db": True,
+                "needs_mutation_flag": True,
+                "agent_needs_mutation_flag": True,
             }
         )
 
         params_list = provider.get_odoo_params_list([])
 
         self.assertEqual(params_list, ["--database=test_db"])
-        self.assertNotIn("--db-risk-level=prod", params_list)
         self.assertNotIn("--allow-uninstall", params_list)
+        self.assertNotIn("--write-protect-db", params_list)
+        self.assertNotIn("--agent-write-protect-db", params_list)
+        self.assertNotIn("--needs-mutation-flag", params_list)
+        self.assertNotIn("--agent-needs-mutation-flag", params_list)
 
-    def test_to_sectioned_dict_preserves_db_risk_level(self):
-        """Test canonical export keeps db_risk_level in odoo_params."""
+    def test_to_sectioned_dict_preserves_runtime_db_policy_keys(self):
+        """Test canonical export keeps explicit DB policy keys in odoo_params."""
         provider = ConfigProvider(
             {
                 "python_bin": "/usr/bin/python3",
                 "db_name": "test_db",
-                "db_risk_level": "test",
+                "write_protect_db": True,
+                "agent_write_protect_db": True,
+                "needs_mutation_flag": True,
+                "agent_needs_mutation_flag": True,
             }
         )
 
@@ -307,7 +316,28 @@ class TestConfigProvider(unittest.TestCase):
 
         self.assertEqual(result["binaries"]["python_bin"], "/usr/bin/python3")
         self.assertEqual(result["odoo_params"]["db_name"], "test_db")
-        self.assertEqual(result["odoo_params"]["db_risk_level"], "test")
+        self.assertTrue(result["odoo_params"]["write_protect_db"])
+        self.assertTrue(result["odoo_params"]["agent_write_protect_db"])
+        self.assertTrue(result["odoo_params"]["needs_mutation_flag"])
+        self.assertTrue(result["odoo_params"]["agent_needs_mutation_flag"])
+
+    def test_get_optional_runtime_db_policy_keys(self):
+        """Test get_optional exposes explicit runtime DB policy flags."""
+        provider = ConfigProvider(
+            {
+                "odoo_params": {
+                    "write_protect_db": True,
+                    "agent_write_protect_db": True,
+                    "needs_mutation_flag": True,
+                    "agent_needs_mutation_flag": True,
+                }
+            }
+        )
+
+        self.assertTrue(provider.get_optional("write_protect_db"))
+        self.assertTrue(provider.get_optional("agent_write_protect_db"))
+        self.assertTrue(provider.get_optional("needs_mutation_flag"))
+        self.assertTrue(provider.get_optional("agent_needs_mutation_flag"))
 
 
 if __name__ == "__main__":

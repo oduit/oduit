@@ -45,14 +45,17 @@ Create a configuration file for your environment.
    coverage_bin = "/usr/bin/coverage"
 
    [odoo_params]
-    db_name = "mydb"
-    addons_path = "/opt/odoo/addons"
-    config_file = "/etc/odoo/odoo.conf"
-    db_risk_level = "dev"
-    http_port = 8069
-    workers = 4
-    dev = true
-    allow_uninstall = false
+   db_name = "mydb"
+   addons_path = "/opt/odoo/addons"
+   config_file = "/etc/odoo/odoo.conf"
+   http_port = 8069
+   workers = 4
+   dev = true
+   allow_uninstall = false
+   write_protect_db = false
+   agent_write_protect_db = false
+   needs_mutation_flag = false
+   agent_needs_mutation_flag = false
 
 **Compatibility YAML format** (``~/.config/oduit/dev.yaml``):
 
@@ -70,6 +73,11 @@ Create a configuration file for your environment.
      http_port: 8069
      workers: 4
      dev: true
+     allow_uninstall: false
+     write_protect_db: false
+     agent_write_protect_db: false
+     needs_mutation_flag: false
+     agent_needs_mutation_flag: false
 
 Local Project Configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -82,20 +90,28 @@ Create a ``.oduit.toml`` file in your project root:
    python_bin = "./venv/bin/python"
    odoo_bin = "./odoo/odoo-bin"
 
-    [odoo_params]
-    addons_path = "./addons"
-    db_name = "project_dev"
-    db_risk_level = "dev"
-    dev = true
-    allow_uninstall = false
+   [odoo_params]
+   addons_path = "./addons"
+   db_name = "project_dev"
+   dev = true
+   allow_uninstall = false
+   write_protect_db = false
+   agent_write_protect_db = false
+   needs_mutation_flag = false
+   agent_needs_mutation_flag = false
 
 If present, this configuration will be used when ``--env`` is not specified.
 
-Runtime DB mutation policy is controlled by ``db_risk_level``:
+Runtime DB mutation policy is controlled by explicit flags:
 
-* ``test`` auto-allows runtime DB mutation
-* ``dev`` requires ``--allow-mutation``
-* ``prod`` blocks runtime DB mutation entirely
+* ``write_protect_db`` blocks runtime DB mutation for every caller
+* ``needs_mutation_flag`` requires ``--allow-mutation`` for human runtime DB mutation
+* ``agent_write_protect_db`` blocks runtime DB mutation for agent commands
+* ``agent_needs_mutation_flag`` requires ``--allow-mutation`` for agent runtime DB mutation
+
+Plain ``test`` runs stay read-only. Runtime DB mutation is only consulted when a
+command actually installs, updates, uninstalls, creates a database, or triggers
+another runtime write path.
 
 Basic Usage
 -----------
@@ -186,23 +202,23 @@ Install an Odoo module. This is a runtime DB mutation command.
 - ``--language TEXT``: Load specific language translations
 - ``--i18n-overwrite``: Overwrite existing translations during installation
 - ``--max-cron-threads INTEGER``: Set maximum cron threads for Odoo server
-- ``--allow-mutation``: Required on ``db_risk_level = "dev"``
+- ``--allow-mutation``: Optional confirmation flag when ``needs_mutation_flag = true``
 
 **Examples:**
 
 .. code-block:: bash
 
    # Install a module
-   oduit --env dev install sale --allow-mutation
+   oduit --env dev install sale
 
    # Install without demo data
-   oduit --env dev install sale --allow-mutation --without-demo all
+   oduit --env dev install sale --without-demo all
 
    # Install with specific language
-   oduit --env dev install sale --allow-mutation --language de_DE
+   oduit --env dev install sale --language de_DE
 
    # Install and overwrite translations
-   oduit --env dev install sale --allow-mutation --language de_DE --i18n-overwrite
+   oduit --env dev install sale --language de_DE --i18n-overwrite
 
 update
 ^^^^^^
@@ -220,20 +236,20 @@ Update an Odoo module. This is a runtime DB mutation command.
 - ``--i18n-overwrite``: Overwrite existing translations during update
 - ``--max-cron-threads INTEGER``: Set maximum cron threads for Odoo server
 - ``--compact``: Suppress INFO logs at startup for cleaner output
-- ``--allow-mutation``: Required on ``db_risk_level = "dev"``
+- ``--allow-mutation``: Optional confirmation flag when ``needs_mutation_flag = true``
 
 **Examples:**
 
 .. code-block:: bash
 
    # Update a module
-   oduit --env dev update sale --allow-mutation
+   oduit --env dev update sale
 
    # Update with language overwrite
-   oduit --env dev update sale --allow-mutation --i18n-overwrite --language de_DE
+   oduit --env dev update sale --i18n-overwrite --language de_DE
 
    # Update with compact output
-   oduit --env dev update sale --allow-mutation --compact
+   oduit --env dev update sale --compact
 
 uninstall
 ^^^^^^^^^
@@ -242,13 +258,13 @@ Uninstall an Odoo module through the trusted runtime mutation path.
 
 .. code-block:: bash
 
-   oduit --env dev uninstall MODULE --allow-mutation --allow-uninstall
+   oduit --env dev uninstall MODULE --allow-uninstall
 
 **Notes:**
 
 - Uninstall is disabled by default and requires ``allow_uninstall = true`` in
   the active config.
-- Runtime DB mutation still follows ``db_risk_level`` policy.
+- Runtime DB mutation follows ``write_protect_db`` / ``needs_mutation_flag``.
 - The CLI requires ``--allow-uninstall`` for each destructive uninstall.
 - Uninstall may fail early if installed dependents still rely on the target
   module.
@@ -258,15 +274,15 @@ Uninstall an Odoo module through the trusted runtime mutation path.
 .. code-block:: bash
 
    # Uninstall a module after opting in at config level
-   oduit --env dev uninstall crm --allow-mutation --allow-uninstall
+   oduit --env dev uninstall crm --allow-uninstall
 
    # Machine-readable uninstall result
-   oduit --env dev --json uninstall crm --allow-mutation --allow-uninstall
+   oduit --env dev --json uninstall crm --allow-uninstall
 
 test
 ^^^^
 
-Run module tests with various options. This is a runtime DB mutation command.
+Run module tests with various options. Plain test runs stay read-only.
 
 .. code-block:: bash
 
@@ -281,14 +297,15 @@ Run module tests with various options. This is a runtime DB mutation command.
 - ``--test-file TEXT``: Run a specific Python test file
 - ``--stop-on-error``: Abort test run on first detected failure in output
 - ``--compact``: Show only test progress dots, statistics, and result summaries
-- ``--allow-mutation``: Required on ``db_risk_level = "dev"``
+- ``--allow-mutation``: Required only when ``--install`` or ``--update`` is used
+  and ``needs_mutation_flag = true``
 
 **Examples:**
 
 .. code-block:: bash
 
    # Test a specific module
-   oduit --env dev test --allow-mutation --test-tags /sale
+   oduit --env dev test --test-tags /sale
 
    # Install module and run tests
    oduit --env dev test --install sale --test-tags /sale
@@ -305,8 +322,8 @@ Run module tests with various options. This is a runtime DB mutation command.
 create-db
 ^^^^^^^^^
 
-Create a new database for Odoo. This follows ``db_risk_level`` policy and is
-blocked when ``db_risk_level = "prod"``.
+Create a new database for Odoo. This follows the runtime DB mutation flags and
+can be blocked by ``write_protect_db``.
 
 .. code-block:: bash
 
@@ -320,6 +337,7 @@ blocked when ``db_risk_level = "prod"``.
 - ``--drop``: Drop database if it exists before creating
 - ``--non-interactive``: Run without confirmation prompt (use with caution)
 - ``--db-user TEXT``: Specify the database user (overrides config setting)
+- ``--allow-mutation``: Optional confirmation flag when ``needs_mutation_flag = true``
 
 **Examples:**
 
@@ -1371,12 +1389,13 @@ Return duplicate addon-name analysis through the standard envelope.
 test-summary
 ^^^^^^^^^^^^
 
-Run tests and emit a normalized summary payload. This is a controlled mutation
-command and requires ``--allow-mutation``.
+Run tests and emit a normalized summary payload. This stays read-only unless
+``--install`` or ``--update`` is requested.
 
 .. code-block:: bash
 
-   oduit --env dev agent test-summary --allow-mutation --module sale --test-tags /sale
+   oduit --env dev agent test-summary --module sale --test-tags /sale
+   oduit --env dev agent test-summary --allow-mutation --install sale --test-tags /sale
 
 preflight-addon-change
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -1401,7 +1420,8 @@ full module test suite, and optional discovered test inventory.
    oduit --env dev agent validate-addon-change sale --allow-mutation --update
    oduit --env dev agent validate-addon-change sale --allow-mutation --install-if-needed --discover-tests
 
-Controlled mutation commands require ``--allow-mutation``. See
+Controlled source mutations require ``--allow-mutation``. Runtime DB mutation
+commands only need it when the active config requires explicit confirmation. See
 :doc:`agent_contract` for the mutation rules and ``--dry-run`` expectations.
 
 .. code-block:: bash

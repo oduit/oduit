@@ -13,6 +13,7 @@ for both legacy flat format and new sectioned format.
 from typing import Any
 
 from .exceptions import ConfigError
+from .mutation_policy import raise_if_legacy_db_risk_level
 
 
 class ConfigProvider:
@@ -71,6 +72,8 @@ class ConfigProvider:
                     self._binaries[key] = value
                 else:
                     self._odoo_params[key] = value
+
+        raise_if_legacy_db_risk_level(self._odoo_params)
 
     def get_required(self, key: str) -> str:
         """Get a required configuration value from any section"""
@@ -175,7 +178,15 @@ class ConfigProvider:
 
         params_list = []
         effective_skip_keys = set(skip_keys or [])
-        effective_skip_keys.update({"allow_uninstall", "db_risk_level"})
+        effective_skip_keys.update(
+            {
+                "allow_uninstall",
+                "write_protect_db",
+                "agent_write_protect_db",
+                "needs_mutation_flag",
+                "agent_needs_mutation_flag",
+            }
+        )
 
         for key, value in self._odoo_params.items():
             if key in effective_skip_keys:

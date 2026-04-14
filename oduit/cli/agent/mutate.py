@@ -673,6 +673,7 @@ def agent_test_summary_command(
     agent_require_runtime_db_mutation_fn: Any,
     build_agent_test_summary_details_fn: Any,
     odoo_operations_cls: Any,
+    safe_read_only: str,
     controlled_runtime_mutation: str,
 ) -> None:
     """Run tests and emit a normalized summary payload."""
@@ -683,14 +684,16 @@ def agent_test_summary_command(
         agent_fail_fn(operation, result_type, "No environment configuration available")
     assert global_config.env_config is not None
 
-    agent_require_runtime_db_mutation_fn(
-        global_config.env_config,
-        allow_mutation=allow_mutation,
-        operation=operation,
-        result_type=result_type,
-        action="test execution",
-        safety_level=controlled_runtime_mutation,
-    )
+    is_runtime_db_mutation = bool(install or update)
+    if is_runtime_db_mutation:
+        agent_require_runtime_db_mutation_fn(
+            global_config.env_config,
+            allow_mutation=allow_mutation,
+            operation=operation,
+            result_type=result_type,
+            action="test execution",
+            safety_level=controlled_runtime_mutation,
+        )
 
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
     result = ops.run_tests(
@@ -722,8 +725,10 @@ def agent_test_summary_command(
         success=result.get("success", False),
         warnings=warnings,
         remediation=suggested_next_steps,
-        read_only=False,
-        safety_level=controlled_runtime_mutation,
+        read_only=not is_runtime_db_mutation,
+        safety_level=(
+            controlled_runtime_mutation if is_runtime_db_mutation else safe_read_only
+        ),
         error=result.get("error"),
         error_type=result.get("error_type"),
     )

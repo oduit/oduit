@@ -99,7 +99,7 @@ class TestConfigLoader(unittest.TestCase):
     )
     @patch("os.path.exists")
     @patch("os.path.expanduser")
-    def test_load_toml_sectioned_config_preserves_allow_uninstall(
+    def test_load_toml_sectioned_config_preserves_runtime_db_policy_keys(
         self, mock_expanduser, mock_exists, mock_file
     ):
         """Test load_config normalizes sectioned TOML and keeps safety keys."""
@@ -117,7 +117,10 @@ class TestConfigLoader(unittest.TestCase):
                 "odoo_params": {
                     "addons_path": ["/path1", "/path2"],
                     "allow_uninstall": True,
-                    "db_risk_level": "prod",
+                    "write_protect_db": True,
+                    "agent_write_protect_db": True,
+                    "needs_mutation_flag": True,
+                    "agent_needs_mutation_flag": True,
                 },
             }
             mock_import.return_value = (mock_tomllib, None)
@@ -128,7 +131,10 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(result["python_bin"], "/usr/bin/python3")
         self.assertEqual(result["addons_path"], "/path1,/path2")
         self.assertTrue(result["allow_uninstall"])
-        self.assertEqual(result["db_risk_level"], "prod")
+        self.assertTrue(result["write_protect_db"])
+        self.assertTrue(result["agent_write_protect_db"])
+        self.assertTrue(result["needs_mutation_flag"])
+        self.assertTrue(result["agent_needs_mutation_flag"])
 
     @patch(
         "builtins.open",
@@ -159,7 +165,8 @@ class TestConfigLoader(unittest.TestCase):
                 "odoo_params": {
                     "addons_path": ["/path1", "/path2"],
                     "allow_uninstall": True,
-                    "db_risk_level": "test",
+                    "write_protect_db": True,
+                    "agent_write_protect_db": True,
                 },
             }
             mock_import.return_value = (mock_tomllib, None)
@@ -173,8 +180,9 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(
             details.canonical_config["odoo_params"]["addons_path"], "/path1,/path2"
         )
-        self.assertEqual(
-            details.canonical_config["odoo_params"]["db_risk_level"], "test"
+        self.assertTrue(details.canonical_config["odoo_params"]["write_protect_db"])
+        self.assertTrue(
+            details.canonical_config["odoo_params"]["agent_write_protect_db"]
         )
         self.assertEqual(details.deprecation_warnings, ())
 
@@ -324,7 +332,7 @@ class TestConfigLoader(unittest.TestCase):
         ),
     )
     @patch("os.path.exists")
-    def test_load_local_sectioned_config_preserves_allow_uninstall(
+    def test_load_local_sectioned_config_preserves_runtime_db_policy_keys(
         self, mock_exists, mock_file
     ):
         """Test load_local_config keeps safety keys in sectioned TOML."""
@@ -337,7 +345,8 @@ class TestConfigLoader(unittest.TestCase):
                 "odoo_params": {
                     "addons_path": ["/path1", "/path2"],
                     "allow_uninstall": True,
-                    "db_risk_level": "dev",
+                    "needs_mutation_flag": True,
+                    "agent_needs_mutation_flag": True,
                 },
             }
             mock_import.return_value = (mock_tomllib, None)
@@ -347,7 +356,40 @@ class TestConfigLoader(unittest.TestCase):
 
         self.assertEqual(result["addons_path"], "/path1,/path2")
         self.assertTrue(result["allow_uninstall"])
-        self.assertEqual(result["db_risk_level"], "dev")
+        self.assertTrue(result["needs_mutation_flag"])
+        self.assertTrue(result["agent_needs_mutation_flag"])
+
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data=(
+            b'[binaries]\npython_bin = "/usr/bin/python3"\n'
+            b'[odoo_params]\naddons_path = ["/path1", "/path2"]\n'
+            b'db_risk_level = "prod"\n'
+        ),
+    )
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    def test_load_config_rejects_legacy_db_risk_level(
+        self, mock_expanduser, mock_exists, mock_file
+    ):
+        """Test legacy db_risk_level fails fast during config load."""
+        mock_expanduser.return_value = "/mocked/home/.config/oduit"
+        mock_exists.side_effect = lambda path: path.endswith("test.toml")
+
+        with patch.object(ConfigLoader, "_import_toml_libs") as mock_import:
+            mock_tomllib = MagicMock()
+            mock_tomllib.load.return_value = {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {
+                    "addons_path": ["/path1", "/path2"],
+                    "db_risk_level": "prod",
+                },
+            }
+            mock_import.return_value = (mock_tomllib, None)
+
+            with self.assertRaisesRegex(Exception, "db_risk_level"):
+                ConfigLoader().load_config("test")
 
     def test_local_config_integration(self):
         """Test local config functionality with real file."""

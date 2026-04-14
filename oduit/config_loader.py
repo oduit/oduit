@@ -13,6 +13,7 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from .config_provider import ConfigProvider
+from .mutation_policy import raise_if_legacy_db_risk_level
 
 CANONICAL_CONFIG_SHAPE = "sectioned"
 CANONICAL_CONFIG_SHAPE_VERSION = "1.0"
@@ -135,6 +136,7 @@ class ConfigLoader:
         normalized_config = self._normalize_addons_path(
             self._normalize_sectioned_config(raw_config)
         )
+        raise_if_legacy_db_risk_level(normalized_config)
         canonical_config = ConfigProvider(normalized_config).to_sectioned_dict()
         detected_shape = raw_shape or self._detect_raw_config_shape(raw_config)
         deprecation_warnings: list[str] = []

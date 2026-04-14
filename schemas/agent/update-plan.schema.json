@@ -8,9 +8,16 @@
     "impact_set",
     "risk_score",
     "risk_level",
-    "db_risk_level",
-    "runtime_mutation_policy",
-    "runtime_mutation_allowed",
+    "write_protect_db",
+    "agent_write_protect_db",
+    "needs_mutation_flag",
+    "agent_needs_mutation_flag",
+    "human_runtime_db_mutation_policy",
+    "human_runtime_db_mutation_allowed",
+    "human_runtime_db_mutation_requires_flag",
+    "agent_runtime_db_mutation_policy",
+    "agent_runtime_db_mutation_allowed",
+    "agent_runtime_db_mutation_requires_flag",
     "verification_steps"
   ],
   "properties": {
@@ -19,12 +26,22 @@
     "impact_set": { "type": "array", "items": { "type": "string" } },
     "risk_score": { "type": "integer" },
     "risk_level": { "type": "string" },
-    "db_risk_level": { "type": "string", "enum": ["test", "dev", "prod"] },
-    "runtime_mutation_policy": {
+    "write_protect_db": { "type": "boolean" },
+    "agent_write_protect_db": { "type": "boolean" },
+    "needs_mutation_flag": { "type": "boolean" },
+    "agent_needs_mutation_flag": { "type": "boolean" },
+    "human_runtime_db_mutation_policy": {
       "type": "string",
-      "enum": ["auto_allow", "require_allow_mutation", "forbidden"]
+      "enum": ["allow", "require_allow_mutation", "forbidden"]
     },
-    "runtime_mutation_allowed": { "type": "boolean" },
+    "human_runtime_db_mutation_allowed": { "type": "boolean" },
+    "human_runtime_db_mutation_requires_flag": { "type": "boolean" },
+    "agent_runtime_db_mutation_policy": {
+      "type": "string",
+      "enum": ["allow", "require_allow_mutation", "forbidden"]
+    },
+    "agent_runtime_db_mutation_allowed": { "type": "boolean" },
+    "agent_runtime_db_mutation_requires_flag": { "type": "boolean" },
     "verification_steps": { "type": "array", "items": { "type": "string" } }
   },
   "additionalProperties": true

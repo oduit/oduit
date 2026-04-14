@@ -123,11 +123,12 @@ agents. For the full workflow and JSON contract, see
    oduit --env dev agent locate-field res.partner email3 --module my_partner
    oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
    oduit --env dev agent validate-addon-change my_partner --allow-mutation --install-if-needed --update --discover-tests
-   oduit --env dev agent test-summary --allow-mutation --module my_partner --test-tags /my_partner
+   oduit --env dev agent test-summary --module my_partner --test-tags /my_partner
 
-Set ``db_risk_level = "dev"`` in your config for the default guarded workflow.
-Use ``test`` for disposable databases where runtime DB mutation should be
-auto-allowed, and ``prod`` to block runtime DB mutation entirely.
+Use the explicit runtime DB flags in your config when you want stronger guards:
+``write_protect_db`` and ``agent_write_protect_db`` block runtime DB mutation,
+while ``needs_mutation_flag`` and ``agent_needs_mutation_flag`` require
+``--allow-mutation`` for the matching caller.
 
 Python API
 ----------
