@@ -5,6 +5,7 @@
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import json
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -686,6 +687,7 @@ class TestCLICommands(unittest.TestCase):
     def test_edit_config_command_for_env(
         self, mock_config_loader_class, mock_subprocess_run
     ):
+        expected_path = os.path.abspath("/tmp/dev.toml")
         mock_loader_instance = MagicMock()
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_loader_instance.resolve_config_path.return_value = (
@@ -699,16 +701,15 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         mock_loader_instance.resolve_config_path.assert_called_once_with("dev")
-        mock_subprocess_run.assert_called_once_with(
-            ["vim", "/tmp/dev.toml"], check=True
-        )
-        self.assertIn("/tmp/dev.toml", result.output)
+        mock_subprocess_run.assert_called_once_with(["vim", expected_path], check=True)
+        self.assertIn(expected_path, result.output)
 
     @patch("oduit.cli.commands.database.subprocess.run")
     @patch("oduit.cli.app.ConfigLoader")
     def test_edit_config_command_for_local_config(
         self, mock_config_loader_class, mock_subprocess_run
     ):
+        expected_path = os.path.abspath("/tmp/.oduit.toml")
         mock_loader_instance = MagicMock()
         mock_loader_instance.has_local_config.return_value = True
         mock_loader_instance.get_local_config_path.return_value = "/tmp/.oduit.toml"
@@ -719,10 +720,8 @@ class TestCLICommands(unittest.TestCase):
             result = self.runner.invoke(app, ["edit-config"])
 
         self.assertEqual(result.exit_code, 0)
-        mock_subprocess_run.assert_called_once_with(
-            ["nvim", "/tmp/.oduit.toml"], check=True
-        )
-        self.assertIn("/tmp/.oduit.toml", result.output)
+        mock_subprocess_run.assert_called_once_with(["nvim", expected_path], check=True)
+        self.assertIn(expected_path, result.output)
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")

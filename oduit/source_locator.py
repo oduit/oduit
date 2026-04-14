@@ -26,6 +26,10 @@ from .api_models import (
 )
 
 
+def _path_str(path: str | Path) -> str:
+    return Path(path).as_posix()
+
+
 @dataclass
 class _ClassScan:
     path: str
@@ -107,7 +111,7 @@ def _scan_python_sources(addon_root: str) -> _ScanResult:
     root = Path(addon_root)
     result = _ScanResult()
     for path in sorted(root.rglob("*.py")):
-        path_str = str(path)
+        path_str = _path_str(path)
         result.scanned_files.append(path_str)
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=path_str)
@@ -157,7 +161,7 @@ def _iter_addon_roots(addons_path: str) -> list[tuple[str, str]]:
                 or (child / "__openerp__.py").exists()
             ):
                 continue
-            child_str = str(child)
+            child_str = _path_str(child)
             if child_str in seen_roots:
                 continue
             seen_roots.add(child_str)
@@ -179,8 +183,9 @@ def _scan_view_extensions(
 ) -> list[ViewExtensionSource]:
     view_extensions: list[ViewExtensionSource] = []
     root = Path(addon_root)
+    normalized_addon_root = _path_str(addon_root)
     for path in sorted(root.rglob("*.xml")):
-        path_str = str(path)
+        path_str = _path_str(path)
         try:
             tree = ET.parse(path)
         except (OSError, ET.ParseError):
@@ -208,7 +213,7 @@ def _scan_view_extensions(
             view_extensions.append(
                 ViewExtensionSource(
                     module=module,
-                    addon_root=addon_root,
+                    addon_root=normalized_addon_root,
                     path=path_str,
                     record_id=record.get("id"),
                     name=name,
@@ -228,6 +233,7 @@ def list_model_extensions(addons_path: str, model: str) -> ModelExtensionInvento
     warnings: list[str] = []
 
     for module, addon_root in _iter_addon_roots(addons_path):
+        normalized_addon_root = _path_str(addon_root)
         scan = _scan_python_sources(addon_root)
         scanned_python_files.extend(scan.scanned_files)
         warnings.extend(scan.warnings)
@@ -242,7 +248,7 @@ def list_model_extensions(addons_path: str, model: str) -> ModelExtensionInvento
                 base_declarations.append(
                     ModelDeclarationSource(
                         module=module,
-                        addon_root=addon_root,
+                        addon_root=normalized_addon_root,
                         path=class_scan.path,
                         class_name=class_scan.class_name,
                         line_hint=class_scan.lineno,
@@ -263,7 +269,7 @@ def list_model_extensions(addons_path: str, model: str) -> ModelExtensionInvento
             source_extensions.append(
                 ModelExtensionSource(
                     module=module,
-                    addon_root=addon_root,
+                    addon_root=normalized_addon_root,
                     path=class_scan.path,
                     class_name=class_scan.class_name,
                     line_hint=class_scan.lineno,
@@ -370,6 +376,7 @@ def locate_model_sources(
     addon_root: str, module: str, model: str
 ) -> ModelSourceLocation:
     scan = _scan_python_sources(addon_root)
+    normalized_addon_root = _path_str(addon_root)
     candidates: list[ModelSourceCandidate] = []
     model_hint = model.replace(".", "_")
     for class_scan in scan.classes:
@@ -442,7 +449,7 @@ def locate_model_sources(
     return ModelSourceLocation(
         model=model,
         module=module,
-        addon_root=addon_root,
+        addon_root=normalized_addon_root,
         resolution="ambiguous"
         if ambiguous
         else ("confirmed" if candidates else "not_found"),
@@ -466,6 +473,7 @@ def locate_field_sources(
     field_name: str,
 ) -> FieldSourceLocation:
     scan = _scan_python_sources(addon_root)
+    normalized_addon_root = _path_str(addon_root)
     model_location = locate_model_sources(addon_root, module, model)
     field_candidates: list[FieldSourceCandidate] = []
     matching_scans: dict[str, _ClassScan] = {}
@@ -568,7 +576,7 @@ def locate_field_sources(
         model=model,
         field=field_name,
         module=module,
-        addon_root=addon_root,
+        addon_root=normalized_addon_root,
         exists=bool(field_candidates),
         resolution=resolution,
         ambiguous=ambiguous,
@@ -599,6 +607,7 @@ def locate_field_sources(
 def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
     """Return a static inventory of models declared or extended by one addon."""
     scan = _scan_python_sources(addon_root)
+    normalized_addon_root = _path_str(addon_root)
     models: list[AddonModelEntry] = []
 
     for class_scan in scan.classes:
@@ -666,7 +675,7 @@ def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
     )
     return AddonModelInventory(
         module=module,
-        addon_root=addon_root,
+        addon_root=normalized_addon_root,
         models=models,
         model_count=len(models),
         scanned_python_files=scan.scanned_files,
@@ -715,7 +724,7 @@ def _normalize_changed_paths(root: Path, paths: list[str] | None) -> list[str]:
                 relative = candidate
         else:
             relative = candidate
-        normalized.append(str(relative))
+        normalized.append(relative.as_posix())
     return sorted(dict.fromkeys(normalized))
 
 
@@ -730,7 +739,8 @@ def _build_test_entry(
     changed_paths: list[str] | None,
 ) -> AddonTestFile:
     lower_content = content.lower()
-    lower_path = str(path).lower()
+    normalized_path = path.as_posix()
+    lower_path = normalized_path.lower()
     references_model = bool(model and model in content)
     references_field = bool(field_name and field_name in content)
     ranking_signals: list[str] = []
@@ -786,7 +796,7 @@ def _build_test_entry(
             related_paths.append(changed_path)
 
     return AddonTestFile(
-        path=str(path),
+        path=normalized_path,
         test_type=test_type,
         references_model=references_model,
         references_field=references_field,
@@ -863,6 +873,7 @@ def list_addon_tests(
     model: str | None = None,
     field_name: str | None = None,
 ) -> AddonTestInventory:
+    normalized_addon_root = _path_str(addon_root)
     tests, warnings = _collect_addon_tests(
         addon_root,
         module,
@@ -881,7 +892,7 @@ def list_addon_tests(
     )
     return AddonTestInventory(
         module=module,
-        addon_root=addon_root,
+        addon_root=normalized_addon_root,
         model=model,
         field=field_name,
         tests=tests,
@@ -895,6 +906,7 @@ def recommend_tests(
     module: str,
     paths: list[str],
 ) -> RecommendedTestPlan:
+    normalized_addon_root = _path_str(addon_root)
     normalized_paths = _normalize_changed_paths(Path(addon_root), paths)
     tests, warnings = _collect_addon_tests(
         addon_root,
@@ -928,7 +940,7 @@ def recommend_tests(
     )
     return RecommendedTestPlan(
         module=module,
-        addon_root=addon_root,
+        addon_root=normalized_addon_root,
         paths=normalized_paths,
         tests=tests,
         suggested_test_tags=[f"/{module}"],

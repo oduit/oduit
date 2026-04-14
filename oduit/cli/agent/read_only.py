@@ -16,9 +16,9 @@ def _resolve_addon_root_candidates(addons_path: str, module: str) -> list[str]:
     path_manager = AddonsPathManager(addons_path)
     duplicates = path_manager.find_duplicate_module_names()
     if module in duplicates:
-        return sorted(duplicates[module])
+        return sorted(Path(candidate).as_posix() for candidate in duplicates[module])
     resolved = path_manager.find_module_path(module)
-    return [resolved] if resolved is not None else []
+    return [Path(resolved).as_posix()] if resolved is not None else []
 
 
 def _parse_runtime_modules(modules_value: Any) -> list[str]:
