@@ -59,6 +59,25 @@ def _config(tmp_path: Path, addons_path: str) -> dict[str, str]:
     }
 
 
+def _test_execution_result(success: bool, output: str) -> dict[str, object]:
+    return {
+        "success": success,
+        "return_code": 0 if success else 1,
+        "output": output,
+        "stdout": output,
+        "stderr": "",
+    }
+
+
+def _port_conflict_output(port: int) -> str:
+    return (
+        "OSError: [Errno 98] Address already in use\n"
+        f"Port {port} is in use by another program\n"
+        "Either identify and stop that program, or start the server with a "
+        "different port.\n"
+    )
+
+
 def test_get_environment_context_returns_typed_object(tmp_path: Path) -> None:
     addons_dir = tmp_path / "addons"
     addons_dir.mkdir()
@@ -451,6 +470,159 @@ def test_list_installed_dependents_handles_no_reverse_dependencies(
     assert result.total == 0
     assert result.modules_filter == []
     assert result.addons == []
+
+
+def test_run_tests_retries_when_configured_http_port_is_occupied(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _config(tmp_path, str(addons_dir))
+    config["http_port"] = 8481
+    ops = OdooOperations(config)
+    ops.process_manager = MagicMock()
+    ops.process_manager.run_operation.side_effect = [
+        _test_execution_result(False, _port_conflict_output(8481)),
+        _test_execution_result(True, "Ran 1 test in 0.10s\nOK\n"),
+    ]
+
+    with patch.object(
+        ops._runtime_service,
+        "_find_available_http_port",
+        return_value=8482,
+    ):
+        result = ops.run_tests(module="x_sale")
+
+    first_operation = ops.process_manager.run_operation.call_args_list[0].args[0]
+    second_operation = ops.process_manager.run_operation.call_args_list[1].args[0]
+    assert ops.process_manager.run_operation.call_count == 2
+    assert "--http-port=8481" in first_operation.command
+    assert "--http-port=8482" in second_operation.command
+    assert result["success"] is True
+    assert result["http_port"] == 8482
+    assert result["http_port_auto_retried"] is True
+    assert result["http_port_retry_count"] == 1
+    assert result["http_port_attempts"] == [8481, 8482]
+
+
+def test_run_tests_does_not_retry_for_unrelated_failure(tmp_path: Path) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _config(tmp_path, str(addons_dir))
+    config["http_port"] = 8481
+    ops = OdooOperations(config)
+    ops.process_manager = MagicMock()
+    ops.process_manager.run_operation.return_value = _test_execution_result(
+        False,
+        "FAIL: test_example\nAssertionError: boom\n",
+    )
+
+    result = ops.run_tests(module="x_sale")
+
+    operation = ops.process_manager.run_operation.call_args.args[0]
+    assert ops.process_manager.run_operation.call_count == 1
+    assert "--http-port=8481" in operation.command
+    assert result["success"] is False
+    assert result["http_port_auto_retried"] is False
+    assert result["http_port_attempts"] == [8481]
+
+
+def test_run_tests_stops_after_http_port_retry_cap(tmp_path: Path) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _config(tmp_path, str(addons_dir))
+    config["http_port"] = 8481
+    ops = OdooOperations(config)
+    ops.process_manager = MagicMock()
+    ops.process_manager.run_operation.side_effect = [
+        _test_execution_result(False, _port_conflict_output(8481)),
+        _test_execution_result(False, _port_conflict_output(8482)),
+        _test_execution_result(False, _port_conflict_output(8483)),
+        _test_execution_result(False, _port_conflict_output(8484)),
+        _test_execution_result(False, _port_conflict_output(8485)),
+    ]
+
+    with patch.object(
+        ops._runtime_service,
+        "_find_available_http_port",
+        side_effect=[8482, 8483, 8484, 8485],
+    ):
+        result = ops.run_tests(module="x_sale")
+
+    assert ops.process_manager.run_operation.call_count == 5
+    assert result["success"] is False
+    assert result["http_port_auto_retried"] is True
+    assert result["http_port_retry_count"] == 4
+    assert result["http_port_attempts"] == [8481, 8482, 8483, 8484, 8485]
+
+
+def test_run_tests_runs_coverage_report_only_after_successful_retry(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    config = _config(tmp_path, str(addons_dir))
+    config["http_port"] = 8481
+    config["coverage_bin"] = "/usr/bin/coverage"
+    ops = OdooOperations(config)
+    ops.process_manager = MagicMock()
+    ops.process_manager.run_operation.side_effect = [
+        _test_execution_result(False, _port_conflict_output(8481)),
+        _test_execution_result(True, "Ran 1 test in 0.10s\nOK\n"),
+    ]
+    ops.process_manager.run_command.return_value = _test_execution_result(
+        True,
+        "Name Stmts Miss Cover Missing\nTOTAL 10 0 100%\n",
+    )
+
+    with patch.object(
+        ops._runtime_service,
+        "_find_available_http_port",
+        return_value=8482,
+    ):
+        ops.run_tests(coverage="x_sale")
+
+    assert [call[0] for call in ops.process_manager.mock_calls] == [
+        "run_operation",
+        "run_operation",
+        "run_command",
+    ]
+    ops.process_manager.run_command.assert_called_once_with(
+        ["/usr/bin/coverage", "report", "-m"],
+        verbose=False,
+        suppress_output=False,
+    )
+
+
+def test_run_tests_retries_without_explicit_configured_http_port(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _config(tmp_path, str(addons_dir))
+    ops = OdooOperations(config)
+    ops.process_manager = MagicMock()
+    ops.process_manager.run_operation.side_effect = [
+        _test_execution_result(False, _port_conflict_output(8491)),
+        _test_execution_result(True, "Ran 1 test in 0.10s\nOK\n"),
+    ]
+
+    with patch.object(
+        ops._runtime_service,
+        "_find_available_http_port",
+        return_value=8492,
+    ):
+        result = ops.run_tests(module="x_sale")
+
+    first_operation = ops.process_manager.run_operation.call_args_list[0].args[0]
+    second_operation = ops.process_manager.run_operation.call_args_list[1].args[0]
+    assert "--http-port=8491" not in first_operation.command
+    assert "--http-port=8492" in second_operation.command
+    assert result["success"] is True
+    assert result["http_port_auto_retried"] is True
+    assert result["http_port_attempts"] == [8491, 8492]
 
 
 def test_module_uninstall_error_is_exported() -> None:

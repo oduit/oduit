@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import re
+import socket
 import sys
+from typing import Any
 
 from .. import output as _output_module
 from ..builders import (
+    CommandOperation,
+    ConfigProvider,
     InstallCommandBuilder,
     LanguageCommandBuilder,
     OdooTestCommandBuilder,
@@ -19,12 +24,124 @@ from ..exceptions import (
     ModuleUpdateError,
     OdooOperationError,
 )
-from ..output import print_error, print_error_result, print_info
+from ..output import print_error, print_error_result, print_info, print_warning
 from .base import OperationsService
+
+_ADDRESS_IN_USE_PATTERN = re.compile(r"address already in use", re.IGNORECASE)
+_PORT_IN_USE_PATTERN = re.compile(
+    r"port\s+(?P<port>\d+)\s+is in use by another program",
+    re.IGNORECASE,
+)
 
 
 class RuntimeOperationsService(OperationsService):
     """Runtime-oriented command execution helpers."""
+
+    _TEST_HTTP_PORT_RETRY_LIMIT = 5
+
+    @staticmethod
+    def _coerce_http_port(value: Any) -> int | None:
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _is_http_port_conflict(output: str) -> bool:
+        return bool(_ADDRESS_IN_USE_PATTERN.search(output)) or bool(
+            _PORT_IN_USE_PATTERN.search(output)
+        )
+
+    @staticmethod
+    def _extract_conflicting_http_port(output: str) -> int | None:
+        match = _PORT_IN_USE_PATTERN.search(output)
+        if not match:
+            return None
+        return int(match.group("port"))
+
+    def _find_available_http_port(
+        self,
+        start_port: int,
+        host: str | None = None,
+    ) -> int:
+        probe_host = "127.0.0.1" if not host or host == "0.0.0.0" else host
+
+        for candidate_port in range(start_port, 65536):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate_socket:
+                try:
+                    candidate_socket.bind((probe_host, candidate_port))
+                except OSError:
+                    continue
+                return candidate_port
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate_socket:
+            candidate_socket.bind((probe_host, 0))
+            return int(candidate_socket.getsockname()[1])
+
+    def _build_test_operation(
+        self,
+        *,
+        module: str | None = None,
+        install: str | None = None,
+        update: str | None = None,
+        coverage: str | None = None,
+        test_file: str | None = None,
+        test_tags: str | None = None,
+        compact: bool = False,
+        log_level: str | None = None,
+        http_port_override: int | None = None,
+    ) -> CommandOperation:
+        config_data = dict(self.operations.config.get_full_config())
+        if http_port_override is not None:
+            config_data["http_port"] = http_port_override
+
+        config = ConfigProvider(config_data)
+        builder: OdooTestCoverageCommandBuilder | OdooTestCommandBuilder
+        if coverage:
+            builder = OdooTestCoverageCommandBuilder(config, coverage)
+        else:
+            builder = OdooTestCommandBuilder(config)
+
+        if install:
+            builder.test_module(install, install=True)
+        elif update:
+            builder.test_module(update, install=False)
+
+        if test_file:
+            builder.test_file(test_file)
+        if test_tags:
+            builder.test_tags(test_tags)
+        elif coverage and not test_file:
+            builder.test_tags(f"/{coverage}")
+        elif module and not test_file:
+            builder.test_tags(f"/{module}")
+        if compact:
+            builder.log_level("warn")
+        elif log_level and isinstance(log_level, str):
+            builder.log_level(log_level)
+        builder.workers(0)
+        return builder.build_operation()
+
+    @staticmethod
+    def _add_http_port_retry_metadata(
+        result: dict[str, Any],
+        attempted_ports: list[int],
+        retry_warnings: list[str],
+    ) -> dict[str, Any]:
+        metadata = {
+            "http_port": attempted_ports[-1] if attempted_ports else None,
+            "http_port_attempts": attempted_ports,
+            "http_port_retry_count": max(len(attempted_ports) - 1, 0),
+            "http_port_auto_retried": len(attempted_ports) > 1,
+        }
+        result.update(metadata)
+        if retry_warnings:
+            warnings = list(result.get("warnings", []))
+            warnings.extend(retry_warnings)
+            result["warnings"] = warnings
+        return result
 
     def run_odoo(
         self,
@@ -453,41 +570,75 @@ class RuntimeOperationsService(OperationsService):
 
         test_result = None
         coverage_result = None
-
-        builder: OdooTestCoverageCommandBuilder | OdooTestCommandBuilder
-        if coverage:
-            builder = OdooTestCoverageCommandBuilder(self.operations.config, coverage)
-        else:
-            builder = OdooTestCommandBuilder(self.operations.config)
-
-        if install:
-            builder.test_module(install, install=True)
-        elif update:
-            builder.test_module(update, install=False)
-
-        if test_file:
-            builder.test_file(test_file)
-        if test_tags:
-            builder.test_tags(test_tags)
-        elif coverage and not test_file:
-            builder.test_tags(f"/{coverage}")
-        elif module and not test_file:
-            builder.test_tags(f"/{module}")
-        if compact:
-            builder.log_level("warn")
-        elif log_level and isinstance(log_level, str):
-            builder.log_level(log_level)
-        builder.workers(0)
+        operation: CommandOperation | None = None
+        configured_http_port = self._coerce_http_port(
+            self.operations.config.get_optional("http_port")
+        )
+        current_http_port = configured_http_port
+        attempted_ports: list[int] = []
+        retry_warnings: list[str] = []
+        http_interface = self.operations.config.get_optional("http_interface")
 
         try:
-            operation = builder.build_operation()
-            test_result = self.operations.process_manager.run_operation(
-                operation,
-                verbose=self.operations.verbose,
-                suppress_output=suppress_output,
-            )
+            for attempt_index in range(self._TEST_HTTP_PORT_RETRY_LIMIT):
+                if current_http_port is not None:
+                    attempted_ports.append(current_http_port)
 
-            if coverage:
+                operation = self._build_test_operation(
+                    module=module,
+                    install=install,
+                    update=update,
+                    coverage=coverage,
+                    test_file=test_file,
+                    test_tags=test_tags,
+                    compact=compact,
+                    log_level=log_level,
+                    http_port_override=current_http_port,
+                )
+                test_result = self.operations.process_manager.run_operation(
+                    operation,
+                    verbose=self.operations.verbose,
+                    suppress_output=suppress_output,
+                )
+
+                output = test_result.get("stdout") or test_result.get("output") or ""
+                if test_result.get("success") or not self._is_http_port_conflict(
+                    output
+                ):
+                    break
+
+                if attempt_index == self._TEST_HTTP_PORT_RETRY_LIMIT - 1:
+                    break
+
+                conflicting_http_port = self._extract_conflicting_http_port(output)
+                attempted_http_port = current_http_port
+                if attempted_http_port is None:
+                    attempted_http_port = (
+                        conflicting_http_port or configured_http_port or 8069
+                    )
+                    attempted_ports.append(attempted_http_port)
+
+                next_http_port = self._find_available_http_port(
+                    (conflicting_http_port or attempted_http_port) + 1,
+                    host=http_interface,
+                )
+                retry_warning = (
+                    f"HTTP port {attempted_http_port} is busy during test execution; "
+                    f"retrying with {next_http_port}."
+                )
+                retry_warnings.append(retry_warning)
+                if not suppress_output:
+                    print_warning(retry_warning)
+                current_http_port = next_http_port
+
+            if test_result is not None:
+                self._add_http_port_retry_metadata(
+                    test_result,
+                    attempted_ports,
+                    retry_warnings,
+                )
+
+            if coverage and test_result and test_result.get("success"):
                 coverage_bin = self.operations.config.get_required("coverage_bin")
 
                 cmd2 = [coverage_bin, "report", "-m"]
