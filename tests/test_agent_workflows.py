@@ -204,6 +204,26 @@ def test_prepare_addon_change_matches_partner_field_planning_flow(
                 },
             ),
         ),
+        patch(
+            "oduit.cli.app.OdooOperations.get_model_views",
+            return_value=MagicMock(
+                error=None,
+                error_type=None,
+                warnings=[],
+                remediation=[],
+                to_dict=lambda: {
+                    "model": "res.partner",
+                    "requested_types": [],
+                    "primary_views": [],
+                    "extension_views": [],
+                    "view_counts": {
+                        "total": 0,
+                        "primary": 0,
+                        "extension": 0,
+                    },
+                },
+            ),
+        ),
     ):
         payload = json.loads(
             runner.invoke(
