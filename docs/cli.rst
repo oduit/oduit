@@ -895,7 +895,7 @@ result.
 
 .. code-block:: bash
 
-   oduit --env dev exec "env['project.task']._table"
+   oduit --env dev exec "env['res.partner']._table"
    oduit --env dev exec "env['res.partner'].search_count([])" --output full
 
 **Options:**
@@ -999,7 +999,7 @@ Use the first-class commands instead of shell-only examples:
    oduit --env dev db table res_partner
 
    # Trusted one-off fallback
-   oduit --env dev exec "env['project.task']._table"
+   oduit --env dev exec "env['res.partner']._table"
 
 Output Formats
 --------------

@@ -92,7 +92,7 @@ oduit --env dev install-order sale,purchase
 oduit --env dev impact-of-update sale
 
 # Runtime inspection and trusted execution
-oduit --env dev exec "env['project.task']._table"
+oduit --env dev exec "env['res.partner']._table"
 oduit --env dev exec-file scripts/check_runtime.py
 oduit --env dev inspect ref base.action_partner_form
 oduit --env dev inspect cron base.ir_cron_autovacuum

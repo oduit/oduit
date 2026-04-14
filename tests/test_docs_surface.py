@@ -257,7 +257,7 @@ def test_runtime_inspection_docs_cover_new_command_surface() -> None:
         ROOT / "docs" / "quickstart.rst",
     ]
     required_markers = [
-        "oduit --env dev exec \"env['project.task']._table\"",
+        "oduit --env dev exec \"env['res.partner']._table\"",
         "oduit --env dev inspect ref base.action_partner_form",
         "oduit --env dev inspect model res.partner",
         "oduit --env dev inspect field res.partner email --with-db",
