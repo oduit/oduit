@@ -1440,7 +1440,15 @@ def test_agent_addon_doc_returns_structured_bundle(tmp_path: Path) -> None:
 
         result = runner.invoke(
             app,
-            ["--env", "dev", "agent", "addon-doc", "my_partner"],
+            [
+                "--env",
+                "dev",
+                "agent",
+                "addon-doc",
+                "my_partner",
+                "--path",
+                "/workspace",
+            ],
         )
 
     assert result.exit_code == 0
@@ -1451,6 +1459,7 @@ def test_agent_addon_doc_returns_structured_bundle(tmp_path: Path) -> None:
     assert payload["read_only"] is True
     assert payload["safety_level"] == "safe_read_only"
     assert payload["markdown"] == "# Addon documentation: my_partner\n"
+    assert ops.build_addon_documentation.call_args.kwargs["path_prefix"] == "/workspace"
 
 
 def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:

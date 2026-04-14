@@ -67,6 +67,11 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             "--max-fields-per-model",
             help="Limit the number of runtime fields shown per model",
         ),
+        path_prefix: str | None = typer.Option(
+            None,
+            "--path",
+            help="Trim this absolute prefix from documented file paths",
+        ),
         output_path: Annotated[
             Path | None,
             typer.Option(
@@ -94,6 +99,7 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             format_name=format_name,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             print_command_error_result_fn=print_command_error_result_fn,
@@ -135,6 +141,11 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             "--max-fields",
             help="Limit the number of runtime fields shown",
         ),
+        path_prefix: str | None = typer.Option(
+            None,
+            "--path",
+            help="Trim this absolute prefix from documented file paths",
+        ),
         output_path: Annotated[
             Path | None,
             typer.Option(
@@ -161,6 +172,7 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             output_path=output_path,
             format_name=format_name,
             max_fields=max_fields,
+            path_prefix=path_prefix,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
         )
@@ -194,6 +206,11 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             "--transitive/--direct-only",
             help="Include the transitive dependency closure",
         ),
+        path_prefix: str | None = typer.Option(
+            None,
+            "--path",
+            help="Trim this absolute prefix from documented file paths",
+        ),
         output_path: Annotated[
             Path | None,
             typer.Option(
@@ -218,6 +235,7 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             transitive=transitive,
             output_path=output_path,
             format_name=format_name,
+            path_prefix=path_prefix,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             module_manager_cls=module_manager_cls,

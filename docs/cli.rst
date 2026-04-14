@@ -989,14 +989,15 @@ model metadata.
 
 .. code-block:: bash
 
-   oduit --env dev docs addon sale --source-only
+   oduit --env dev docs addon sale --source-only --path /my/long/path
    oduit --env dev docs addon sale --output sale.md
    oduit --env dev docs model res.partner --source-only --format json
    oduit --env dev docs dependency-graph --modules sale,purchase
 
 Use ``--format markdown`` for rendered docs, ``--format json`` for structured
 automation output, and ``--output`` to write the generated Markdown directly to
-a file.
+a file. Use ``--path`` to trim a shared absolute prefix from documented file
+paths; paths outside that prefix stay absolute.
 
 Showcase Replacements
 ^^^^^^^^^^^^^^^^^^^^^

@@ -735,6 +735,7 @@ def agent_addon_doc_command(
     types: str | None,
     max_models: int | None,
     max_fields_per_model: int | None,
+    path_prefix: str | None,
     resolve_agent_global_config_fn: Any,
     agent_fail_fn: Any,
     agent_payload_fn: Any,
@@ -775,6 +776,7 @@ def agent_addon_doc_command(
             view_types=view_types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
         )
     except module_not_found_error_cls as exc:
         agent_fail_fn(

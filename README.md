@@ -91,7 +91,7 @@ oduit --env dev list-manifest-values category
 oduit --env dev list-depends sale
 oduit --env dev install-order sale,purchase
 oduit --env dev impact-of-update sale
-oduit --env dev docs addon sale --source-only
+oduit --env dev docs addon sale --source-only --path /workspace
 oduit --env dev docs dependency-graph --modules sale,purchase
 
 # Runtime inspection and trusted execution

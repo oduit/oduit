@@ -518,6 +518,7 @@ class OdooOperations:
         view_types: list[str] | tuple[str, ...] | None = None,
         max_models: int | None = None,
         max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
     ) -> AddonDocumentation:
         """Build one addon documentation bundle."""
         return self._documentation_service.build_addon_documentation(
@@ -531,6 +532,7 @@ class OdooOperations:
             view_types=view_types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
         )
 
     def build_model_documentation(
@@ -544,6 +546,7 @@ class OdooOperations:
         field_attributes: list[str] | tuple[str, ...] | None = None,
         view_types: list[str] | tuple[str, ...] | None = None,
         max_fields: int | None = None,
+        path_prefix: str | None = None,
     ) -> ModelDocumentation:
         """Build one model documentation bundle."""
         return self._documentation_service.build_model_documentation(
@@ -555,6 +558,7 @@ class OdooOperations:
             field_attributes=field_attributes,
             view_types=view_types,
             max_fields=max_fields,
+            path_prefix=path_prefix,
         )
 
     def build_dependency_graph_documentation(
@@ -566,6 +570,7 @@ class OdooOperations:
         source_only: bool = False,
         installed_only: bool = False,
         transitive: bool = True,
+        path_prefix: str | None = None,
     ) -> DependencyGraphDocumentation:
         """Build dependency graph documentation for one or more addons."""
         return self._documentation_service.build_dependency_graph_documentation(
@@ -575,6 +580,7 @@ class OdooOperations:
             source_only=source_only,
             installed_only=installed_only,
             transitive=transitive,
+            path_prefix=path_prefix,
         )
 
     def query_model(

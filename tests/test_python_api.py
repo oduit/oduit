@@ -227,6 +227,46 @@ def test_build_addon_documentation_returns_typed_bundle(tmp_path: Path) -> None:
     assert "Addon documentation: my_partner" in bundle.markdown
 
 
+def test_build_addon_documentation_relativizes_paths_under_prefix(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+    (addon_dir / "tests").mkdir()
+    (addon_dir / "tests" / "test_partner.py").write_text("assert True\n")
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    bundle = ops.build_addon_documentation(
+        "my_partner",
+        source_only=True,
+        path_prefix=str(tmp_path),
+    )
+
+    assert bundle.addon_info is not None
+    assert bundle.addon_info.module_path == "addons/my_partner"
+    assert bundle.model_inventory is not None
+    assert bundle.model_inventory.addon_root == "addons/my_partner"
+    assert (
+        bundle.model_inventory.models[0].path == "addons/my_partner/models/partner.py"
+    )
+    assert (
+        bundle.addon_info.test_cases[0].path
+        == "addons/my_partner/tests/test_partner.py"
+    )
+    assert "addons/my_partner/models/partner.py" in bundle.markdown
+    assert str(tmp_path / "addons" / "my_partner") not in bundle.markdown
+
+
 def test_build_model_documentation_returns_typed_bundle(tmp_path: Path) -> None:
     addons_dir = tmp_path / "addons"
     addons_dir.mkdir()
@@ -249,6 +289,34 @@ def test_build_model_documentation_returns_typed_bundle(tmp_path: Path) -> None:
     assert bundle.field_metadata is None
     assert bundle.extension_inventory is not None
     assert "Model documentation: res.partner" in bundle.markdown
+
+
+def test_build_model_documentation_keeps_absolute_paths_outside_prefix(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    model_path = addon_dir / "models" / "partner.py"
+    model_path.parent.mkdir()
+    model_path.write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    bundle = ops.build_model_documentation(
+        "res.partner",
+        source_only=True,
+        path_prefix=str(tmp_path / "outside"),
+    )
+
+    assert bundle.extension_inventory is not None
+    assert bundle.extension_inventory.source_extensions[0].path == str(model_path)
 
 
 def test_build_dependency_graph_documentation_returns_typed_bundle(

@@ -80,6 +80,7 @@ def addon_documentation_command(
     format_name: str | None,
     max_models: int | None,
     max_fields_per_model: int | None,
+    path_prefix: str | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     print_command_error_result_fn: Any,
@@ -101,6 +102,7 @@ def addon_documentation_command(
             view_types=_parse_csv_items(types),
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
         )
     except module_not_found_error_cls as exc:
         print_command_error_result_fn(
@@ -146,6 +148,7 @@ def model_documentation_command(
     output_path: Path | None,
     format_name: str | None,
     max_fields: int | None,
+    path_prefix: str | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
 ) -> None:
@@ -162,6 +165,7 @@ def model_documentation_command(
         field_attributes=_parse_csv_items(attributes),
         view_types=_parse_csv_items(types),
         max_fields=max_fields,
+        path_prefix=path_prefix,
     )
 
     if resolved_format == "markdown":
@@ -193,6 +197,7 @@ def dependency_graph_documentation_command(
     transitive: bool,
     output_path: Path | None,
     format_name: str | None,
+    path_prefix: str | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     module_manager_cls: Any,
@@ -239,6 +244,7 @@ def dependency_graph_documentation_command(
         source_only=source_only,
         installed_only=installed_only,
         transitive=transitive,
+        path_prefix=path_prefix,
     )
     if resolved_format == "markdown":
         rendered_content = bundle.markdown

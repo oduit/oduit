@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import fields, is_dataclass
+from pathlib import Path
 from typing import Any
 
 from manifestoo_core.odoo_series import OdooSeries
@@ -34,6 +36,93 @@ def _unique_strings(values: list[str]) -> list[str]:
     return sorted({value for value in values if value})
 
 
+PATH_STRING_FIELDS = {"addon_root", "module_path", "path"}
+PATH_LIST_FIELDS = {"paths", "related_files", "related_paths", "scanned_python_files"}
+
+
+def _normalize_path_prefix(path_prefix: str | None) -> Path | None:
+    if not path_prefix:
+        return None
+    prefix = Path(path_prefix).expanduser()
+    if not prefix.is_absolute():
+        prefix = (Path.cwd() / prefix).resolve(strict=False)
+    return prefix
+
+
+def _relativize_path(value: str, *, path_prefix: Path | None) -> str:
+    if path_prefix is None or not value:
+        return value
+
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        return value
+
+    try:
+        relative = candidate.relative_to(path_prefix)
+    except ValueError:
+        return candidate.as_posix()
+
+    relative_value = relative.as_posix()
+    return relative_value or "."
+
+
+def _normalize_path_list(
+    values: list[Any],
+    *,
+    path_prefix: Path | None,
+) -> list[Any]:
+    normalized: list[Any] = []
+    for item in values:
+        if isinstance(item, str):
+            normalized.append(_relativize_path(item, path_prefix=path_prefix))
+        else:
+            _apply_path_prefix(item, path_prefix=path_prefix)
+            normalized.append(item)
+    return normalized
+
+
+def _apply_path_prefix(value: Any, *, path_prefix: Path | None) -> None:
+    if path_prefix is None:
+        return
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in PATH_STRING_FIELDS and isinstance(item, str):
+                value[key] = _relativize_path(item, path_prefix=path_prefix)
+                continue
+            if key in PATH_LIST_FIELDS and isinstance(item, list):
+                value[key] = _normalize_path_list(item, path_prefix=path_prefix)
+                continue
+            _apply_path_prefix(item, path_prefix=path_prefix)
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            _apply_path_prefix(item, path_prefix=path_prefix)
+        return
+
+    if not is_dataclass(value):
+        return
+
+    for data_field in fields(value):
+        current = getattr(value, data_field.name)
+        if data_field.name in PATH_STRING_FIELDS and isinstance(current, str):
+            setattr(
+                value,
+                data_field.name,
+                _relativize_path(current, path_prefix=path_prefix),
+            )
+            continue
+        if data_field.name in PATH_LIST_FIELDS and isinstance(current, list):
+            setattr(
+                value,
+                data_field.name,
+                _normalize_path_list(current, path_prefix=path_prefix),
+            )
+            continue
+        _apply_path_prefix(current, path_prefix=path_prefix)
+
+
 class DocumentationOperationsService(OperationsService):
     """Documentation bundle assembly on top of existing inspection services."""
 
@@ -59,6 +148,7 @@ class DocumentationOperationsService(OperationsService):
         view_types: list[str] | tuple[str, ...] | None = None,
         max_models: int | None = None,
         max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
     ) -> AddonDocumentation:
         """Build one addon documentation bundle."""
         requested_field_attributes = list(
@@ -129,6 +219,7 @@ class DocumentationOperationsService(OperationsService):
                 field_attributes=requested_field_attributes,
                 view_types=requested_view_types,
                 max_fields=max_fields_per_model,
+                path_prefix=path_prefix,
             )
             warnings.extend(model_doc.warnings)
             remediation.extend(model_doc.remediation)
@@ -171,6 +262,10 @@ class DocumentationOperationsService(OperationsService):
             warnings=_unique_strings(warnings + dependency_graph.get("warnings", [])),
             remediation=_unique_strings(remediation),
         )
+        _apply_path_prefix(
+            bundle,
+            path_prefix=_normalize_path_prefix(path_prefix),
+        )
         bundle.sections = build_addon_sections(bundle)
         bundle.markdown = render_addon_markdown(bundle)
         return bundle
@@ -186,6 +281,7 @@ class DocumentationOperationsService(OperationsService):
         field_attributes: list[str] | tuple[str, ...] | None = None,
         view_types: list[str] | tuple[str, ...] | None = None,
         max_fields: int | None = None,
+        path_prefix: str | None = None,
     ) -> ModelDocumentation:
         """Build one model documentation bundle."""
         requested_field_attributes = list(
@@ -258,6 +354,10 @@ class DocumentationOperationsService(OperationsService):
             warnings=_unique_strings(warnings),
             remediation=_unique_strings(remediation),
         )
+        _apply_path_prefix(
+            bundle,
+            path_prefix=_normalize_path_prefix(path_prefix),
+        )
         bundle.sections = build_model_sections(bundle)
         bundle.markdown = render_model_markdown(bundle)
         return bundle
@@ -271,6 +371,7 @@ class DocumentationOperationsService(OperationsService):
         source_only: bool = False,
         installed_only: bool = False,
         transitive: bool = True,
+        path_prefix: str | None = None,
     ) -> DependencyGraphDocumentation:
         """Build dependency-graph documentation for one or more addons."""
         normalized_modules = _unique_strings(module_names)
@@ -320,6 +421,10 @@ class DocumentationOperationsService(OperationsService):
             ],
             warnings=_unique_strings(warnings),
             remediation=_unique_strings(remediation),
+        )
+        _apply_path_prefix(
+            bundle,
+            path_prefix=_normalize_path_prefix(path_prefix),
         )
         bundle.sections = build_dependency_graph_sections(bundle)
         bundle.markdown = render_dependency_graph_markdown(bundle)

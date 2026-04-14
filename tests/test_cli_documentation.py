@@ -88,7 +88,17 @@ def test_docs_addon_command_emits_json_payload(tmp_path: Path) -> None:
 
         result = runner.invoke(
             app,
-            ["--env", "dev", "docs", "addon", "my_partner", "--format", "json"],
+            [
+                "--env",
+                "dev",
+                "docs",
+                "addon",
+                "my_partner",
+                "--path",
+                "/my/long/path",
+                "--format",
+                "json",
+            ],
         )
 
     assert result.exit_code == 0
@@ -96,6 +106,9 @@ def test_docs_addon_command_emits_json_payload(tmp_path: Path) -> None:
     assert payload["type"] == "addon_documentation"
     assert payload["operation"] == "docs_addon"
     assert payload["module"] == "my_partner"
+    assert (
+        ops.build_addon_documentation.call_args.kwargs["path_prefix"] == "/my/long/path"
+    )
 
 
 def test_docs_addon_command_writes_markdown_output(tmp_path: Path) -> None:

@@ -240,6 +240,11 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             "--max-fields-per-model",
             help="Limit the number of runtime fields shown per model",
         ),
+        path_prefix: str | None = typer.Option(
+            None,
+            "--path",
+            help="Trim this absolute prefix from documented file paths",
+        ),
     ) -> None:
         """Return a structured addon documentation bundle."""
         addon_doc_command_impl(
@@ -253,6 +258,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             types=types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
             resolve_agent_global_config_fn=resolve_agent_global_config_fn,
             agent_fail_fn=agent_fail_fn,
             agent_payload_fn=agent_payload_fn,
