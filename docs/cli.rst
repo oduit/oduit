@@ -847,6 +847,25 @@ Print the current environment configuration.
     # Print local config
     oduit print-config
 
+edit-config
+^^^^^^^^^^^
+
+Open the active environment or local config file in the default editor.
+
+.. code-block:: bash
+
+   oduit --env dev edit-config
+
+**Examples:**
+
+.. code-block:: bash
+
+    # Edit production config
+    oduit --env production edit-config
+
+    # Edit local config
+    oduit edit-config
+
 Trusted Execution and Inspection
 --------------------------------
 

@@ -54,6 +54,7 @@ oduit doctor
 oduit version
 oduit list-addons
 oduit list-installed-addons
+oduit edit-config
 oduit install-order sale,purchase
 oduit impact-of-update sale
 ```

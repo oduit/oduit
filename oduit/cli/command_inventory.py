@@ -49,6 +49,7 @@ TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
     "list-db": HUMAN_ORIENTED,
     "list-env": HUMAN_ORIENTED,
     "print-config": HUMAN_ORIENTED,
+    "edit-config": HUMAN_ORIENTED,
     "create-addon": HUMAN_ORIENTED,
     "inspect": HUMAN_ORIENTED,
     "db": HUMAN_ORIENTED,

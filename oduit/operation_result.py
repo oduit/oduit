@@ -278,9 +278,12 @@ class OperationResult:
             if not self.result.get("error"):
                 self.set_error(failure_msg, "OperationFailure")
         else:
-            # No failure patterns detected, set success to True
-            # (will be overridden by process result if needed)
-            self.result["success"] = True
+            # No failure patterns detected. Preserve subprocess failures instead
+            # of turning every parser-clean output into a success.
+            return_code = self.result.get("return_code")
+            self.result["success"] = return_code in (None, 0) and not self.result.get(
+                "error"
+            )
 
         # Apply parsers in order
         for parser in result_parsers:

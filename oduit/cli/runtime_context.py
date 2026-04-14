@@ -91,6 +91,7 @@ class AppCommandImplementations:
     list_db_command_impl: Any
     list_env_command_impl: Any
     print_config_command_impl: Any
+    edit_config_command_impl: Any
     create_addon_command_impl: Any
     addon_info_command_impl: Any
     print_manifest_command_impl: Any

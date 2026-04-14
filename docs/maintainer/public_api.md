@@ -55,6 +55,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `list-db`               | `human_oriented` | List all databases.                                                  |
 | `list-env`              | `human_oriented` | List available environments.                                         |
 | `print-config`          | `human_oriented` | Print environment config.                                            |
+| `edit-config`           | `human_oriented` | Open the active config file in the default editor.                   |
 | `create-addon`          | `human_oriented` | Create new addon.                                                    |
 | `print-manifest`        | `human_oriented` | Print addon manifest information in a table.                         |
 | `addon-info`            | `human_oriented` | Print a combined manifest, source, and runtime addon summary.        |

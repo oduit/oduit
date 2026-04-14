@@ -41,6 +41,7 @@ def handle_no_subcommand(
         print("  list-duplicates     List duplicate addon names")
         print("  export-lang MODULE Export language translations")
         print("  print-config       Print environment configuration")
+        print("  edit-config        Open active configuration file")
         print("  agent ...          Structured agent-first inspection commands")
         print("")
         print("Examples:")
@@ -63,7 +64,7 @@ def handle_no_subcommand(
         "install-order, list-codepends, impact-of-update, list-missing, "
         "list-duplicates"
     )
-    print("  export-lang, print-config, agent")
+    print("  export-lang, print-config, edit-config, agent")
     print("")
     print("Examples:")
     print("  oduit --env dev run               # Run Odoo server")

@@ -43,6 +43,9 @@ This page is generated from the canonical Typer registration surface in
    * - ``print-config``
      - ``human_oriented``
      - Print environment config.
+   * - ``edit-config``
+     - ``human_oriented``
+     - Open the active config file in the default editor.
    * - ``create-addon``
      - ``human_oriented``
      - Create new addon.

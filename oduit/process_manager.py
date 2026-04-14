@@ -157,11 +157,14 @@ class ProcessManager(BaseProcessManager):
             if process_result:
                 # Get output for parsing
                 output = process_result.get("output", "")
+                return_code = process_result.get("return_code")
+                if return_code is None:
+                    return_code = 0 if process_result.get("success", False) else 1
 
                 # Set basic result info
                 result_builder.set_success(
                     process_result.get("success", False),
-                    process_result.get("return_code", 1),
+                    return_code,
                 ).set_output(
                     process_result.get("stdout", output),
                     process_result.get("stderr", ""),

@@ -268,6 +268,18 @@ class TestOperationResult(unittest.TestCase):
         self.assertEqual(json_output["error"], "Installation failed")
         self.assertEqual(json_output["error_type"], "InstallationError")
 
+    def test_process_with_parsers_preserves_nonzero_return_code_failure(self):
+        """Test parser success inference does not mask subprocess failures."""
+        builder = OperationResult("test")
+        builder.set_success(False, 1)
+        builder.set_custom_data(operation_type="test", result_parsers=["test"])
+
+        builder.process_with_parsers("Address already in use")
+        result = builder.finalize()
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["return_code"], 1)
+
     def test_to_json_output_timing(self):
         """Test that timing information is included"""
         builder = OperationResult("test")

@@ -602,6 +602,49 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn("db_name", result.output)
         self.assertIn("test_db", result.output)
 
+    @patch("oduit.cli.commands.database.subprocess.run")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_edit_config_command_for_env(
+        self, mock_config_loader_class, mock_subprocess_run
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_loader_instance.resolve_config_path.return_value = (
+            "/tmp/dev.toml",
+            "toml",
+        )
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        with patch.dict("os.environ", {"VISUAL": "vim", "EDITOR": "vim"}, clear=False):
+            result = self.runner.invoke(app, ["--env", "dev", "edit-config"])
+
+        self.assertEqual(result.exit_code, 0)
+        mock_loader_instance.resolve_config_path.assert_called_once_with("dev")
+        mock_subprocess_run.assert_called_once_with(
+            ["vim", "/tmp/dev.toml"], check=True
+        )
+        self.assertIn("/tmp/dev.toml", result.output)
+
+    @patch("oduit.cli.commands.database.subprocess.run")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_edit_config_command_for_local_config(
+        self, mock_config_loader_class, mock_subprocess_run
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.has_local_config.return_value = True
+        mock_loader_instance.get_local_config_path.return_value = "/tmp/.oduit.toml"
+        mock_loader_instance.load_local_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        with patch.dict("os.environ", {"EDITOR": "nvim"}, clear=False):
+            result = self.runner.invoke(app, ["edit-config"])
+
+        self.assertEqual(result.exit_code, 0)
+        mock_subprocess_run.assert_called_once_with(
+            ["nvim", "/tmp/.oduit.toml"], check=True
+        )
+        self.assertIn("/tmp/.oduit.toml", result.output)
+
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("oduit.cli.app.validate_addon_name")

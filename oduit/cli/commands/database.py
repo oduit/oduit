@@ -1,6 +1,11 @@
 """Database and configuration command implementations."""
 
 import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
 from typing import Any
 
 import typer
@@ -222,3 +227,120 @@ def print_config_command(
             table.add_row(key, str(value))
 
     console.print(table)
+
+
+def _resolve_active_config_path(
+    *,
+    ctx: typer.Context,
+    config_loader: ConfigLoader,
+) -> tuple[str, str]:
+    """Resolve the currently selected config path without parsing the file."""
+    root_ctx = ctx.find_root()
+    root_params = root_ctx.params if root_ctx is not None else {}
+    env = root_params.get("env")
+
+    if isinstance(env, str) and env.strip():
+        config_path, _format_type = config_loader.resolve_config_path(env.strip())
+        return os.path.abspath(config_path), env.strip()
+
+    if not config_loader.has_local_config():
+        raise FileNotFoundError(".oduit.toml")
+
+    try:
+        local_path = config_loader.get_local_config_path()
+    except Exception:
+        local_path = os.path.abspath(".oduit.toml")
+    return os.path.abspath(local_path), "local"
+
+
+def _launch_editor(path: str) -> str:
+    """Launch the preferred editor or opener for one config path."""
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if editor:
+        subprocess.run([*shlex.split(editor), path], check=True)
+        return editor
+
+    if sys.platform == "darwin":
+        opener = shutil.which("open")
+        if opener:
+            subprocess.run([opener, path], check=True)
+            return opener
+    elif sys.platform.startswith("linux"):
+        opener = shutil.which("xdg-open")
+        if opener:
+            subprocess.run([opener, path], check=True)
+            return opener
+    elif hasattr(os, "startfile"):
+        os.startfile(path)  # type: ignore[attr-defined]
+        return "startfile"
+
+    raise RuntimeError(
+        "No default editor found. Set VISUAL or EDITOR, or install xdg-open."
+    )
+
+
+def edit_config_command(
+    ctx: typer.Context,
+    *,
+    config_loader_cls: type[ConfigLoader] = ConfigLoader,
+) -> None:
+    """Open the active environment or local config file in an editor."""
+    root_ctx = ctx.find_root()
+    root_params = root_ctx.params if root_ctx is not None else {}
+    json_output = bool(root_params.get("json"))
+    config_loader = config_loader_cls()
+
+    try:
+        config_path, environment = _resolve_active_config_path(
+            ctx=ctx, config_loader=config_loader
+        )
+        launcher = _launch_editor(config_path)
+    except FileNotFoundError:
+        message = "No active config file found to edit."
+        if json_output:
+            print(
+                json.dumps(
+                    output_result_to_json(
+                        {
+                            "success": False,
+                            "operation": "edit_config",
+                            "error": message,
+                            "error_type": "FileNotFoundError",
+                        }
+                    )
+                )
+            )
+        else:
+            print_error(message)
+        raise typer.Exit(1) from None
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
+        message = f"Failed to open config file: {exc}"
+        if json_output:
+            print(
+                json.dumps(
+                    output_result_to_json(
+                        {
+                            "success": False,
+                            "operation": "edit_config",
+                            "error": message,
+                            "error_type": type(exc).__name__,
+                            "config_path": config_path,
+                        }
+                    )
+                )
+            )
+        else:
+            print_error(message)
+        raise typer.Exit(1) from None
+
+    result = {
+        "success": True,
+        "operation": "edit_config",
+        "environment": environment,
+        "config_path": config_path,
+        "launcher": launcher,
+    }
+    if json_output:
+        print(json.dumps(output_result_to_json(result)))
+        return
+    print_info(f"Opened config: {config_path}")

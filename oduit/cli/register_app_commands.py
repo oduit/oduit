@@ -69,6 +69,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     list_db_command_impl = context.implementations.list_db_command_impl
     list_env_command_impl = context.implementations.list_env_command_impl
     print_config_command_impl = context.implementations.print_config_command_impl
+    edit_config_command_impl = context.implementations.edit_config_command_impl
     create_addon_command_impl = context.implementations.create_addon_command_impl
     addon_info_command_impl = context.implementations.addon_info_command_impl
     print_manifest_command_impl = context.implementations.print_manifest_command_impl
@@ -453,6 +454,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             ctx,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
         )
+
+    @app.command("edit-config")
+    def edit_config_cmd(ctx: typer.Context) -> None:
+        """Open the active config file in the default editor."""
+        edit_config_command_impl(ctx, config_loader_cls=get_config_loader_cls())
 
     @app.command("create-addon")
     def create_addon(
