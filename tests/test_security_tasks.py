@@ -424,8 +424,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         payload = json.loads(result.output)
         self.assertTrue(payload["read_only"])
-        self.assertTrue(payload["write_protect_db"])
-        self.assertFalse(payload["agent_runtime_db_mutation_allowed"])
+        self.assertTrue(payload["data"]["write_protect_db"])
+        self.assertFalse(payload["data"]["agent_runtime_db_mutation_allowed"])
 
     def test_agent_create_addon_still_requires_allow_mutation_on_write_protected_db(
         self,
