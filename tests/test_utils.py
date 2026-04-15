@@ -145,6 +145,32 @@ class TestModuleManager(unittest.TestCase):
         self.addons_path = "/path/to/addons1,/path/to/addons2"
         self.module_manager = ModuleManager(self.addons_path)
 
+    def _make_temp_addon(
+        self, addons_root: str, module_name: str, depends: list[str] | None = None
+    ) -> None:
+        """Create a minimal addon tree for filesystem-backed dependency tests."""
+        module_dir = os.path.join(addons_root, module_name)
+        os.mkdir(module_dir)
+        with open(
+            os.path.join(module_dir, "__init__.py"), "w", encoding="utf-8"
+        ) as handle:
+            handle.write("")
+        with open(
+            os.path.join(module_dir, "__manifest__.py"),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            handle.write(
+                repr(
+                    {
+                        "name": module_name,
+                        "version": "17.0.1.0.0",
+                        "depends": depends or [],
+                        "installable": True,
+                    }
+                )
+            )
+
     @patch("oduit.module_manager.Manifest")
     @patch("oduit.module_manager.ModuleManager.find_module_path")
     def test_parse_manifest_success(self, mock_find_module_path, mock_manifest_class):
@@ -360,6 +386,36 @@ class TestModuleManager(unittest.TestCase):
 
         self.assertEqual(result, ["module_a", "module_b", "module_a"])
 
+    def test_analyze_dependency_cycle_returns_structured_details(self):
+        """Test filesystem-backed structured cycle analysis diagnostics."""
+        with tempfile.TemporaryDirectory() as addons_root:
+            self._make_temp_addon(addons_root, "module_a", ["module_b"])
+            self._make_temp_addon(addons_root, "module_b", ["module_c"])
+            self._make_temp_addon(addons_root, "module_c", ["module_a"])
+
+            manager = ModuleManager(addons_root)
+            result = manager.analyze_dependency_cycle("module_a")
+
+        self.assertEqual(
+            result["cycle_path"],
+            ["module_a", "module_b", "module_c", "module_a"],
+        )
+        self.assertEqual(
+            result["cycle_edges"],
+            [
+                {"from": "module_a", "to": "module_b"},
+                {"from": "module_b", "to": "module_c"},
+                {"from": "module_c", "to": "module_a"},
+            ],
+        )
+        self.assertEqual(result["cycle_modules"], ["module_a", "module_b", "module_c"])
+        self.assertEqual(result["graph"]["module_b"], ["module_c"])
+        self.assertTrue(
+            result["modules"]["module_a"]["module_path"].endswith("module_a")
+        )
+        self.assertEqual(result["modules"]["module_a"]["depends"], ["module_b"])
+        self.assertEqual(result["modules"]["module_b"]["version"], "17.0.1.0.0")
+
     @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_build_dependency_graph_shared_dependency(self, mock_get_codependencies):
         """Test building dependency graph with shared dependencies."""
@@ -538,6 +594,67 @@ class TestModuleManager(unittest.TestCase):
             self.module_manager.get_install_order("module_a")
 
         self.assertIn("Circular dependency detected", str(context.exception))
+
+    def test_get_install_order_uses_remaining_graph_for_cycle_detection(self):
+        """Test residual cycle detection prefers the leftover dependency graph."""
+        graph = {
+            "module_root": ["module_leaf"],
+            "module_leaf": [],
+            "module_a": ["module_b"],
+            "module_b": ["module_a"],
+        }
+
+        with (
+            patch.object(
+                self.module_manager,
+                "_build_combined_dependency_graph",
+                return_value=(graph, None),
+            ),
+            patch.object(
+                self.module_manager,
+                "_find_cycle_in_graph",
+                return_value=["module_a", "module_b", "module_a"],
+            ) as mock_find_cycle,
+        ):
+            with self.assertRaises(ValueError) as context:
+                self.module_manager.get_install_order("module_root", "module_a")
+
+        self.assertEqual(
+            mock_find_cycle.call_args_list[0].args[0],
+            {"module_a": ["module_b"], "module_b": ["module_a"]},
+        )
+        self.assertEqual(
+            str(context.exception),
+            "Circular dependency detected: module_a -> module_b -> module_a",
+        )
+
+    def test_get_install_order_fallback_names_remaining_modules(self):
+        """Test fallback install-order errors include leftover module names."""
+        graph = {
+            "module_root": ["module_leaf"],
+            "module_leaf": [],
+            "module_a": ["module_b"],
+            "module_b": ["module_a"],
+        }
+
+        with (
+            patch.object(
+                self.module_manager,
+                "_build_combined_dependency_graph",
+                return_value=(graph, None),
+            ),
+            patch.object(
+                self.module_manager, "_find_cycle_in_graph", return_value=None
+            ),
+        ):
+            with self.assertRaises(ValueError) as context:
+                self.module_manager.get_install_order("module_root", "module_a")
+
+        self.assertEqual(
+            str(context.exception),
+            "Topological sort failed - circular dependency suspected among: "
+            "module_a, module_b",
+        )
 
     @patch("oduit.module_manager.ModuleManager.get_module_codependencies")
     def test_get_install_order_multiple_modules(self, mock_get_codependencies):

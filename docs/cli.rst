@@ -788,8 +788,42 @@ You can either provide comma-separated module names directly or use
     # Output as JSON
     oduit --env dev --json install-order sale,purchase
 
-If dependency resolution fails because of a cycle, JSON output includes a
-structured ``cycle_path`` and remediation guidance.
+If dependency resolution fails because of a cycle, both text mode and JSON mode
+surface structured cycle diagnostics and remediation guidance.
+
+explain-install-order
+^^^^^^^^^^^^^^^^^^^^^
+
+Explain the dependency cycle that blocks ``install-order`` for one or more
+addons.
+
+.. code-block:: bash
+
+   oduit --env dev explain-install-order [MODULES] [OPTIONS]
+
+You can either provide comma-separated module names directly or use
+``--select-dir`` to analyze all addons in one directory.
+
+**Options:**
+
+- ``--select-dir TEXT``: Explain install-order cycles for all modules in a specific directory
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Explain the cycle blocking one addon
+   oduit --env dev explain-install-order sale
+
+   # Explain the cycle for all addons in one directory
+   oduit --env dev explain-install-order --select-dir myaddons
+
+   # Output the structured explanation as JSON
+   oduit --env dev --json explain-install-order sale
+
+When a cycle is detected, the explanation includes the ordered cycle path, the
+dependency edges that form the loop, module paths, declared manifest
+dependencies, and concrete remediation hints.
 
 impact-of-update
 ^^^^^^^^^^^^^^^^
@@ -1349,6 +1383,18 @@ Return dependency graph nodes, edges, cycles, and install order data.
 .. code-block:: bash
 
    oduit --env dev agent dependency-graph --modules sale,stock
+
+explain-install-order
+^^^^^^^^^^^^^^^^^^^^^
+
+Explain the dependency cycle blocking install-order for automation workflows.
+
+.. code-block:: bash
+
+   oduit --env dev agent explain-install-order --modules sale
+
+The payload includes requested modules, the ordered cycle path, ordered
+dependency edges, module metadata, and remediation guidance.
 
 resolve-config
 ^^^^^^^^^^^^^^

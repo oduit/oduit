@@ -108,6 +108,9 @@ from .agent.read_only import (
 )
 from .agent.read_only import agent_doctor_command as _agent_doctor_command
 from .agent.read_only import (
+    agent_explain_install_order_command as _agent_explain_install_order_command,
+)
+from .agent.read_only import (
     agent_find_model_extensions_command as _agent_find_model_extensions_command,
 )
 from .agent.read_only import (
@@ -203,6 +206,9 @@ from .commands.database import edit_config_command as _edit_config_command_impl
 from .commands.database import list_db_command as _list_db_command_impl
 from .commands.database import list_env_command as _list_env_command_impl
 from .commands.database import print_config_command as _print_config_command_impl
+from .commands.dependencies import (
+    explain_install_order_command as _explain_install_order_command_impl,
+)
 from .commands.dependencies import (
     impact_of_update_command as _impact_of_update_command_impl,
 )
@@ -499,6 +505,7 @@ _app_registration_context = AppRegistrationContext(
         list_depends_command_impl=_list_depends_command_impl,
         list_codepends_command_impl=_list_codepends_command_impl,
         install_order_command_impl=_install_order_command_impl,
+        explain_install_order_command_impl=_explain_install_order_command_impl,
         impact_of_update_command_impl=_impact_of_update_command_impl,
         list_missing_command_impl=_list_missing_command_impl,
         init_env_command_impl=_init_env_command_impl,
@@ -583,6 +590,7 @@ _agent_registration_context = AgentRegistrationContext(
         list_addons_command_impl=_agent_list_addons_command,
         list_installed_addons_command_impl=_agent_list_installed_addons_command,
         dependency_graph_command_impl=_agent_dependency_graph_command,
+        explain_install_order_command_impl=_agent_explain_install_order_command,
         inspect_addons_command_impl=_agent_inspect_addons_command,
         resolve_config_command_impl=_agent_resolve_config_command,
         resolve_addon_root_command_impl=_agent_resolve_addon_root_command,

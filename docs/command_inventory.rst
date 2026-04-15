@@ -74,11 +74,14 @@ This page is generated from the canonical Typer registration surface in
      - ``human_oriented``
      - List reverse dependencies for a module.
    * - ``install-order``
-     - ``human_oriented``
-     - Return the dependency-resolved install order for one or more addons.
+      - ``human_oriented``
+      - Return the dependency-resolved install order for one or more addons.
+   * - ``explain-install-order``
+      - ``human_oriented``
+      - Explain the dependency cycle blocking install-order analysis.
    * - ``impact-of-update``
-     - ``human_oriented``
-     - Show addons affected by updating a specific module.
+      - ``human_oriented``
+      - Show addons affected by updating a specific module.
    * - ``list-missing``
      - ``human_oriented``
      - Find missing dependencies for modules.

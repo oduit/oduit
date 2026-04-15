@@ -25,9 +25,10 @@ Default to the read-only inspection and planning commands:
 * ``locate-model`` and ``locate-field``
 * ``list-addon-tests``, ``recommend-tests``, and ``list-addon-models``
 * ``find-model-extensions`` and ``get-model-views``
-* ``doctor``, ``list-addons``, ``dependency-graph``, ``resolve-config``,
-  ``resolve-addon-root``, ``get-addon-files``, ``check-addons-installed``,
-  ``check-model-exists``, ``check-field-exists``, and ``list-duplicates``
+* ``doctor``, ``list-addons``, ``dependency-graph``,
+  ``explain-install-order``, ``resolve-config``, ``resolve-addon-root``,
+  ``get-addon-files``, ``check-addons-installed``, ``check-model-exists``,
+  ``check-field-exists``, and ``list-duplicates``
 * direct parity wrappers when exact runtime / DB metadata is needed:
   ``inspect-ref``, ``inspect-modules``, ``inspect-subtypes``,
   ``inspect-model``, ``inspect-field``, ``db-table``, ``db-column``,
@@ -116,6 +117,7 @@ commands, use the structured wrappers instead of shell snippets:
    oduit --env dev agent inspect-field res.partner email --with-db
    oduit --env dev agent db-table res_partner
    oduit --env dev agent manifest-check sale
+   oduit --env dev agent explain-install-order --modules sale
 
 For a cheap read-only planning and health pass before mutating an addon, use
 ``preflight-addon-change``:

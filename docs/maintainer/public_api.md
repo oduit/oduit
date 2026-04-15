@@ -71,6 +71,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `list-depends`          | `human_oriented` | List direct dependencies needed to install a set of modules.         |
 | `list-codepends`        | `human_oriented` | List reverse dependencies for a module.                              |
 | `install-order`         | `human_oriented` | Return the dependency-resolved install order for one or more addons. |
+| `explain-install-order` | `human_oriented` | Explain the dependency cycle blocking install-order analysis.        |
 | `impact-of-update`      | `human_oriented` | Show addons affected by updating a specific module.                  |
 | `list-missing`          | `human_oriented` | Find missing dependencies for modules.                               |
 | `init`                  | `human_oriented` | Initialize a new oduit environment configuration.                    |
@@ -86,61 +87,62 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 
 ## `oduit agent` subcommands in `oduit.cli.app`
 
-| Command                    | Stability tier      | Safety level                  | Summary                                                                |
-| -------------------------- | ------------------- | ----------------------------- | ---------------------------------------------------------------------- |
-| `context`                  | `stable_for_agents` | `safe_read_only`              | Return a structured environment snapshot for automation.               |
-| `inspect-addon`            | `stable_for_agents` | `safe_read_only`              | Return a one-shot addon inspection payload.                            |
-| `addon-info`               | `stable_for_agents` | `safe_read_only`              | Return a combined manifest, source, and runtime addon summary.         |
-| `addon-doc`                | `stable_for_agents` | `safe_read_only`              | Return a structured addon documentation bundle.                        |
-| `plan-update`              | `stable_for_agents` | `safe_read_only`              | Return a structured, read-only update plan for a module.               |
-| `prepare-addon-change`     | `beta_for_agents`   | `safe_read_only`              | Bundle the common read-only planning steps for one addon change.       |
-| `locate-model`             | `beta_for_agents`   | `safe_read_only`              | Locate likely source files for a model extension inside one addon.     |
-| `locate-field`             | `beta_for_agents`   | `safe_read_only`              | Locate an existing field or suggest the best insertion point.          |
-| `list-addon-tests`         | `beta_for_agents`   | `safe_read_only`              | List likely tests for an addon, optionally ranked by hints.            |
-| `recommend-tests`          | `beta_for_agents`   | `safe_read_only`              | Map changed addon files to recommended tests and test tags.            |
-| `list-addon-models`        | `beta_for_agents`   | `safe_read_only`              | List the models declared or extended by one addon.                     |
-| `find-model-extensions`    | `beta_for_agents`   | `safe_read_only`              | Find where a model is declared, extended, and installed.               |
-| `get-model-views`          | `beta_for_agents`   | `safe_read_only`              | Fetch database-backed primary and extension views for a model.         |
-| `doctor`                   | `stable_for_agents` | `safe_read_only`              | Return doctor diagnostics through the standard agent envelope.         |
-| `list-addons`              | `stable_for_agents` | `safe_read_only`              | Return structured addon inventory for the active environment.          |
-| `list-installed-addons`    | `stable_for_agents` | `safe_read_only`              | Return structured runtime installed-addon inventory.                   |
-| `dependency-graph`         | `stable_for_agents` | `safe_read_only`              | Return a structured dependency and reverse-dependency graph.           |
-| `inspect-addons`           | `stable_for_agents` | `safe_read_only`              | Inspect multiple addons through the stable agent envelope.             |
-| `resolve-config`           | `stable_for_agents` | `safe_read_only`              | Return the resolved configuration with sensitive values redacted.      |
-| `resolve-addon-root`       | `stable_for_agents` | `safe_read_only`              | Resolve addon root paths for one module name.                          |
-| `get-addon-files`          | `stable_for_agents` | `safe_read_only`              | Return a deterministic file inventory for one addon.                   |
-| `check-addons-installed`   | `stable_for_agents` | `safe_read_only`              | Return runtime installed-state checks for one or more addons.          |
-| `check-model-exists`       | `beta_for_agents`   | `safe_read_only`              | Check whether a model exists in source discovery and runtime metadata. |
-| `check-field-exists`       | `beta_for_agents`   | `safe_read_only`              | Check whether a field exists in runtime metadata and source.           |
-| `list-duplicates`          | `stable_for_agents` | `safe_read_only`              | Return duplicate addon names through the standard agent envelope.      |
-| `inspect-ref`              | `stable_for_agents` | `safe_read_only`              | Resolve one XMLID through the embedded Odoo runtime.                   |
-| `inspect-cron`             | `stable_for_agents` | `controlled_runtime_mutation` | Inspect one cron job and optionally trigger it.                        |
-| `inspect-modules`          | `stable_for_agents` | `safe_read_only`              | Inspect module records from ir.module.module.                          |
-| `inspect-subtypes`         | `stable_for_agents` | `safe_read_only`              | List message subtypes registered for one model.                        |
-| `inspect-model`            | `stable_for_agents` | `safe_read_only`              | Inspect runtime model registration metadata.                           |
-| `inspect-field`            | `stable_for_agents` | `safe_read_only`              | Inspect runtime field metadata.                                        |
-| `db-table`                 | `stable_for_agents` | `safe_read_only`              | Describe one PostgreSQL table through the live Odoo connection.        |
-| `db-column`                | `stable_for_agents` | `safe_read_only`              | Describe one PostgreSQL column through the live Odoo connection.       |
-| `db-constraints`           | `stable_for_agents` | `safe_read_only`              | List PostgreSQL constraints for one table.                             |
-| `db-tables`                | `stable_for_agents` | `safe_read_only`              | List PostgreSQL tables through the live Odoo connection.               |
-| `db-m2m`                   | `stable_for_agents` | `safe_read_only`              | Inspect the relation table behind a Many2many field.                   |
-| `performance-slow-queries` | `stable_for_agents` | `safe_read_only`              | Read pg_stat_statements when the extension is available.               |
-| `performance-table-scans`  | `stable_for_agents` | `safe_read_only`              | Show tables with high sequential scan counts.                          |
-| `performance-indexes`      | `stable_for_agents` | `safe_read_only`              | Show basic table index-usage metrics.                                  |
-| `manifest-check`           | `stable_for_agents` | `safe_read_only`              | Validate a manifest file and report structural warnings.               |
-| `manifest-show`            | `stable_for_agents` | `safe_read_only`              | Show manifest metadata for an addon or addon path.                     |
-| `install-module`           | `stable_for_agents` | `controlled_runtime_mutation` | Install a module with an explicit mutation gate.                       |
-| `update-module`            | `stable_for_agents` | `controlled_runtime_mutation` | Update a module with an explicit mutation gate.                        |
-| `uninstall-module`         | `stable_for_agents` | `controlled_runtime_mutation` | Uninstall a module with explicit runtime and destructive gates.        |
-| `create-addon`             | `stable_for_agents` | `controlled_source_mutation`  | Create a new addon with an explicit mutation gate.                     |
-| `export-lang`              | `stable_for_agents` | `controlled_runtime_mutation` | Export language files with an explicit mutation gate.                  |
-| `test-summary`             | `stable_for_agents` | `controlled_runtime_mutation` | Run tests and emit a normalized summary payload.                       |
-| `validate-addon-change`    | `beta_for_agents`   | `controlled_runtime_mutation` | Validate an addon change with one aggregate structured payload.        |
-| `preflight-addon-change`   | `beta_for_agents`   | `safe_read_only`              | Run a cheap read-only addon-change preflight.                          |
-| `query-model`              | `stable_for_agents` | `safe_read_only`              | Run a structured read-only model query.                                |
-| `read-record`              | `stable_for_agents` | `safe_read_only`              | Read a single record by id via OdooQuery.                              |
-| `search-count`             | `stable_for_agents` | `safe_read_only`              | Count records matching a domain via OdooQuery.                         |
-| `get-model-fields`         | `stable_for_agents` | `safe_read_only`              | Inspect model field metadata via OdooQuery.                            |
+| Command                    | Stability tier      | Safety level                  | Summary                                                                     |
+| -------------------------- | ------------------- | ----------------------------- | --------------------------------------------------------------------------- |
+| `context`                  | `stable_for_agents` | `safe_read_only`              | Return a structured environment snapshot for automation.                    |
+| `inspect-addon`            | `stable_for_agents` | `safe_read_only`              | Return a one-shot addon inspection payload.                                 |
+| `addon-info`               | `stable_for_agents` | `safe_read_only`              | Return a combined manifest, source, and runtime addon summary.              |
+| `addon-doc`                | `stable_for_agents` | `safe_read_only`              | Return a structured addon documentation bundle.                             |
+| `plan-update`              | `stable_for_agents` | `safe_read_only`              | Return a structured, read-only update plan for a module.                    |
+| `prepare-addon-change`     | `beta_for_agents`   | `safe_read_only`              | Bundle the common read-only planning steps for one addon change.            |
+| `locate-model`             | `beta_for_agents`   | `safe_read_only`              | Locate likely source files for a model extension inside one addon.          |
+| `locate-field`             | `beta_for_agents`   | `safe_read_only`              | Locate an existing field or suggest the best insertion point.               |
+| `list-addon-tests`         | `beta_for_agents`   | `safe_read_only`              | List likely tests for an addon, optionally ranked by hints.                 |
+| `recommend-tests`          | `beta_for_agents`   | `safe_read_only`              | Map changed addon files to recommended tests and test tags.                 |
+| `list-addon-models`        | `beta_for_agents`   | `safe_read_only`              | List the models declared or extended by one addon.                          |
+| `find-model-extensions`    | `beta_for_agents`   | `safe_read_only`              | Find where a model is declared, extended, and installed.                    |
+| `get-model-views`          | `beta_for_agents`   | `safe_read_only`              | Fetch database-backed primary and extension views for a model.              |
+| `doctor`                   | `stable_for_agents` | `safe_read_only`              | Return doctor diagnostics through the standard agent envelope.              |
+| `list-addons`              | `stable_for_agents` | `safe_read_only`              | Return structured addon inventory for the active environment.               |
+| `list-installed-addons`    | `stable_for_agents` | `safe_read_only`              | Return structured runtime installed-addon inventory.                        |
+| `dependency-graph`         | `stable_for_agents` | `safe_read_only`              | Return a structured dependency and reverse-dependency graph.                |
+| `explain-install-order`    | `stable_for_agents` | `safe_read_only`              | Explain the dependency cycle blocking install-order for one or more addons. |
+| `inspect-addons`           | `stable_for_agents` | `safe_read_only`              | Inspect multiple addons through the stable agent envelope.                  |
+| `resolve-config`           | `stable_for_agents` | `safe_read_only`              | Return the resolved configuration with sensitive values redacted.           |
+| `resolve-addon-root`       | `stable_for_agents` | `safe_read_only`              | Resolve addon root paths for one module name.                               |
+| `get-addon-files`          | `stable_for_agents` | `safe_read_only`              | Return a deterministic file inventory for one addon.                        |
+| `check-addons-installed`   | `stable_for_agents` | `safe_read_only`              | Return runtime installed-state checks for one or more addons.               |
+| `check-model-exists`       | `beta_for_agents`   | `safe_read_only`              | Check whether a model exists in source discovery and runtime metadata.      |
+| `check-field-exists`       | `beta_for_agents`   | `safe_read_only`              | Check whether a field exists in runtime metadata and source.                |
+| `list-duplicates`          | `stable_for_agents` | `safe_read_only`              | Return duplicate addon names through the standard agent envelope.           |
+| `inspect-ref`              | `stable_for_agents` | `safe_read_only`              | Resolve one XMLID through the embedded Odoo runtime.                        |
+| `inspect-cron`             | `stable_for_agents` | `controlled_runtime_mutation` | Inspect one cron job and optionally trigger it.                             |
+| `inspect-modules`          | `stable_for_agents` | `safe_read_only`              | Inspect module records from ir.module.module.                               |
+| `inspect-subtypes`         | `stable_for_agents` | `safe_read_only`              | List message subtypes registered for one model.                             |
+| `inspect-model`            | `stable_for_agents` | `safe_read_only`              | Inspect runtime model registration metadata.                                |
+| `inspect-field`            | `stable_for_agents` | `safe_read_only`              | Inspect runtime field metadata.                                             |
+| `db-table`                 | `stable_for_agents` | `safe_read_only`              | Describe one PostgreSQL table through the live Odoo connection.             |
+| `db-column`                | `stable_for_agents` | `safe_read_only`              | Describe one PostgreSQL column through the live Odoo connection.            |
+| `db-constraints`           | `stable_for_agents` | `safe_read_only`              | List PostgreSQL constraints for one table.                                  |
+| `db-tables`                | `stable_for_agents` | `safe_read_only`              | List PostgreSQL tables through the live Odoo connection.                    |
+| `db-m2m`                   | `stable_for_agents` | `safe_read_only`              | Inspect the relation table behind a Many2many field.                        |
+| `performance-slow-queries` | `stable_for_agents` | `safe_read_only`              | Read pg_stat_statements when the extension is available.                    |
+| `performance-table-scans`  | `stable_for_agents` | `safe_read_only`              | Show tables with high sequential scan counts.                               |
+| `performance-indexes`      | `stable_for_agents` | `safe_read_only`              | Show basic table index-usage metrics.                                       |
+| `manifest-check`           | `stable_for_agents` | `safe_read_only`              | Validate a manifest file and report structural warnings.                    |
+| `manifest-show`            | `stable_for_agents` | `safe_read_only`              | Show manifest metadata for an addon or addon path.                          |
+| `install-module`           | `stable_for_agents` | `controlled_runtime_mutation` | Install a module with an explicit mutation gate.                            |
+| `update-module`            | `stable_for_agents` | `controlled_runtime_mutation` | Update a module with an explicit mutation gate.                             |
+| `uninstall-module`         | `stable_for_agents` | `controlled_runtime_mutation` | Uninstall a module with explicit runtime and destructive gates.             |
+| `create-addon`             | `stable_for_agents` | `controlled_source_mutation`  | Create a new addon with an explicit mutation gate.                          |
+| `export-lang`              | `stable_for_agents` | `controlled_runtime_mutation` | Export language files with an explicit mutation gate.                       |
+| `test-summary`             | `stable_for_agents` | `controlled_runtime_mutation` | Run tests and emit a normalized summary payload.                            |
+| `validate-addon-change`    | `beta_for_agents`   | `controlled_runtime_mutation` | Validate an addon change with one aggregate structured payload.             |
+| `preflight-addon-change`   | `beta_for_agents`   | `safe_read_only`              | Run a cheap read-only addon-change preflight.                               |
+| `query-model`              | `stable_for_agents` | `safe_read_only`              | Run a structured read-only model query.                                     |
+| `read-record`              | `stable_for_agents` | `safe_read_only`              | Read a single record by id via OdooQuery.                                   |
+| `search-count`             | `stable_for_agents` | `safe_read_only`              | Count records matching a domain via OdooQuery.                              |
+| `get-model-fields`         | `stable_for_agents` | `safe_read_only`              | Inspect model field metadata via OdooQuery.                                 |
 
 ## `OdooOperations` methods
 

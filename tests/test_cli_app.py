@@ -1285,6 +1285,189 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli.app.ModuleManager")
     @patch("oduit.cli.app.ConfigLoader")
+    def test_install_order_text_cycle_details(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test install-order text mode shows cycle details."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.return_value = "/test/addons/module_a"
+        mock_manager_instance.get_install_order.side_effect = ValueError(
+            "Circular dependency detected: module_a -> module_b -> module_a"
+        )
+        mock_manager_instance.analyze_dependency_cycle.return_value = {
+            "requested_modules": ["module_a"],
+            "graph": {"module_a": ["module_b"], "module_b": ["module_a"]},
+            "cycle_path": ["module_a", "module_b", "module_a"],
+            "cycle_length": 2,
+            "cycle_edges": [
+                {"from": "module_a", "to": "module_b"},
+                {"from": "module_b", "to": "module_a"},
+            ],
+            "cycle_modules": ["module_a", "module_b"],
+            "modules": {
+                "module_a": {
+                    "module_path": "/test/addons/module_a",
+                    "depends": ["module_b"],
+                },
+                "module_b": {
+                    "module_path": "/test/addons/module_b",
+                    "depends": ["module_a"],
+                },
+            },
+        }
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "install-order", "module_a"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("Cycle path:", result.output)
+        self.assertIn("module_a -> module_b -> module_a", result.output)
+        self.assertIn("module_a depends on module_b", result.output)
+        self.assertIn("Run 'oduit explain-install-order module_a'", result.output)
+
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_explain_install_order_json_cycle_details(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test explain-install-order returns structured cycle diagnostics."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.return_value = "/test/addons/module_a"
+        mock_manager_instance.analyze_dependency_cycle.return_value = {
+            "requested_modules": ["module_a"],
+            "graph": {"module_a": ["module_b"], "module_b": ["module_a"]},
+            "cycle_path": ["module_a", "module_b", "module_a"],
+            "cycle_length": 2,
+            "cycle_edges": [
+                {"from": "module_a", "to": "module_b"},
+                {"from": "module_b", "to": "module_a"},
+            ],
+            "cycle_modules": ["module_a", "module_b"],
+            "modules": {
+                "module_a": {
+                    "module_path": "/test/addons/module_a",
+                    "depends": ["module_b"],
+                },
+                "module_b": {
+                    "module_path": "/test/addons/module_b",
+                    "depends": ["module_a"],
+                },
+            },
+        }
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "--json", "explain-install-order", "module_a"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["operation"], "explain_install_order")
+        self.assertEqual(payload["error_type"], "DependencyCycleError")
+        self.assertEqual(payload["requested_modules"], ["module_a"])
+        self.assertEqual(payload["cycle_path"], ["module_a", "module_b", "module_a"])
+        self.assertEqual(
+            payload["cycle_edges"][0], {"from": "module_a", "to": "module_b"}
+        )
+        self.assertEqual(payload["modules"]["module_a"]["depends"], ["module_b"])
+
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_explain_install_order_json_select_dir(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test explain-install-order supports --select-dir."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_dirs.return_value = ["module_a", "module_b"]
+        mock_manager_instance.analyze_dependency_cycle.return_value = {
+            "requested_modules": ["module_a", "module_b"],
+            "graph": {"module_a": ["module_b"], "module_b": ["module_a"]},
+            "cycle_path": ["module_a", "module_b", "module_a"],
+            "cycle_length": 2,
+            "cycle_edges": [
+                {"from": "module_a", "to": "module_b"},
+                {"from": "module_b", "to": "module_a"},
+            ],
+            "cycle_modules": ["module_a", "module_b"],
+            "modules": {
+                "module_a": {
+                    "module_path": "/test/addons/module_a",
+                    "depends": ["module_b"],
+                },
+                "module_b": {
+                    "module_path": "/test/addons/module_b",
+                    "depends": ["module_a"],
+                },
+            },
+        }
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "explain-install-order",
+                "--select-dir",
+                "myaddons",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["source"], "select_dir")
+        self.assertEqual(payload["select_dir"], "myaddons")
+        self.assertEqual(payload["requested_modules"], ["module_a", "module_b"])
+        self.assertIn("module_b", payload["modules"])
+
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_explain_install_order_json_non_cycle_failure(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test explain-install-order keeps non-cycle failures as DependencyError."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.return_value = "/test/addons/module_a"
+        mock_manager_instance.analyze_dependency_cycle.return_value = {
+            "requested_modules": ["module_a"],
+            "graph": {},
+            "cycle_path": [],
+            "cycle_length": 0,
+            "cycle_edges": [],
+            "cycle_modules": [],
+            "modules": {},
+        }
+        mock_manager_instance.get_install_order.side_effect = ValueError(
+            "Dependency graph unavailable"
+        )
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "--json", "explain-install-order", "module_a"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["operation"], "explain_install_order")
+        self.assertEqual(payload["error_type"], "DependencyError")
+        self.assertEqual(payload["requested_modules"], ["module_a"])
+        self.assertEqual(payload["error"], "Dependency graph unavailable")
+
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_impact_of_update_command(
         self, mock_config_loader_class, mock_module_manager
     ):

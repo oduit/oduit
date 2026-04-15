@@ -6,6 +6,7 @@
 
 from collections.abc import Collection, Mapping
 from graphlib import TopologicalSorter
+from pathlib import Path
 from typing import Any
 
 from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
@@ -91,6 +92,120 @@ class ModuleManager:
                 return cycle
 
         return None
+
+    @staticmethod
+    def _normalize_requested_modules(*module_names: str) -> list[str]:
+        """Return requested module names with whitespace and duplicates removed."""
+        normalized: list[str] = []
+        for module_name in module_names:
+            cleaned = module_name.strip()
+            if cleaned and cleaned not in normalized:
+                normalized.append(cleaned)
+        return normalized
+
+    @staticmethod
+    def _build_cycle_edges(cycle_path: list[str]) -> list[dict[str, str]]:
+        """Return ordered dependency edges for a closed cycle path."""
+        if len(cycle_path) < 2:
+            return []
+        return [
+            {"from": cycle_path[index], "to": cycle_path[index + 1]}
+            for index in range(len(cycle_path) - 1)
+        ]
+
+    @staticmethod
+    def _cycle_modules_from_path(cycle_path: list[str]) -> list[str]:
+        """Return unique modules involved in a cycle, excluding the closing node."""
+        if not cycle_path:
+            return []
+        if len(cycle_path) > 1 and cycle_path[0] == cycle_path[-1]:
+            return cycle_path[:-1]
+        return cycle_path
+
+    def _get_addon_type(self, module_name: str, odoo_series: OdooSeries | None) -> str:
+        """Return a human-readable addon type label."""
+        if odoo_series:
+            if is_core_ce_addon(module_name, odoo_series):
+                return "Odoo CE (Community)"
+            if is_core_ee_addon(module_name, odoo_series):
+                return "Odoo EE (Enterprise)"
+        return "Custom"
+
+    def _describe_modules(self, module_names: list[str]) -> dict[str, dict[str, Any]]:
+        """Return filesystem and manifest details for the provided modules."""
+        if not module_names:
+            return {}
+
+        odoo_series = self.detect_odoo_series()
+        described_modules: dict[str, dict[str, Any]] = {}
+        for module_name in module_names:
+            module_path = self.find_module_path(module_name)
+            manifest = self.get_manifest(module_name)
+            source_dir = None
+            if module_path:
+                source_dir = Path(module_path).parent.name
+
+            described_modules[module_name] = {
+                "module": module_name,
+                "module_path": module_path,
+                "source_dir": source_dir,
+                "depends": list(manifest.codependencies) if manifest else [],
+                "version": manifest.version if manifest else None,
+                "addon_type": self._get_addon_type(module_name, odoo_series),
+            }
+        return described_modules
+
+    def _collect_dependency_graph(
+        self, module_name: str
+    ) -> tuple[dict[str, list[str]], list[str] | None]:
+        """Collect a dependency graph snapshot and the first detected cycle."""
+        graph: dict[str, list[str]] = {}
+        visited: set[str] = set()
+        visiting: set[str] = set()
+        stack: list[str] = []
+        cycle_path: list[str] | None = None
+
+        def _visit(mod_name: str) -> None:
+            nonlocal cycle_path
+
+            if mod_name in visiting:
+                if cycle_path is None:
+                    cycle_path = self._extract_cycle_path(stack, mod_name)
+                return
+
+            if mod_name in visited:
+                return
+
+            visiting.add(mod_name)
+            stack.append(mod_name)
+
+            codependencies = self.get_module_codependencies(mod_name)
+            graph[mod_name] = codependencies
+
+            for dependency in codependencies:
+                _visit(dependency)
+
+            stack.pop()
+            visiting.remove(mod_name)
+            visited.add(mod_name)
+
+        _visit(module_name)
+        return graph, cycle_path
+
+    def _build_combined_dependency_graph(
+        self, *module_names: str
+    ) -> tuple[dict[str, list[str]], list[str] | None]:
+        """Build a combined graph plus the first directly observed cycle path."""
+        all_graphs: dict[str, list[str]] = {}
+        cycle_path: list[str] | None = None
+
+        for module_name in self._normalize_requested_modules(*module_names):
+            graph, observed_cycle = self._collect_dependency_graph(module_name)
+            all_graphs.update(graph)
+            if cycle_path is None and observed_cycle:
+                cycle_path = observed_cycle
+
+        return all_graphs, cycle_path
 
     def find_module_dirs(self, filter_dir: str | None = None) -> list[str]:
         """Return all module directories with __manifest__.py in configured paths
@@ -251,34 +366,9 @@ class ModuleManager:
         Raises:
             ValueError: If circular dependency is detected
         """
-        graph: dict[str, list[str]] = {}
-        visited: set[str] = set()
-        visiting: set[str] = set()
-        stack: list[str] = []
-
-        def _build_graph_recursive(mod_name: str) -> None:
-            if mod_name in visiting:
-                raise ValueError(self._format_cycle_error(stack, mod_name))
-
-            if mod_name in visited:
-                return
-
-            visiting.add(mod_name)
-            stack.append(mod_name)
-
-            # Get codependencies for current module
-            codependencies = self.get_module_codependencies(mod_name)
-            graph[mod_name] = codependencies
-
-            # Recursively process codependencies
-            for dep in codependencies:
-                _build_graph_recursive(dep)
-
-            stack.pop()
-            visiting.remove(mod_name)
-            visited.add(mod_name)
-
-        _build_graph_recursive(module_name)
+        graph, cycle_path = self._collect_dependency_graph(module_name)
+        if cycle_path:
+            raise ValueError(f"Circular dependency detected: {' -> '.join(cycle_path)}")
         return graph
 
     def get_dependency_tree(
@@ -384,20 +474,17 @@ class ModuleManager:
         Raises:
             ValueError: If circular dependency is detected
         """
-        if not module_names:
+        requested_modules = self._normalize_requested_modules(*module_names)
+        if not requested_modules:
             raise ValueError("At least one module name must be provided")
 
-        # Build a combined dependency graph for all requested modules
-        all_graphs = {}
-        for module_name in module_names:
-            try:
-                graph = self.build_dependency_graph(module_name)
-                all_graphs.update(graph)
-            except ValueError as e:
-                if "Circular dependency" in str(e):
-                    raise
-                # For missing modules, continue but they won't be in final result
-                continue
+        all_graphs, direct_cycle = self._build_combined_dependency_graph(
+            *requested_modules
+        )
+        if direct_cycle:
+            raise ValueError(
+                f"Circular dependency detected: {' -> '.join(direct_cycle)}"
+            )
 
         if not all_graphs:
             # If no modules were found, return empty list
@@ -428,12 +515,57 @@ class ModuleManager:
 
         # If we haven't processed all nodes, there's a cycle
         if len(result) != len(all_graphs):
-            cycle = self._find_cycle_in_graph(all_graphs)
+            remaining_modules = [
+                module for module in all_graphs if module not in result
+            ]
+            remaining_set = set(remaining_modules)
+            remaining_graph = {
+                module: [dep for dep in all_graphs[module] if dep in remaining_set]
+                for module in remaining_modules
+            }
+
+            cycle = self._find_cycle_in_graph(remaining_graph)
+            if not cycle:
+                cycle = self._find_cycle_in_graph(all_graphs)
             if cycle:
                 raise ValueError(f"Circular dependency detected: {' -> '.join(cycle)}")
-            raise ValueError("Topological sort failed - circular dependency detected")
+            raise ValueError(
+                "Topological sort failed - circular dependency suspected among: "
+                + ", ".join(sorted(remaining_modules))
+            )
 
         return result
+
+    def analyze_dependency_cycle(self, *module_names: str) -> dict[str, Any]:
+        """Return structured diagnostics for the first detected dependency cycle."""
+        requested_modules = self._normalize_requested_modules(*module_names)
+        if not requested_modules:
+            raise ValueError("At least one module name must be provided")
+
+        combined_graph, observed_cycle = self._build_combined_dependency_graph(
+            *requested_modules
+        )
+        cycle_path = observed_cycle or self._find_cycle_in_graph(combined_graph) or []
+        cycle_modules = self._cycle_modules_from_path(cycle_path)
+        cycle_module_set = set(cycle_modules)
+        cycle_graph = {
+            module: [
+                dependency
+                for dependency in combined_graph.get(module, [])
+                if dependency in cycle_module_set
+            ]
+            for module in cycle_modules
+        }
+
+        return {
+            "requested_modules": requested_modules,
+            "graph": cycle_graph,
+            "cycle_path": cycle_path,
+            "cycle_length": len(cycle_modules),
+            "cycle_edges": self._build_cycle_edges(cycle_path),
+            "cycle_modules": cycle_modules,
+            "modules": self._describe_modules(cycle_modules),
+        }
 
     def find_missing_dependencies(self, module_name: str) -> list[str]:
         """Find codependencies that are not available in the addons_path.

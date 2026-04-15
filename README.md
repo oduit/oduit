@@ -60,6 +60,7 @@ oduit list-addons
 oduit list-installed-addons
 oduit edit-config
 oduit install-order sale,purchase
+oduit explain-install-order sale
 oduit impact-of-update sale
 ```
 
@@ -90,6 +91,7 @@ oduit --env dev print-manifest sale
 oduit --env dev list-manifest-values category
 oduit --env dev list-depends sale
 oduit --env dev install-order sale,purchase
+oduit --env dev explain-install-order sale
 oduit --env dev impact-of-update sale
 oduit --env dev docs addon sale --source-only --path /workspace
 oduit --env dev docs addons --select-dir myaddons --output-dir ./docs-out
@@ -122,6 +124,7 @@ oduit --env dev agent inspect-field res.partner email --with-db
 oduit --env dev agent db-table res_partner
 oduit --env dev agent manifest-check sale
 oduit --env dev agent list-installed-addons --modules sale
+oduit --env dev agent explain-install-order --modules sale
 oduit --env dev agent get-model-fields res.partner --attributes string,type,required
 oduit --env dev agent list-addon-models my_partner
 oduit --env dev agent find-model-extensions res.partner --summary

@@ -12,7 +12,7 @@ Highlights
 * ``oduit doctor`` for setup diagnostics
 * structured JSON output for automation and CI
 * addon intelligence commands such as ``list-addons``, ``list-depends``,
-  ``install-order``, and ``impact-of-update``
+  ``install-order``, ``explain-install-order``, and ``impact-of-update``
 * ``oduit agent`` as the primary automation surface for coding agents,
   including discovery, location, and verification flows such as
   ``get-model-fields``, ``locate-model``, ``validate-addon-change``, and
@@ -29,6 +29,7 @@ Quick Start
    oduit --env dev version
    oduit --env dev list-addons
    oduit --env dev install-order sale,purchase
+   oduit --env dev explain-install-order sale
 
 Installation
 ------------

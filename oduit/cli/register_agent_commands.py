@@ -95,6 +95,9 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     dependency_graph_command_impl = (
         context.implementations.dependency_graph_command_impl
     )
+    explain_install_order_command_impl = (
+        context.implementations.explain_install_order_command_impl
+    )
     inspect_addons_command_impl = context.implementations.inspect_addons_command_impl
     resolve_config_command_impl = context.implementations.resolve_config_command_impl
     resolve_addon_root_command_impl = (
@@ -595,6 +598,27 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             agent_payload_fn=agent_payload_fn,
             agent_emit_payload_fn=agent_emit_payload_fn,
             config_error_cls=config_error_cls,
+        )
+
+    @agent_app.command("explain-install-order")
+    def agent_explain_install_order(
+        ctx: typer.Context,
+        modules: str = typer.Option(
+            ..., "--modules", help="Comma-separated addon names"
+        ),
+    ) -> None:
+        """Explain dependency cycles blocking install-order for automation."""
+        explain_install_order_command_impl(
+            ctx,
+            modules=modules,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            require_agent_addons_path_fn=require_agent_addons_path_fn,
+            parse_csv_items_fn=parse_csv_items_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            module_manager_cls=get_module_manager_cls(),
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("inspect-addons")

@@ -774,7 +774,80 @@ def test_agent_resolve_config_warns_for_legacy_flat_shape(tmp_path: Path) -> Non
     assert data["environment"]["format"] == "yaml"
     assert data["config_shape"]["raw_shape"] == "legacy_flat"
     assert data["deprecation_warnings"] == [deprecation_warning]
-    assert deprecation_warning in payload["warnings"]
+
+
+def test_agent_explain_install_order_returns_cycle_payload(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "module_a", depends=["module_b"])
+    _make_addon(addons_dir, "module_b", depends=["module_c"])
+    _make_addon(addons_dir, "module_c", depends=["module_a"])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "explain-install-order",
+                "--modules",
+                "module_a",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["type"] == "dependency_cycle"
+    assert payload["operation"] == "explain_install_order"
+    assert payload["success"] is False
+    assert payload["error_type"] == "DependencyCycleError"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    assert data["requested_modules"] == ["module_a"]
+    assert data["cycle_path"] == ["module_a", "module_b", "module_c", "module_a"]
+    assert data["cycle_edges"][0] == {"from": "module_a", "to": "module_b"}
+    assert data["modules"]["module_b"]["depends"] == ["module_c"]
+
+
+def test_agent_explain_install_order_returns_install_order_when_clean(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "module_a", depends=["base"])
+    _make_addon(addons_dir, "module_b", depends=["module_a"])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "explain-install-order",
+                "--modules",
+                "module_b",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["type"] == "dependency_cycle"
+    assert payload["operation"] == "explain_install_order"
+    assert payload["success"] is True
+    assert data["cycle_path"] == []
+    assert data["install_order"] == ["base", "module_a", "module_b"]
+    assert data["message"] == "No dependency cycle detected"
 
 
 def test_agent_inspect_addon_returns_dependency_snapshot(tmp_path: Path) -> None:

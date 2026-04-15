@@ -102,6 +102,7 @@ class AppCommandImplementations:
     list_depends_command_impl: Any
     list_codepends_command_impl: Any
     install_order_command_impl: Any
+    explain_install_order_command_impl: Any
     impact_of_update_command_impl: Any
     list_missing_command_impl: Any
     init_env_command_impl: Any
@@ -215,6 +216,7 @@ class AgentCommandImplementations:
     list_addons_command_impl: Any
     list_installed_addons_command_impl: Any
     dependency_graph_command_impl: Any
+    explain_install_order_command_impl: Any
     inspect_addons_command_impl: Any
     resolve_config_command_impl: Any
     resolve_addon_root_command_impl: Any

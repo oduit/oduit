@@ -83,13 +83,17 @@ Command tiers:
      - ``safe_read_only``
      - Return structured runtime installed-addon inventory.
    * - ``dependency-graph``
-     - ``stable_for_agents``
-     - ``safe_read_only``
-     - Return a structured dependency and reverse-dependency graph.
+      - ``stable_for_agents``
+      - ``safe_read_only``
+      - Return a structured dependency and reverse-dependency graph.
+   * - ``explain-install-order``
+      - ``stable_for_agents``
+      - ``safe_read_only``
+      - Explain the dependency cycle blocking install-order for one or more addons.
    * - ``inspect-addons``
-     - ``stable_for_agents``
-     - ``safe_read_only``
-     - Inspect multiple addons through the stable agent envelope.
+      - ``stable_for_agents``
+      - ``safe_read_only``
+      - Inspect multiple addons through the stable agent envelope.
    * - ``resolve-config``
      - ``stable_for_agents``
      - ``safe_read_only``

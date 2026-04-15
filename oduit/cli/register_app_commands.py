@@ -84,6 +84,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     list_depends_command_impl = context.implementations.list_depends_command_impl
     list_codepends_command_impl = context.implementations.list_codepends_command_impl
     install_order_command_impl = context.implementations.install_order_command_impl
+    explain_install_order_command_impl = (
+        context.implementations.explain_install_order_command_impl
+    )
     impact_of_update_command_impl = (
         context.implementations.impact_of_update_command_impl
     )
@@ -797,6 +800,29 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             ctx,
             modules=modules,
             separator=separator,
+            select_dir=select_dir,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            module_manager_cls=get_module_manager_cls(),
+            print_command_error_result_fn=print_command_error_result_fn,
+            dependency_error_details_fn=dependency_error_details_fn,
+        )
+
+    @app.command("explain-install-order")
+    def explain_install_order(
+        ctx: typer.Context,
+        modules: str | None = typer.Argument(
+            None, help="Comma-separated module names to explain install-order for"
+        ),
+        select_dir: str | None = typer.Option(
+            None,
+            "--select-dir",
+            help="Explain install-order cycles for all modules in a specific directory",
+        ),
+    ) -> None:
+        """Explain dependency cycles that block install-order analysis."""
+        explain_install_order_command_impl(
+            ctx,
+            modules=modules,
             select_dir=select_dir,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             module_manager_cls=get_module_manager_cls(),

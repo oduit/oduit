@@ -7,6 +7,7 @@ from typing import Any
 import typer
 
 from ...addons_path_manager import AddonsPathManager
+from ...module_manager import ModuleManager
 from ...source_locator import list_model_extensions
 from ..manifest_support import build_manifest_result
 
@@ -84,6 +85,18 @@ def _emit_operation_result_payload(
     agent_emit_payload_fn(payload)
     if not success:
         raise typer.Exit(1)
+
+
+def _cycle_remediation_lines() -> list[str]:
+    """Return standard remediation hints for dependency cycles."""
+    return [
+        "Break at least one manifest dependency in the cycle.",
+        (
+            "Move shared code into a base or bridge addon when two addons depend "
+            "on each other."
+        ),
+        "Retry install-order after removing the cycle.",
+    ]
 
 
 def agent_inspect_ref_command(
@@ -1539,6 +1552,114 @@ def agent_dependency_graph_command(
             if graph.get("cycles")
             else []
         ),
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_explain_install_order_command(
+    ctx: typer.Context,
+    *,
+    modules: str,
+    resolve_agent_global_config_fn: Any,
+    require_agent_addons_path_fn: Any,
+    parse_csv_items_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    module_manager_cls: type[ModuleManager],
+    safe_read_only: str,
+) -> None:
+    """Return structured cycle diagnostics for install-order failures."""
+    operation = "explain_install_order"
+    result_type = "dependency_cycle"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    env_config = global_config.env_config
+    assert env_config is not None
+    addons_path = require_agent_addons_path_fn(env_config, operation, result_type)
+    module_names = parse_csv_items_fn(modules)
+
+    if not module_names:
+        agent_fail_fn(
+            operation,
+            result_type,
+            "At least one module must be provided via --modules",
+            error_type="ValidationError",
+        )
+
+    module_manager = module_manager_cls(addons_path)
+    missing_modules = [
+        module_name
+        for module_name in module_names
+        if module_manager.find_module_path(module_name) is None
+    ]
+    if missing_modules:
+        agent_fail_fn(
+            operation,
+            result_type,
+            f"Modules not found in addons_path: {', '.join(missing_modules)}",
+            error_type="ModuleNotFoundError",
+            details={
+                "requested_modules": module_names,
+                "missing_modules": missing_modules,
+            },
+            remediation=[
+                "Verify the addon names and configured addons_path, then retry.",
+            ],
+        )
+
+    cycle_analysis = module_manager.analyze_dependency_cycle(*module_names)
+    remediation = _cycle_remediation_lines()
+
+    if cycle_analysis.get("cycle_path"):
+        payload = agent_payload_fn(
+            operation,
+            result_type,
+            {
+                "requested_modules": module_names,
+                "graph": cycle_analysis.get("graph", {}),
+                "cycle_path": cycle_analysis.get("cycle_path", []),
+                "cycle_length": cycle_analysis.get("cycle_length", 0),
+                "cycle_edges": cycle_analysis.get("cycle_edges", []),
+                "cycle_modules": cycle_analysis.get("cycle_modules", []),
+                "modules": cycle_analysis.get("modules", {}),
+            },
+            success=False,
+            remediation=remediation,
+            read_only=True,
+            safety_level=safe_read_only,
+            error="Dependency cycle detected",
+            error_type="DependencyCycleError",
+        )
+        agent_emit_payload_fn(payload)
+        raise typer.Exit(1)
+
+    try:
+        install_order = module_manager.get_install_order(*module_names)
+    except ValueError as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="DependencyError",
+            details={"requested_modules": module_names},
+        )
+
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        {
+            "requested_modules": module_names,
+            "graph": {},
+            "cycle_path": [],
+            "cycle_length": 0,
+            "cycle_edges": [],
+            "cycle_modules": [],
+            "modules": {},
+            "install_order": install_order,
+            "message": "No dependency cycle detected",
+        },
+        read_only=True,
+        safety_level=safe_read_only,
     )
     agent_emit_payload_fn(payload)
 
