@@ -1,6 +1,34 @@
 Changelog
 =========
 
+0.4.2
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Hide commands on default for agent commands
+
+- Dedpulicate agent output
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- Fix failing unit test
+
+- Failing unit test
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update changelog
+
+
 0.4.1
 ----------
 
