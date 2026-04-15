@@ -1,4 +1,5 @@
 import json
+import re
 import stat
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +24,8 @@ from oduit.api_models import (
 from oduit.cli.app import app
 from oduit.config_provider import ConfigProvider
 from oduit.odoo_operations import OdooOperations
+
+_ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _payload_data(payload: dict) -> dict:
@@ -1563,7 +1566,7 @@ def test_agent_help_lists_show_command_flag() -> None:
     result = runner.invoke(app, ["agent", "--help"])
 
     assert result.exit_code == 0
-    assert "--show-command" in result.output
+    assert "--show-command" in _ANSI_ESCAPE_PATTERN.sub("", result.output)
 
 
 def test_agent_test_summary_hides_command_by_default(tmp_path: Path) -> None:
