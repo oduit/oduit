@@ -29,6 +29,7 @@ from .manifest import (
 from .manifest_collection import ManifestCollection
 from .addons_path_manager import AddonsPathManager
 from .api_models import (
+    AddonContributionSummary,
     AddonDocumentation,
     AddonDocumentationModel,
     AddonInfo,
@@ -52,10 +53,12 @@ from .api_models import (
     ModelDocumentation,
     ModelSourceCandidate,
     ModelSourceLocation,
+    MultiAddonDocumentation,
     OdooVersionInfo,
     QueryModelResult,
     RecordReadResult,
     SearchCountResult,
+    SharedModelDocumentation,
     UpdatePlan,
 )
 from .module_manager import ModuleManager
@@ -95,12 +98,15 @@ __all__ = [
     "EnvironmentContext",
     "DocumentationDiagram",
     "DocumentSection",
+    "AddonContributionSummary",
     "AddonInfo",
     "AddonInstallState",
     "AddonInspection",
     "AddonDocumentationModel",
     "AddonDocumentation",
     "ModelDocumentation",
+    "SharedModelDocumentation",
+    "MultiAddonDocumentation",
     "DependencyGraphDocumentation",
     "InstalledAddonRecord",
     "InstalledAddonInventory",

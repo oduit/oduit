@@ -74,6 +74,7 @@ Addon Intelligence
    oduit --env dev install-order sale,purchase
    oduit --env dev impact-of-update sale
    oduit --env dev docs addon sale --source-only
+   oduit --env dev docs addons --select-dir myaddons --output-dir ./docs-out
    oduit --env dev docs dependency-graph --modules sale,purchase
 
 Operations

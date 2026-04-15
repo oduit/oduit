@@ -507,6 +507,8 @@ class AddonModelEntry(DictModel):
     class_name: str
     path: str
     line_hint: int | None = None
+    added_fields: list[str] = dataclass_field(default_factory=list)
+    added_methods: list[str] = dataclass_field(default_factory=list)
     inherited_models: list[str] = dataclass_field(default_factory=list)
     delegated_models: list[str] = dataclass_field(default_factory=list)
 
@@ -665,6 +667,34 @@ class AddonDocumentationModel(DictModel):
 
 
 @dataclass
+class AddonContributionSummary(DictModel):
+    """Compact per-addon summary for one shared model."""
+
+    model: str
+    module: str
+    relation_kinds: list[str] = dataclass_field(default_factory=list)
+    class_names: list[str] = dataclass_field(default_factory=list)
+    added_fields: list[str] = dataclass_field(default_factory=list)
+    added_methods: list[str] = dataclass_field(default_factory=list)
+    source_paths: list[str] = dataclass_field(default_factory=list)
+    line_hints: list[int] = dataclass_field(default_factory=list)
+    shared_model_doc_path: str | None = None
+    shared_model_doc_anchor: str | None = None
+
+
+@dataclass
+class SharedModelDocumentation(DictModel):
+    """Full shared-model documentation within a multi-addon bundle."""
+
+    model: str
+    owning_modules: list[str] = dataclass_field(default_factory=list)
+    contributing_modules: list[str] = dataclass_field(default_factory=list)
+    documentation: ModelDocumentation | None = None
+    output_path: str | None = None
+    markdown: str = ""
+
+
+@dataclass
 class AddonDocumentation(DictModel):
     """Documentation bundle for one addon."""
 
@@ -675,10 +705,30 @@ class AddonDocumentation(DictModel):
     dependency_graph: dict[str, Any] = dataclass_field(default_factory=dict)
     model_inventory: AddonModelInventory | None = None
     models: list[AddonDocumentationModel] = dataclass_field(default_factory=list)
+    shared_model_contributions: list[AddonContributionSummary] = dataclass_field(
+        default_factory=list
+    )
     recommended_tests: dict[str, Any] = dataclass_field(default_factory=dict)
     diagrams: list[DocumentationDiagram] = dataclass_field(default_factory=list)
     sections: list[DocumentSection] = dataclass_field(default_factory=list)
+    output_path: str | None = None
     markdown: str = ""
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class MultiAddonDocumentation(DictModel):
+    """Documentation bundle for multiple addons in one selected scope."""
+
+    modules: list[str] = dataclass_field(default_factory=list)
+    database: str | None = None
+    source_only: bool = False
+    addon_docs: list[AddonDocumentation] = dataclass_field(default_factory=list)
+    shared_models: list[SharedModelDocumentation] = dataclass_field(
+        default_factory=list
+    )
+    index_markdown: str = ""
     warnings: list[str] = dataclass_field(default_factory=list)
     remediation: list[str] = dataclass_field(default_factory=list)
 

@@ -611,6 +611,8 @@ def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
     models: list[AddonModelEntry] = []
 
     for class_scan in scan.classes:
+        added_fields = sorted(class_scan.field_lines)
+        added_methods = sorted(class_scan.method_lines)
         inherited_models = sorted(dict.fromkeys(class_scan.inherits))
         delegated_models = sorted(class_scan.inherits_map)
 
@@ -622,6 +624,8 @@ def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
                     class_name=class_scan.class_name,
                     path=class_scan.path,
                     line_hint=class_scan.lineno,
+                    added_fields=added_fields,
+                    added_methods=added_methods,
                     inherited_models=inherited_models,
                     delegated_models=delegated_models,
                 )
@@ -636,6 +640,8 @@ def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
                     class_name=class_scan.class_name,
                     path=class_scan.path,
                     line_hint=class_scan.lineno,
+                    added_fields=added_fields,
+                    added_methods=added_methods,
                     inherited_models=inherited_models,
                     delegated_models=delegated_models,
                 )
@@ -649,6 +655,8 @@ def list_addon_models(addon_root: str, module: str) -> AddonModelInventory:
                     class_name=class_scan.class_name,
                     path=class_scan.path,
                     line_hint=class_scan.lineno,
+                    added_fields=added_fields,
+                    added_methods=added_methods,
                     inherited_models=inherited_models,
                     delegated_models=delegated_models,
                 )

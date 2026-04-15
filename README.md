@@ -16,7 +16,7 @@ intelligence:
 - `version` for Odoo version detection
 - `list-addons`, `list-installed-addons`, `print-manifest`, `list-manifest-values`
 - `list-depends`, `install-order`, `impact-of-update`
-- `docs addon`, `docs model`, `docs dependency-graph`
+- `docs addon`, `docs addons`, `docs model`, `docs dependency-graph`
 - `exec`, `inspect`, `db`, `performance`, `manifest`
 - structured JSON output for CI and editor integrations
 
@@ -92,6 +92,7 @@ oduit --env dev list-depends sale
 oduit --env dev install-order sale,purchase
 oduit --env dev impact-of-update sale
 oduit --env dev docs addon sale --source-only --path /workspace
+oduit --env dev docs addons --select-dir myaddons --output-dir ./docs-out
 oduit --env dev docs dependency-graph --modules sale,purchase
 
 # Runtime inspection and trusted execution

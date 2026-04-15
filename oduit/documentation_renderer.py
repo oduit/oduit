@@ -7,6 +7,7 @@ from collections.abc import Iterable, Sequence
 from typing import Any
 
 from .api_models import (
+    AddonContributionSummary,
     AddonDocumentation,
     AddonModelEntry,
     DependencyGraphDocumentation,
@@ -14,6 +15,8 @@ from .api_models import (
     DocumentSection,
     ModelDocumentation,
     ModelExtensionInventory,
+    MultiAddonDocumentation,
+    SharedModelDocumentation,
 )
 
 
@@ -650,17 +653,19 @@ def build_dependency_graph_sections(
     warning_lines = list(bundle.warnings)
     remediation_lines = list(bundle.remediation)
     if warning_lines or remediation_lines:
-        markdown = ["## Warnings and remediation"]
+        warning_markdown = ["## Warnings and remediation"]
         if warning_lines:
-            markdown.append("\n### Warnings\n" + _bullet_lines(warning_lines))
+            warning_markdown.append("\n### Warnings\n" + _bullet_lines(warning_lines))
         if remediation_lines:
-            markdown.append("\n### Remediation\n" + _bullet_lines(remediation_lines))
+            warning_markdown.append(
+                "\n### Remediation\n" + _bullet_lines(remediation_lines)
+            )
         sections.append(
             DocumentSection(
                 title="Warnings and remediation",
                 summary="Warnings and follow-up guidance",
                 order=3,
-                markdown="\n".join(markdown),
+                markdown="\n".join(warning_markdown),
             )
         )
     return sections
@@ -684,6 +689,389 @@ def render_addon_markdown(bundle: AddonDocumentation) -> str:
         [f"# Addon documentation: {bundle.module}"]
         + [section.markdown for section in sorted_sections]
     )
+
+
+def _shared_model_link(
+    contribution: AddonContributionSummary,
+    *,
+    relative_models_dir: str,
+) -> str:
+    if contribution.shared_model_doc_path:
+        return f"[{contribution.model}]({contribution.shared_model_doc_path})"
+    return f"[{contribution.model}]({relative_models_dir}/{contribution.model}.md)"
+
+
+def render_addon_markdown_deduplicated(
+    addon_doc: AddonDocumentation,
+    *,
+    relative_models_dir: str = "../models",
+) -> str:
+    """Render one addon page for the multi-addon documentation bundle."""
+    addon_info = addon_doc.addon_info
+    if addon_info is None:
+        return f"# Addon documentation: {addon_doc.module}"
+
+    installed_state = (
+        addon_info.installed_state.state if addon_info.installed_state else "n/a"
+    )
+    sections = [
+        "## Summary\n"
+        + "\n".join(
+            [
+                f"- module: `{addon_doc.module}`",
+                f"- path: `{addon_info.module_path or '-'}`",
+                f"- version: `{addon_info.version_display}`",
+                f"- addon type: `{addon_info.addon_type}`",
+                f"- installed state: `{installed_state}`",
+                f"- source only: `{'yes' if addon_doc.source_only else 'no'}`",
+                f"- local models inline: `{len(addon_doc.models)}`",
+                "- shared models linked: "
+                f"`{len(addon_doc.shared_model_contributions)}`",
+            ]
+        )
+    ]
+
+    manifest_rows = [
+        ["Depends", ", ".join(addon_info.depends) or "-"],
+        ["Reverse dependencies", ", ".join(addon_info.reverse_dependencies) or "-"],
+        ["Missing dependencies", ", ".join(addon_info.missing_dependencies) or "-"],
+        ["Installable", "yes" if addon_info.installable else "no"],
+        ["Auto install", "yes" if addon_info.auto_install else "no"],
+        ["License", addon_info.license or "-"],
+        ["Summary", addon_info.summary or "-"],
+    ]
+    sections.append(
+        "## Manifest\n" + _markdown_table(["Field", "Value"], manifest_rows)
+    )
+
+    dependency_diagram = next(
+        (item for item in addon_doc.diagrams if item.kind == "dependency_graph"),
+        None,
+    )
+    dependency_rows = [
+        [str(edge.get("source", "-")), str(edge.get("target", "-"))]
+        for edge in addon_doc.dependency_graph.get("edges", [])
+        if isinstance(edge, dict)
+    ]
+    dependency_markdown = "## Dependency overview\n"
+    dependency_markdown += (
+        _markdown_table(["Source", "Target"], dependency_rows)
+        if dependency_rows
+        else "No dependency edges found."
+    )
+    dependency_graph_block = _mermaid_block(dependency_diagram)
+    if dependency_graph_block:
+        dependency_markdown += "\n\n" + dependency_graph_block
+    sections.append(dependency_markdown)
+
+    model_rows: list[list[str]] = []
+    for model_entry in addon_doc.models:
+        model_rows.append(
+            [
+                model_entry.model,
+                ", ".join(model_entry.relation_kinds) or "-",
+                (
+                    ", ".join(
+                        sorted(
+                            {entry.class_name for entry in model_entry.source_entries}
+                        )
+                    )
+                    or "-"
+                ),
+                "inline",
+            ]
+        )
+    for contribution in addon_doc.shared_model_contributions:
+        model_rows.append(
+            [
+                contribution.model,
+                ", ".join(contribution.relation_kinds) or "-",
+                ", ".join(contribution.class_names) or "-",
+                _shared_model_link(
+                    contribution,
+                    relative_models_dir=relative_models_dir,
+                ),
+            ]
+        )
+    sections.append(
+        "## Models declared or extended\n"
+        + (
+            _markdown_table(
+                ["Model", "Relation kinds", "Classes", "Detail"], model_rows
+            )
+            if model_rows
+            else "No Python model declarations or extensions were found."
+        )
+    )
+
+    if addon_doc.models:
+        local_model_sections = ["## Local model details"]
+        for model_entry in addon_doc.models:
+            local_model_sections.append(f"\n### {model_entry.model}")
+            local_model_sections.append(
+                f"Relation kinds: {', '.join(model_entry.relation_kinds) or '-'}"
+            )
+            if model_entry.documentation is None:
+                local_model_sections.append("No model documentation is available.")
+                continue
+
+            model_diagram = next(
+                (
+                    item
+                    for item in model_entry.documentation.diagrams
+                    if item.kind == "model_inheritance"
+                ),
+                None,
+            )
+            diagram_block = _mermaid_block(model_diagram)
+            if diagram_block:
+                local_model_sections.append("\n#### Model graph")
+                local_model_sections.append(diagram_block)
+
+            field_rows = _render_field_rows(model_entry.documentation.field_metadata)
+            local_model_sections.append("\n#### Fields")
+            local_model_sections.append(
+                _markdown_table(
+                    ["Field", "Type", "Label", "Required", "Readonly", "Relation"],
+                    field_rows,
+                )
+                if field_rows
+                else "Runtime field metadata is unavailable."
+            )
+
+            view_rows = _render_view_rows(model_entry.documentation.view_inventory)
+            local_model_sections.append("\n#### Views")
+            local_model_sections.append(
+                _markdown_table(
+                    ["Name", "Type", "Mode", "Priority", "Inherit", "Key"],
+                    view_rows,
+                )
+                if view_rows
+                else "Runtime view metadata is unavailable."
+            )
+
+            source_extension_rows = []
+            inventory = model_entry.documentation.extension_inventory
+            if inventory is not None:
+                for extension in inventory.source_extensions:
+                    source_extension_rows.append(
+                        [
+                            extension.module,
+                            extension.class_name,
+                            extension.relation_kind,
+                            extension.path,
+                        ]
+                    )
+            local_model_sections.append("\n#### Source extensions")
+            local_model_sections.append(
+                _markdown_table(
+                    ["Module", "Class", "Relation", "Path"],
+                    source_extension_rows,
+                )
+                if source_extension_rows
+                else "No cross-addon source extensions found."
+            )
+        sections.append("\n".join(local_model_sections))
+
+    shared_rows = [
+        [
+            contribution.model,
+            ", ".join(contribution.relation_kinds) or "-",
+            ", ".join(contribution.class_names) or "-",
+            ", ".join(contribution.added_fields) or "-",
+            ", ".join(contribution.added_methods) or "-",
+            ", ".join(contribution.source_paths) or "-",
+            _shared_model_link(
+                contribution,
+                relative_models_dir=relative_models_dir,
+            ),
+        ]
+        for contribution in addon_doc.shared_model_contributions
+    ]
+    sections.append(
+        "## Shared model contributions\n"
+        + (
+            _markdown_table(
+                [
+                    "Model",
+                    "Relation kinds",
+                    "Classes",
+                    "Added fields",
+                    "Added methods",
+                    "Paths",
+                    "Shared doc",
+                ],
+                shared_rows,
+            )
+            if shared_rows
+            else "No shared model contributions were found."
+        )
+    )
+
+    tests = (
+        addon_doc.recommended_tests.get("tests", [])
+        if addon_doc.recommended_tests
+        else []
+    )
+    test_rows = [
+        [
+            str(test.get("path", "-")),
+            str(test.get("test_type", "-")),
+            ", ".join(test.get("ranking_signals", []))
+            if isinstance(test.get("ranking_signals"), list)
+            else "-",
+        ]
+        for test in tests
+        if isinstance(test, dict)
+    ]
+    sections.append(
+        "## Tests\n"
+        + (
+            _markdown_table(["Path", "Type", "Signals"], test_rows)
+            if test_rows
+            else "No tests were discovered."
+        )
+    )
+
+    if addon_doc.warnings or addon_doc.remediation:
+        warning_section = ["## Warnings and remediation"]
+        if addon_doc.warnings:
+            warning_section.append(
+                "\n### Warnings\n" + _bullet_lines(addon_doc.warnings)
+            )
+        if addon_doc.remediation:
+            warning_section.append(
+                "\n### Remediation\n" + _bullet_lines(addon_doc.remediation)
+            )
+        sections.append("\n".join(warning_section))
+
+    return "\n\n".join([f"# Addon documentation: {addon_doc.module}"] + sections)
+
+
+def render_shared_model_markdown(
+    shared: SharedModelDocumentation,
+    *,
+    relative_addons_dir: str = "../addons",
+) -> str:
+    """Render one shared model page for the multi-addon bundle."""
+    sections = [
+        "## Summary\n"
+        + "\n".join(
+            [
+                f"- model: `{shared.model}`",
+                "- owning addons: "
+                + (
+                    f"`{', '.join(shared.owning_modules)}`"
+                    if shared.owning_modules
+                    else "`external/outside selected scope`"
+                ),
+                "- contributing addons: "
+                + (
+                    f"`{', '.join(shared.contributing_modules)}`"
+                    if shared.contributing_modules
+                    else "`-`"
+                ),
+            ]
+        )
+    ]
+
+    backlink_rows = [
+        [
+            module,
+            "owner" if module in shared.owning_modules else "contributor",
+            f"[{module}]({relative_addons_dir}/{module}.md)",
+        ]
+        for module in shared.contributing_modules
+    ]
+    sections.append(
+        "## Contributing addons\n"
+        + (
+            _markdown_table(["Addon", "Role", "Page"], backlink_rows)
+            if backlink_rows
+            else "No contributing addons were recorded."
+        )
+    )
+
+    if shared.documentation is None:
+        sections.append("No model documentation is available.")
+        return "\n\n".join([f"# Shared model: {shared.model}"] + sections)
+
+    model_sections = shared.documentation.sections or build_model_sections(
+        shared.documentation
+    )
+    sections.extend(
+        section.markdown
+        for section in sorted(model_sections, key=lambda item: item.order)
+        if section.title != "Summary"
+    )
+    return "\n\n".join([f"# Shared model: {shared.model}"] + sections)
+
+
+def render_multi_addon_index_markdown(bundle: MultiAddonDocumentation) -> str:
+    """Render the index page for a multi-addon documentation bundle."""
+    summary_lines = [
+        f"- selected addons: `{', '.join(bundle.modules) or '-'}`",
+        f"- addon pages: `{len(bundle.addon_docs)}`",
+        f"- shared model pages: `{len(bundle.shared_models)}`",
+        f"- database: `{bundle.database or 'default'}`",
+        f"- source only: `{'yes' if bundle.source_only else 'no'}`",
+    ]
+    sections = ["## Summary\n" + "\n".join(summary_lines)]
+
+    addon_rows = [
+        [
+            addon.module,
+            f"[{addon.module}]({addon.output_path})"
+            if addon.output_path
+            else addon.module,
+        ]
+        for addon in bundle.addon_docs
+    ]
+    sections.append(
+        "## Addon pages\n"
+        + (
+            _markdown_table(["Addon", "Path"], addon_rows)
+            if addon_rows
+            else "No addon pages were generated."
+        )
+    )
+
+    shared_rows = [
+        [
+            shared.model,
+            ", ".join(shared.owning_modules) or "external",
+            ", ".join(shared.contributing_modules) or "-",
+            (
+                f"[{shared.model}]({shared.output_path})"
+                if shared.output_path
+                else shared.model
+            ),
+        ]
+        for shared in bundle.shared_models
+    ]
+    sections.append(
+        "## Shared models\n"
+        + (
+            _markdown_table(
+                ["Model", "Owning addons", "Contributing addons", "Path"],
+                shared_rows,
+            )
+            if shared_rows
+            else "No shared model pages were generated."
+        )
+    )
+
+    if bundle.warnings or bundle.remediation:
+        warning_section = ["## Warnings and remediation"]
+        if bundle.warnings:
+            warning_section.append("\n### Warnings\n" + _bullet_lines(bundle.warnings))
+        if bundle.remediation:
+            warning_section.append(
+                "\n### Remediation\n" + _bullet_lines(bundle.remediation)
+            )
+        sections.append("\n".join(warning_section))
+
+    return "\n\n".join(["# Multi-addon documentation bundle"] + sections)
 
 
 def render_dependency_graph_markdown(bundle: DependencyGraphDocumentation) -> str:

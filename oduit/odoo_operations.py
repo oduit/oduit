@@ -38,6 +38,7 @@ from .api_models import (
     ModelFieldsResult,
     ModelSourceLocation,
     ModelViewInventory,
+    MultiAddonDocumentation,
     QueryModelResult,
     RecordReadResult,
     SearchCountResult,
@@ -546,6 +547,7 @@ class OdooOperations:
         field_attributes: list[str] | tuple[str, ...] | None = None,
         view_types: list[str] | tuple[str, ...] | None = None,
         max_fields: int | None = None,
+        source_modules: list[str] | tuple[str, ...] | None = None,
         path_prefix: str | None = None,
     ) -> ModelDocumentation:
         """Build one model documentation bundle."""
@@ -558,6 +560,37 @@ class OdooOperations:
             field_attributes=field_attributes,
             view_types=view_types,
             max_fields=max_fields,
+            source_modules=source_modules,
+            path_prefix=path_prefix,
+        )
+
+    def build_addons_documentation(
+        self,
+        module_names: list[str],
+        *,
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
+    ) -> MultiAddonDocumentation:
+        """Build one documentation bundle spanning multiple addons."""
+        return self._documentation_service.build_addons_documentation(
+            module_names,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
             path_prefix=path_prefix,
         )
 

@@ -8,6 +8,7 @@ from typing import Any
 from manifestoo_core.odoo_series import OdooSeries
 
 from ..api_models import (
+    AddonContributionSummary,
     AddonDocumentation,
     AddonDocumentationModel,
     AddonInfo,
@@ -15,18 +16,24 @@ from ..api_models import (
     DependencyGraphDocumentation,
     DocumentationDiagram,
     ModelDocumentation,
+    ModelExtensionInventory,
     ModelFieldsResult,
+    MultiAddonDocumentation,
+    SharedModelDocumentation,
 )
 from ..documentation_renderer import (
     build_addon_sections,
     build_dependency_graph_sections,
     build_model_sections,
     render_addon_markdown,
+    render_addon_markdown_deduplicated,
     render_addon_model_graph_mermaid,
     render_dependency_graph_markdown,
     render_dependency_graph_mermaid,
     render_model_inheritance_mermaid,
     render_model_markdown,
+    render_multi_addon_index_markdown,
+    render_shared_model_markdown,
 )
 from ..source_locator import list_addon_languages, list_model_extensions
 from .base import OperationsService
@@ -121,6 +128,60 @@ def _apply_path_prefix(value: Any, *, path_prefix: Path | None) -> None:
             )
             continue
         _apply_path_prefix(current, path_prefix=path_prefix)
+
+
+def _filter_extension_inventory(
+    inventory: ModelExtensionInventory,
+    *,
+    source_modules: set[str],
+) -> tuple[ModelExtensionInventory, list[str]]:
+    omitted_modules = sorted(
+        {
+            item.module
+            for item in inventory.base_declarations
+            if item.module not in source_modules
+        }
+        | {
+            item.module
+            for item in inventory.source_extensions
+            if item.module not in source_modules
+        }
+        | {
+            item.module
+            for item in inventory.source_view_extensions
+            if item.module not in source_modules
+        }
+    )
+    filtered_base_declarations = [
+        item for item in inventory.base_declarations if item.module in source_modules
+    ]
+    filtered_source_extensions = [
+        item for item in inventory.source_extensions if item.module in source_modules
+    ]
+    filtered_source_view_extensions = [
+        item
+        for item in inventory.source_view_extensions
+        if item.module in source_modules
+    ]
+    return (
+        ModelExtensionInventory(
+            model=inventory.model,
+            base_declarations=filtered_base_declarations,
+            source_extensions=filtered_source_extensions,
+            source_extension_modules=sorted(
+                {item.module for item in filtered_source_extensions}
+            ),
+            installed_fields=list(inventory.installed_fields),
+            installed_extension_fields=list(inventory.installed_extension_fields),
+            source_view_extensions=filtered_source_view_extensions,
+            installed_view_extensions=list(inventory.installed_view_extensions),
+            installed_extension_modules=list(inventory.installed_extension_modules),
+            scanned_python_files=list(inventory.scanned_python_files),
+            warnings=list(inventory.warnings),
+            remediation=list(inventory.remediation),
+        ),
+        omitted_modules,
+    )
 
 
 class DocumentationOperationsService(OperationsService):
@@ -281,6 +342,7 @@ class DocumentationOperationsService(OperationsService):
         field_attributes: list[str] | tuple[str, ...] | None = None,
         view_types: list[str] | tuple[str, ...] | None = None,
         max_fields: int | None = None,
+        source_modules: list[str] | tuple[str, ...] | None = None,
         path_prefix: str | None = None,
     ) -> ModelDocumentation:
         """Build one model documentation bundle."""
@@ -288,6 +350,7 @@ class DocumentationOperationsService(OperationsService):
             field_attributes or self.DEFAULT_FIELD_ATTRIBUTES
         )
         requested_view_types = list(view_types or [])
+        requested_source_modules = _unique_strings(list(source_modules or []))
         addons_path = self.operations.config.get_required("addons_path")
         extension_inventory = (
             list_model_extensions(addons_path, model)
@@ -298,11 +361,23 @@ class DocumentationOperationsService(OperationsService):
                 timeout=timeout,
             )
         )
+        if requested_source_modules:
+            extension_inventory, omitted_modules = _filter_extension_inventory(
+                extension_inventory,
+                source_modules=set(requested_source_modules),
+            )
+        else:
+            omitted_modules = []
 
         field_metadata: ModelFieldsResult | None = None
         view_inventory = None
         warnings = list(extension_inventory.warnings)
         remediation = list(extension_inventory.remediation)
+        if omitted_modules:
+            warnings.append(
+                "Source contributions were limited to selected modules: "
+                + ", ".join(requested_source_modules)
+            )
 
         if not source_only:
             field_metadata = self.operations.get_model_fields(
@@ -360,6 +435,244 @@ class DocumentationOperationsService(OperationsService):
         )
         bundle.sections = build_model_sections(bundle)
         bundle.markdown = render_model_markdown(bundle)
+        return bundle
+
+    def build_addons_documentation(
+        self,
+        module_names: list[str],
+        *,
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
+    ) -> MultiAddonDocumentation:
+        """Build one documentation bundle spanning multiple selected addons."""
+        requested_field_attributes = list(
+            field_attributes or self.DEFAULT_FIELD_ATTRIBUTES
+        )
+        requested_view_types = list(view_types or [])
+        selected_modules = _unique_strings(module_names)
+        bundle = MultiAddonDocumentation(
+            modules=selected_modules,
+            database=database,
+            source_only=source_only,
+        )
+        if not selected_modules:
+            bundle.index_markdown = render_multi_addon_index_markdown(bundle)
+            return bundle
+
+        module_manager = self.operations._get_module_manager()
+        missing_modules = [
+            module_name
+            for module_name in selected_modules
+            if module_manager.find_module_path(module_name) is None
+        ]
+        if missing_modules:
+            missing_list = ", ".join(missing_modules)
+            raise ModuleNotFoundError(
+                f"Modules not found in addons_path: {missing_list}"
+            )
+
+        duplicate_modules = self.operations.list_duplicates()
+        addon_contexts: dict[str, dict[str, Any]] = {}
+        warnings: list[str] = []
+        remediation: list[str] = []
+
+        for module_name in selected_modules:
+            inspection = self.operations.inspect_addon(
+                module_name,
+                odoo_series=odoo_series,
+            )
+            model_inventory = self.operations.list_addon_models(module_name)
+            test_inventory = self.operations.list_addon_tests(module_name)
+            dependency_graph = self.operations.dependency_graph([module_name])
+            addon_root = inspection.module_path or model_inventory.addon_root
+            languages, language_warnings = list_addon_languages(addon_root)
+            addon_info = self._build_addon_info(
+                inspection=inspection,
+                model_inventory=model_inventory,
+                test_inventory=test_inventory,
+                addon_root=addon_root,
+                languages=languages,
+                source_only=source_only,
+                database=database,
+                timeout=timeout,
+            )
+            addon_warnings = list(addon_info.warnings) + list(model_inventory.warnings)
+            addon_warnings.extend(test_inventory.warnings)
+            addon_warnings.extend(language_warnings)
+            addon_remediation = list(addon_info.remediation) + list(
+                model_inventory.remediation
+            )
+            addon_remediation.extend(test_inventory.remediation)
+            if module_name in duplicate_modules:
+                addon_warnings.append(
+                    "Duplicate addon names were found across configured addon paths "
+                    "for "
+                    f"`{module_name}`."
+                )
+                addon_remediation.append(
+                    "Remove or reorder duplicate addon paths so documentation resolves "
+                    "the expected addon root unambiguously."
+                )
+
+            addon_contexts[module_name] = {
+                "addon_info": addon_info,
+                "dependency_graph": dependency_graph,
+                "model_inventory": model_inventory,
+                "recommended_tests": self.operations.recommend_tests(module_name, []),
+                "warnings": _unique_strings(
+                    addon_warnings + dependency_graph.get("warnings", [])
+                ),
+                "remediation": _unique_strings(addon_remediation),
+            }
+            warnings.extend(addon_contexts[module_name]["warnings"])
+            remediation.extend(addon_contexts[module_name]["remediation"])
+
+        model_to_entries, shared_model_names = self._classify_models_across_addons(
+            {
+                module_name: addon_contexts[module_name]["model_inventory"]
+                for module_name in selected_modules
+            }
+        )
+
+        shared_models: dict[str, SharedModelDocumentation] = {}
+        for model_name in sorted(shared_model_names):
+            shared_doc = self._build_shared_model_documentation(
+                model_name,
+                entries=model_to_entries[model_name],
+                selected_modules=selected_modules,
+                database=database,
+                timeout=timeout,
+                source_only=source_only,
+                include_arch=include_arch,
+                field_attributes=requested_field_attributes,
+                view_types=requested_view_types,
+                max_fields_per_model=max_fields_per_model,
+                path_prefix=path_prefix,
+            )
+            shared_models[model_name] = shared_doc
+            if shared_doc.documentation is not None:
+                warnings.extend(shared_doc.documentation.warnings)
+                remediation.extend(shared_doc.documentation.remediation)
+
+        addon_docs: list[AddonDocumentation] = []
+        normalized_path_prefix = _normalize_path_prefix(path_prefix)
+        for module_name in selected_modules:
+            context = addon_contexts[module_name]
+            model_inventory = context["model_inventory"]
+            grouped_entries: dict[str, list[Any]] = defaultdict(list)
+            for entry in model_inventory.models:
+                grouped_entries[entry.model].append(entry)
+
+            model_names = sorted(grouped_entries)
+            addon_warnings = list(context["warnings"])
+            addon_remediation = list(context["remediation"])
+            if max_models is not None and max_models >= 0:
+                original_count = len(model_names)
+                model_names = model_names[:max_models]
+                if original_count > len(model_names):
+                    addon_warnings.append(
+                        "Model details were limited to the first "
+                        f"{len(model_names)} model(s)."
+                    )
+
+            documented_models: list[AddonDocumentationModel] = []
+            shared_contributions: list[AddonContributionSummary] = []
+            for model_name in model_names:
+                entries = sorted(
+                    grouped_entries[model_name],
+                    key=lambda item: (item.relation_kind, item.path, item.class_name),
+                )
+                relation_kinds = _unique_strings(
+                    [entry.relation_kind for entry in entries]
+                )
+                if model_name in shared_models:
+                    shared_contributions.append(
+                        self._build_addon_contribution_summary(
+                            module_name,
+                            model_name,
+                            entries,
+                            shared_output_path=shared_models[model_name].output_path,
+                        )
+                    )
+                    continue
+
+                model_doc = self.build_model_documentation(
+                    model_name,
+                    database=database,
+                    timeout=timeout,
+                    source_only=source_only,
+                    include_arch=include_arch,
+                    field_attributes=requested_field_attributes,
+                    view_types=requested_view_types,
+                    max_fields=max_fields_per_model,
+                    source_modules=selected_modules,
+                    path_prefix=path_prefix,
+                )
+                addon_warnings.extend(model_doc.warnings)
+                addon_remediation.extend(model_doc.remediation)
+                documented_models.append(
+                    AddonDocumentationModel(
+                        model=model_name,
+                        relation_kinds=relation_kinds,
+                        source_entries=entries,
+                        documentation=model_doc,
+                    )
+                )
+
+            diagrams: list[DocumentationDiagram] = [
+                render_dependency_graph_mermaid(
+                    context["dependency_graph"],
+                    title=f"Dependency graph: {module_name}",
+                )
+            ]
+            if model_inventory.models:
+                diagrams.append(
+                    render_addon_model_graph_mermaid(
+                        module_name,
+                        model_inventory.models,
+                        title=f"Model graph: {module_name}",
+                    )
+                )
+
+            addon_bundle = AddonDocumentation(
+                module=module_name,
+                database=database,
+                source_only=source_only,
+                addon_info=context["addon_info"],
+                dependency_graph=context["dependency_graph"],
+                model_inventory=model_inventory,
+                models=documented_models,
+                shared_model_contributions=shared_contributions,
+                recommended_tests=context["recommended_tests"],
+                diagrams=diagrams,
+                output_path=f"addons/{module_name}.md",
+                warnings=_unique_strings(addon_warnings),
+                remediation=_unique_strings(addon_remediation),
+            )
+            _apply_path_prefix(addon_bundle, path_prefix=normalized_path_prefix)
+            addon_bundle.markdown = render_addon_markdown_deduplicated(addon_bundle)
+            addon_docs.append(addon_bundle)
+            warnings.extend(addon_bundle.warnings)
+            remediation.extend(addon_bundle.remediation)
+
+        bundle = MultiAddonDocumentation(
+            modules=selected_modules,
+            database=database,
+            source_only=source_only,
+            addon_docs=addon_docs,
+            shared_models=[shared_models[name] for name in sorted(shared_models)],
+            warnings=_unique_strings(warnings),
+            remediation=_unique_strings(remediation),
+        )
+        bundle.index_markdown = render_multi_addon_index_markdown(bundle)
         return bundle
 
     def build_dependency_graph_documentation(
@@ -524,6 +837,119 @@ class DocumentationOperationsService(OperationsService):
             error=field_metadata.error,
             error_type=field_metadata.error_type,
         )
+
+    def _classify_models_across_addons(
+        self,
+        inventories: dict[str, Any],
+    ) -> tuple[dict[str, list[tuple[str, Any]]], set[str]]:
+        model_to_entries: dict[str, list[tuple[str, Any]]] = defaultdict(list)
+        for module_name, inventory in inventories.items():
+            for entry in inventory.models:
+                model_to_entries[entry.model].append((module_name, entry))
+
+        shared_model_names: set[str] = set()
+        for model_name, contributions in model_to_entries.items():
+            contributing_modules = {module for module, _ in contributions}
+            declaring_modules = {
+                module
+                for module, entry in contributions
+                if entry.relation_kind == "declares"
+            }
+            if len(contributing_modules) > 1 or not declaring_modules:
+                shared_model_names.add(model_name)
+
+        for _model_name, entries in model_to_entries.items():
+            entries.sort(
+                key=lambda item: (
+                    item[0],
+                    item[1].relation_kind,
+                    item[1].path,
+                    item[1].class_name,
+                )
+            )
+        return model_to_entries, shared_model_names
+
+    def _build_shared_model_documentation(
+        self,
+        model_name: str,
+        *,
+        entries: list[tuple[str, Any]],
+        selected_modules: list[str],
+        database: str | None,
+        timeout: float,
+        source_only: bool,
+        include_arch: bool,
+        field_attributes: list[str],
+        view_types: list[str],
+        max_fields_per_model: int | None,
+        path_prefix: str | None,
+    ) -> SharedModelDocumentation:
+        model_doc = self.build_model_documentation(
+            model_name,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_fields=max_fields_per_model,
+            source_modules=selected_modules,
+            path_prefix=path_prefix,
+        )
+        shared_doc = SharedModelDocumentation(
+            model=model_name,
+            owning_modules=sorted(
+                {
+                    module
+                    for module, entry in entries
+                    if entry.relation_kind == "declares"
+                }
+            ),
+            contributing_modules=sorted({module for module, _ in entries}),
+            documentation=model_doc,
+            output_path=f"models/{self._sanitize_model_doc_filename(model_name)}",
+        )
+        shared_doc.markdown = render_shared_model_markdown(shared_doc)
+        return shared_doc
+
+    def _build_addon_contribution_summary(
+        self,
+        module_name: str,
+        model_name: str,
+        entries: list[Any],
+        *,
+        shared_output_path: str | None,
+    ) -> AddonContributionSummary:
+        return AddonContributionSummary(
+            model=model_name,
+            module=module_name,
+            relation_kinds=_unique_strings([entry.relation_kind for entry in entries]),
+            class_names=_unique_strings([entry.class_name for entry in entries]),
+            added_fields=_unique_strings(
+                [field_name for entry in entries for field_name in entry.added_fields]
+            ),
+            added_methods=_unique_strings(
+                [
+                    method_name
+                    for entry in entries
+                    for method_name in entry.added_methods
+                ]
+            ),
+            source_paths=_unique_strings([entry.path for entry in entries]),
+            line_hints=sorted(
+                {
+                    entry.line_hint
+                    for entry in entries
+                    if isinstance(entry.line_hint, int)
+                }
+            ),
+            shared_model_doc_path=(
+                f"../{shared_output_path}" if shared_output_path is not None else None
+            ),
+        )
+
+    def _sanitize_model_doc_filename(self, model_name: str) -> str:
+        return f"{model_name}.md"
 
     def _build_direct_dependency_graph(self, module_names: list[str]) -> dict[str, Any]:
         module_manager = self.operations._get_module_manager()

@@ -985,19 +985,22 @@ docs
 ^^^^
 
 Generate Markdown, Mermaid-backed, or JSON documentation bundles from addon and
-model metadata.
+model metadata, including multi-addon bundles with shared-model deduplication.
 
 .. code-block:: bash
 
    oduit --env dev docs addon sale --source-only --path /my/long/path
+   oduit --env dev docs addons --select-dir myaddons --output-dir ./docs-out
    oduit --env dev docs addon sale --output sale.md
    oduit --env dev docs model res.partner --source-only --format json
    oduit --env dev docs dependency-graph --modules sale,purchase
 
 Use ``--format markdown`` for rendered docs, ``--format json`` for structured
 automation output, and ``--output`` to write the generated Markdown directly to
-a file. Use ``--path`` to trim a shared absolute prefix from documented file
-paths; paths outside that prefix stay absolute.
+a file. Use ``docs addons --output-dir`` to write the multi-file addon bundle
+(``index.md``, ``addons/*.md``, ``models/*.md``, and ``bundle.json``). Use
+``--path`` to trim a shared absolute prefix from documented file paths; paths
+outside that prefix stay absolute.
 
 Showcase Replacements
 ^^^^^^^^^^^^^^^^^^^^^

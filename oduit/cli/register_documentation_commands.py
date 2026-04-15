@@ -9,6 +9,7 @@ import typer
 
 from .commands.documentation import (
     addon_documentation_command,
+    addons_documentation_command,
     dependency_graph_documentation_command,
     model_documentation_command,
 )
@@ -24,7 +25,7 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
     module_not_found_error_cls = context.dependencies.module_not_found_error_cls
     module_manager_cls = context.dependencies.get_module_manager_cls()
 
-    docs_app = typer.Typer(help="Generate addon and model documentation")
+    docs_app = typer.Typer(help="Generate addon and model documentation bundles")
     app.add_typer(docs_app, name="docs")
 
     @docs_app.command("addon")
@@ -240,4 +241,94 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             build_odoo_operations_fn=build_odoo_operations_fn,
             module_manager_cls=module_manager_cls,
             print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @docs_app.command("addons")
+    def docs_addons_command(
+        ctx: typer.Context,
+        modules: str | None = typer.Option(
+            None,
+            "--modules",
+            help="Comma-separated addon names",
+        ),
+        select_dir: str | None = typer.Option(
+            None,
+            "--select-dir",
+            help="Select all addons under a named addon directory",
+        ),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(
+            30.0,
+            "--timeout",
+            help="Runtime query timeout in seconds",
+        ),
+        source_only: bool = typer.Option(
+            False,
+            "--source-only",
+            help="Skip all runtime/database enrichment",
+        ),
+        include_arch: bool = typer.Option(
+            False,
+            "--include-arch",
+            help="Include raw view XML in runtime view payloads",
+        ),
+        attributes: str | None = typer.Option(
+            "string,type,required,readonly,store,relation",
+            "--field-attributes",
+            help="Comma-separated field metadata attributes",
+        ),
+        types: str | None = typer.Option(
+            None,
+            "--view-types",
+            help="Comma-separated view types such as form,tree,kanban,search",
+        ),
+        max_models: int | None = typer.Option(
+            None,
+            "--max-models",
+            help="Limit the number of per-addon model sections",
+        ),
+        max_fields_per_model: int | None = typer.Option(
+            None,
+            "--max-fields-per-model",
+            help="Limit the number of runtime fields shown per model",
+        ),
+        path_prefix: str | None = typer.Option(
+            None,
+            "--path",
+            help="Trim this absolute prefix from documented file paths",
+        ),
+        output_dir: Annotated[
+            Path | None,
+            typer.Option(
+                "--output-dir",
+                help="Write the multi-file bundle to this directory",
+            ),
+        ] = None,
+        format_name: str | None = typer.Option(
+            None,
+            "--format",
+            help="Output format: markdown or json",
+        ),
+    ) -> None:
+        """Generate one documentation bundle spanning multiple addons."""
+        addons_documentation_command(
+            ctx,
+            modules=modules,
+            select_dir=select_dir,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            attributes=attributes,
+            types=types,
+            output_dir=output_dir,
+            format_name=format_name,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            module_manager_cls=module_manager_cls,
+            print_command_error_result_fn=print_command_error_result_fn,
+            module_not_found_error_cls=module_not_found_error_cls,
         )
