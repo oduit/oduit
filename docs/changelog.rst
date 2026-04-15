@@ -1,6 +1,38 @@
 Changelog
 =========
 
+0.4.1
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add documentation commands
+
+- Add path parameter for shorting long paths
+
+- Docs support multi-addon bundle
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- Use res.partner as example
+
+- Fix unit test
+
+- Windows test
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update changelog
+
+
 0.4.0
 ----------
 
