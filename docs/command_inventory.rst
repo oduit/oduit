@@ -99,7 +99,7 @@ This page is generated from the canonical Typer registration surface in
      - Execute trusted Python from a file within Odoo.
    * - ``docs``
      - ``human_oriented``
-     - Generate addon and model documentation
+     - Generate addon and model documentation bundles
    * - ``inspect``
      - ``human_oriented``
      - Runtime model, field, XMLID, and module inspection
