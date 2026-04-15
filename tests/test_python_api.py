@@ -316,7 +316,7 @@ def test_build_model_documentation_keeps_absolute_paths_outside_prefix(
     )
 
     assert bundle.extension_inventory is not None
-    assert bundle.extension_inventory.source_extensions[0].path == str(model_path)
+    assert Path(bundle.extension_inventory.source_extensions[0].path) == model_path
 
 
 def test_build_dependency_graph_documentation_returns_typed_bundle(
