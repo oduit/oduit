@@ -26,7 +26,7 @@ from ..schemas import (
     CONTROLLED_SOURCE_MUTATION,
     SAFE_READ_ONLY,
 )
-from ..utils import output_result_to_json, validate_addon_name
+from ..utils import validate_addon_name
 from . import agent_support as _agent_support
 from . import bootstrap_support as _bootstrap_support
 from .addon_filters import (
@@ -55,6 +55,9 @@ from .agent.mutate import (
 )
 from .agent.payloads import agent_emit_payload as _agent_emit_payload_impl
 from .agent.payloads import agent_fail as _agent_fail_impl
+from .agent.payloads import (
+    agent_output_result_to_json as _agent_output_result_to_json_impl,
+)
 from .agent.payloads import agent_payload as _agent_payload_impl
 from .agent.payloads import (
     build_error_output_excerpt as _build_error_output_excerpt_impl,
@@ -274,6 +277,24 @@ Examples:
 
 agent_app = typer.Typer(help="Agent-first structured inspection and planning commands")
 app.add_typer(agent_app, name="agent")
+
+
+@agent_app.callback()
+def agent_main(
+    ctx: typer.Context,
+    show_command: bool = typer.Option(
+        False,
+        "--show-command",
+        help="Include executed command in agent JSON payloads when available",
+    ),
+) -> None:
+    """Configure shared agent command options."""
+    parent_obj = ctx.parent.obj if ctx.parent is not None else None
+    if isinstance(parent_obj, dict):
+        ctx.obj = {**parent_obj, "show_command": show_command}
+    else:
+        ctx.obj = {"show_command": show_command}
+
 
 SHELL_INTERFACE_OPTION = typer.Option(
     "python",
@@ -531,9 +552,7 @@ _agent_registration_context = AgentRegistrationContext(
         build_validate_addon_change_discovery_result_fn=(
             _agent_helper_context.build_validate_addon_change_discovery_result_fn
         ),
-        output_result_to_json_fn=lambda *args, **kwargs: output_result_to_json(
-            *args, **kwargs
-        ),
+        output_result_to_json_fn=_agent_output_result_to_json_impl,
     ),
     dependencies=AgentRegistrationDependencies(
         safe_read_only=SAFE_READ_ONLY,

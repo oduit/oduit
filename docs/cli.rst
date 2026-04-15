@@ -1108,6 +1108,8 @@ Agent Commands
 The ``oduit agent`` command group is the preferred automation surface for
 inspection and planning. These commands always emit structured JSON and do not
 require the global ``--json`` flag.
+The top-level raw ``command`` field is hidden by default; pass
+``oduit agent --show-command ...`` to include it when a payload provides one.
 
 Use :doc:`agent_contract` for the canonical command sequence, mutation policy,
 payload expectations, and failure handling. This section is the command

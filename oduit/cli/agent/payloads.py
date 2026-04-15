@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any, NoReturn, cast
 
+import click
 import typer
 
 from ...schemas import SAFE_READ_ONLY
@@ -13,6 +14,45 @@ from ...utils import output_result_to_json
 def agent_emit_payload(payload: dict[str, Any]) -> None:
     """Print a structured agent payload."""
     print(json.dumps(payload))
+
+
+def _agent_show_command_enabled() -> bool:
+    """Return whether the current agent invocation opted into command output."""
+    ctx = click.get_current_context(silent=True)
+    while ctx is not None:
+        obj = getattr(ctx, "obj", None)
+        if isinstance(obj, dict) and "show_command" in obj:
+            return bool(obj["show_command"])
+        ctx = ctx.parent
+    return False
+
+
+def _agent_effective_exclude_fields(
+    exclude_fields: list[str] | None = None,
+) -> list[str] | None:
+    """Merge agent defaults with caller-provided field exclusions."""
+    effective_exclude_fields = list(exclude_fields or [])
+    if not _agent_show_command_enabled() and "command" not in effective_exclude_fields:
+        effective_exclude_fields.append("command")
+    return effective_exclude_fields or None
+
+
+def agent_output_result_to_json(
+    output: dict[str, Any],
+    *,
+    additional_fields: dict[str, Any] | None = None,
+    exclude_fields: list[str] | None = None,
+    include_null_values: bool = False,
+    result_type: str = "result",
+) -> dict[str, Any]:
+    """Build agent JSON payloads with agent-specific field visibility defaults."""
+    return output_result_to_json(
+        output,
+        additional_fields=additional_fields,
+        exclude_fields=_agent_effective_exclude_fields(exclude_fields),
+        include_null_values=include_null_values,
+        result_type=result_type,
+    )
 
 
 def agent_fail(
@@ -28,7 +68,7 @@ def agent_fail(
     emit_payload_fn: Any = agent_emit_payload,
 ) -> NoReturn:
     """Emit a structured agent error payload and exit."""
-    payload = output_result_to_json(
+    payload = agent_output_result_to_json(
         {
             "success": False,
             "operation": operation,
@@ -64,7 +104,7 @@ def agent_payload(
     exclude_fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a structured agent payload using the shared JSON envelope."""
-    return output_result_to_json(
+    return agent_output_result_to_json(
         {
             "success": success,
             "operation": operation,

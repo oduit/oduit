@@ -4,7 +4,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
-from oduit.cli.agent.payloads import build_error_output_excerpt
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from oduit.cli.agent.payloads import (
+    agent_output_result_to_json,
+    build_error_output_excerpt,
+)
 from oduit.cli.agent.services import build_agent_test_summary_details
 
 
@@ -93,3 +99,37 @@ def test_build_agent_test_summary_details_merges_coverage_warning() -> None:
         "Parser warning",
         "Per-file coverage entries are not currently normalized by run_tests().",
     ]
+
+
+def test_agent_output_result_to_json_hides_command_by_default() -> None:
+    payload = agent_output_result_to_json(
+        {
+            "success": True,
+            "operation": "install_module",
+            "command": ["python3", "odoo-bin", "-i", "sale"],
+            "stdout": "installed",
+        },
+        exclude_fields=["stdout"],
+        result_type="module_installation",
+    )
+
+    assert "command" not in payload
+    assert "stdout" not in payload
+
+
+def test_agent_output_result_to_json_preserves_command_when_requested() -> None:
+    context = SimpleNamespace(obj={"show_command": True}, parent=None)
+    with patch(
+        "oduit.cli.agent.payloads.click.get_current_context",
+        return_value=context,
+    ):
+        payload = agent_output_result_to_json(
+            {
+                "success": True,
+                "operation": "install_module",
+                "command": ["python3", "odoo-bin", "-i", "sale"],
+            },
+            result_type="module_installation",
+        )
+
+    assert payload["command"] == ["python3", "odoo-bin", "-i", "sale"]

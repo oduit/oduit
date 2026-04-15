@@ -170,6 +170,8 @@ Payload Expectations
 --------------------
 
 Every final-result agent command emits exactly one JSON object on stdout.
+The top-level raw ``command`` field is hidden by default; opt in with
+``oduit agent --show-command ...`` when that debug metadata is needed.
 
 Guaranteed top-level keys:
 

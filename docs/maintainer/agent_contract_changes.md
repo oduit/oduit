@@ -15,6 +15,13 @@ This page tracks machine-facing changes to the `oduit agent` JSON contract.
 
 ## Recent changes
 
+### Hid raw command metadata by default
+
+- Agent payloads now hide the top-level `command` field by default
+- Callers that need the raw command can opt in with `oduit agent --show-command ...`
+- The field remains optional debug metadata and is only present when the command
+  produced it
+
 ### Added generated command inventories and command tiers
 
 - The canonical `oduit agent` registration surface now drives generated command
