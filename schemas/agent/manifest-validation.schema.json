@@ -2,21 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/manifest-validation.schema.json",
   "type": "object",
-  "required": [
-    "type",
-    "operation",
-    "target",
-    "module",
-    "module_path",
-    "warning_count"
-  ],
+  "required": ["type", "operation", "data"],
   "properties": {
-    "type": { "const": "manifest_validation" },
-    "operation": { "const": "manifest_check" },
-    "target": { "type": "string" },
-    "module": { "type": "string" },
-    "module_path": { "type": "string" },
-    "warning_count": { "type": "integer" }
+    "type": {
+      "const": "manifest_validation"
+    },
+    "operation": {
+      "const": "manifest_check"
+    },
+    "data": {
+      "type": "object",
+      "required": ["target", "module", "module_path", "warning_count"],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "module_path": {
+          "type": "string"
+        },
+        "warning_count": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

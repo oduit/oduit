@@ -2,12 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/addon-test-inventory.schema.json",
   "type": "object",
-  "required": ["type", "module", "addon_root", "tests"],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "addon_test_inventory" },
-    "module": { "type": "string" },
-    "addon_root": { "type": "string" },
-    "tests": { "type": "array", "items": { "type": "object" } }
+    "type": {
+      "const": "addon_test_inventory"
+    },
+    "data": {
+      "type": "object",
+      "required": ["module", "addon_root", "tests"],
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "addon_root": {
+          "type": "string"
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

@@ -170,8 +170,9 @@ Payload Expectations
 --------------------
 
 Every final-result agent command emits exactly one JSON object on stdout.
-The top-level raw ``command`` field is hidden by default; opt in with
-``oduit agent --show-command ...`` when that debug metadata is needed.
+Raw command metadata is hidden by default; opt in with
+``oduit agent --show-command ...`` when ``data.command`` is needed for
+debugging.
 
 Guaranteed top-level keys:
 
@@ -192,45 +193,48 @@ When available, commands also include:
 * ``error``
 * ``error_type``
 * ``error_code``
-* ``generated_at``
-* command-specific fields such as ``module``, ``count``, or ``candidates``
+
+``data`` is the canonical command payload container:
+
+* command-specific fields such as ``module``, ``count``, or ``candidates`` live
+  under ``data``
+* ``meta.timestamp`` is the canonical payload creation time
+* ``meta.duration`` remains optional when timing data is available
+* top-level timestamp aliases are not part of the agent contract
+
+When ``--show-command`` is enabled, the raw command is exposed as
+``data.command``.
 
 For source-location commands, prefer explicit decision fields over raw
 confidence alone:
 
-* ``resolution``: overall result such as ``confirmed``, ``ambiguous``,
+* ``data.resolution``: overall result such as ``confirmed``, ``ambiguous``,
   ``suggested``, or ``not_found``
-* ``ambiguous`` / ``ambiguity_reason``: whether the command found multiple
-  plausible matches
-* candidate ``match_strength`` and ``evidence``: why a candidate was chosen and
-  whether it is a confirmed source hit or a best-effort suggestion
-
-``data`` is the canonical command payload container.
-
-For ``2.x`` compatibility, command-specific fields are also flattened to the
-top level when they do not collide with envelope keys. That flattened shape is
-part of the public ``2.x`` contract and must remain stable within this schema
-version.
+* ``data.ambiguous`` / ``data.ambiguity_reason``: whether the command found
+  multiple plausible matches
+* ``data.candidates[*].match_strength`` and ``data.candidates[*].evidence``:
+  why a candidate was chosen and whether it is a confirmed source hit or a
+  best-effort suggestion
 
 Compatibility Policy
 --------------------
 
 * additive fields are allowed within ``schema_version = 2.x``
-* breaking changes require a schema-version bump
-* new consumers should prefer reading ``data`` first
-* existing consumers may continue using flattened top-level fields in ``2.x``
+* consumers must read command-specific data from ``payload["data"]``
+* ``meta.timestamp`` is the canonical creation timestamp
+* flattened command-field aliases and ``generated_at`` are not part of the
+  supported agent contract
 
 Payload Stability Tiers
 -----------------------
 
 * **stable:** ``schema_version``, ``type``, ``operation``, ``success``,
-  ``read_only``, ``safety_level``, ``warnings``, ``errors``, ``remediation``,
-  ``error``, ``error_type``, ``error_code``, ``data``, ``meta``
-* **soft-stable:** additive flattened command-specific fields and optional
-  metadata such as ``generated_at``, ``duration``, ``config_source``,
-  ``database``, and ``resolved_addons_path``
-* **experimental:** newly introduced command-specific fields not yet called out
-  in the public docs
+   ``read_only``, ``safety_level``, ``warnings``, ``errors``, ``remediation``,
+   ``error``, ``error_type``, ``error_code``, ``data``, ``meta``
+* **soft-stable:** optional debug metadata such as ``data.command`` and
+  optional timing data such as ``meta.duration``
+* **experimental:** newly introduced command-specific fields inside ``data``
+  that are not yet called out in the public docs
 
 Command Stability Tiers
 -----------------------
@@ -374,29 +378,5 @@ Example
       },
       "meta": {
          "timestamp": "2026-04-09T12:00:00"
-      },
-       "model": "res.partner",
-       "module": "my_partner",
-       "addon_root": "/workspace/addons/my_partner",
-       "resolution": "confirmed",
-       "ambiguous": false,
-       "candidates": [
-          {
-             "path": "/workspace/addons/my_partner/models/res_partner.py",
-             "class_name": "ResPartner",
-             "match_kind": "inherit",
-             "declared_model": "res.partner",
-             "confidence": 0.98,
-             "match_strength": "confirmed",
-             "evidence": [
-                {
-                   "kind": "model_inherit",
-                   "message": "Class inherits `res.partner` directly in addon source.",
-                   "path": "/workspace/addons/my_partner/models/res_partner.py",
-                   "line_hint": 6
-                }
-             ],
-             "line_hint": 6
-          }
-       ]
-   }
+       }
+    }

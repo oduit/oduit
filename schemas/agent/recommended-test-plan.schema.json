@@ -2,19 +2,51 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/recommended-test-plan.schema.json",
   "type": "object",
-  "required": ["type", "module", "paths", "tests", "suggested_test_tags"],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "recommended_test_plan" },
-    "module": { "type": "string" },
-    "addon_root": { "type": "string" },
-    "paths": { "type": "array", "items": { "type": "string" } },
-    "tests": { "type": "array", "items": { "type": "object" } },
-    "suggested_test_tags": {
-      "type": "array",
-      "items": { "type": "string" }
+    "type": {
+      "const": "recommended_test_plan"
     },
-    "full_addon_suite_recommended": { "type": "boolean" },
-    "rationale": { "type": "array", "items": { "type": "string" } }
+    "data": {
+      "type": "object",
+      "required": ["module", "paths", "tests", "suggested_test_tags"],
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "addon_root": {
+          "type": "string"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "suggested_test_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "full_addon_suite_recommended": {
+          "type": "boolean"
+        },
+        "rationale": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

@@ -25,6 +25,10 @@ from oduit.config_provider import ConfigProvider
 from oduit.odoo_operations import OdooOperations
 
 
+def _payload_data(payload: dict) -> dict:
+    return payload["data"]
+
+
 def _make_executable(path: Path) -> str:
     path.write_text("#!/bin/sh\nexit 0\n")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
@@ -320,11 +324,12 @@ def test_agent_read_only_parity_commands_wrap_operation_results(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == result_type
     assert payload["success"] is True
     assert payload["read_only"] is True
     assert payload["safety_level"] == "safe_read_only"
-    assert payload[expected_pair[0]] == expected_pair[1]
+    assert data[expected_pair[0]] == expected_pair[1]
 
 
 @pytest.mark.parametrize(
@@ -537,7 +542,7 @@ def test_agent_inspect_cron_reports_runtime_mutation_when_triggered(
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["type"] == "cron_inspection"
-    assert payload["triggered"] is True
+    assert payload["data"]["triggered"] is True
     assert payload["read_only"] is False
     assert payload["safety_level"] == "controlled_runtime_mutation"
     inspect_cron.assert_called_once_with(
@@ -600,10 +605,10 @@ def test_agent_manifest_commands_use_shared_manifest_resolution(tmp_path: Path) 
     show_payload = json.loads(show_result.output)
     assert check_result.exit_code == 0
     assert check_payload["type"] == "manifest_validation"
-    assert check_payload["warning_count"] == 0
+    assert check_payload["data"]["warning_count"] == 0
     assert show_result.exit_code == 0
     assert show_payload["type"] == "manifest"
-    assert show_payload["manifest_data"]["name"] == "Sale"
+    assert show_payload["data"]["manifest_data"]["name"] == "Sale"
     assert show_payload["read_only"] is True
     assert show_payload["safety_level"] == "safe_read_only"
 
@@ -682,14 +687,15 @@ def test_agent_context_returns_structured_snapshot(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "environment_context"
     assert payload["operation"] == "agent_context"
     assert payload["read_only"] is True
     assert payload["safety_level"] == "safe_read_only"
-    assert payload["environment"]["name"] == "dev"
-    assert payload["available_module_count"] == 4
-    assert payload["duplicate_modules"]["dup_mod"]
-    assert payload["doctor_summary"]["ok"] >= 1
+    assert data["environment"]["name"] == "dev"
+    assert data["available_module_count"] == 4
+    assert data["duplicate_modules"]["dup_mod"]
+    assert data["doctor_summary"]["ok"] >= 1
 
 
 def test_agent_resolve_config_returns_canonical_shape_metadata(tmp_path: Path) -> None:
@@ -712,21 +718,18 @@ def test_agent_resolve_config_returns_canonical_shape_metadata(tmp_path: Path) -
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "config_resolution"
-    assert payload["environment"]["format"] == "toml"
-    assert payload["config_shape"] == {
+    assert data["environment"]["format"] == "toml"
+    assert data["config_shape"] == {
         "raw_shape": "sectioned",
         "normalized_shape": "sectioned",
         "shape_version": "1.0",
         "source_format": "toml",
     }
-    assert payload["deprecation_warnings"] == []
-    assert (
-        payload["normalized_config"]["binaries"]["python_bin"] == config["python_bin"]
-    )
-    assert (
-        payload["normalized_config"]["odoo_params"]["db_password"] == "***redacted***"
-    )
+    assert data["deprecation_warnings"] == []
+    assert data["normalized_config"]["binaries"]["python_bin"] == config["python_bin"]
+    assert data["normalized_config"]["odoo_params"]["db_password"] == "***redacted***"
 
 
 def test_agent_resolve_config_warns_for_legacy_flat_shape(tmp_path: Path) -> None:
@@ -764,9 +767,10 @@ def test_agent_resolve_config_warns_for_legacy_flat_shape(tmp_path: Path) -> Non
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["environment"]["format"] == "yaml"
-    assert payload["config_shape"]["raw_shape"] == "legacy_flat"
-    assert payload["deprecation_warnings"] == [deprecation_warning]
+    data = _payload_data(payload)
+    assert data["environment"]["format"] == "yaml"
+    assert data["config_shape"]["raw_shape"] == "legacy_flat"
+    assert data["deprecation_warnings"] == [deprecation_warning]
     assert deprecation_warning in payload["warnings"]
 
 
@@ -788,13 +792,14 @@ def test_agent_inspect_addon_returns_dependency_snapshot(tmp_path: Path) -> None
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "addon_inspection"
     assert payload["operation"] == "inspect_addon"
-    assert payload["module"] == "x_sale"
-    assert payload["addon_type"] == "custom"
-    assert payload["direct_dependencies"] == ["base"]
-    assert payload["reverse_dependencies"] == ["x_sale_ext"]
-    assert payload["install_order_slice"] == ["base", "x_sale"]
+    assert data["module"] == "x_sale"
+    assert data["addon_type"] == "custom"
+    assert data["direct_dependencies"] == ["base"]
+    assert data["reverse_dependencies"] == ["x_sale_ext"]
+    assert data["install_order_slice"] == ["base", "x_sale"]
 
 
 def test_agent_addon_info_returns_combined_summary(tmp_path: Path) -> None:
@@ -842,14 +847,15 @@ def test_agent_addon_info_returns_combined_summary(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "addon_info"
     assert payload["operation"] == "addon_info"
-    assert payload["module"] == "my_partner"
-    assert payload["models"] == ["x.partner.score"]
-    assert payload["inherit_models"] == ["mail.thread", "res.partner"]
-    assert payload["languages"] == ["de"]
-    assert payload["installed_state"]["installed"] is True
-    assert payload["test_cases"][0]["path"].endswith("tests/test_partner.py")
+    assert data["module"] == "my_partner"
+    assert data["models"] == ["x.partner.score"]
+    assert data["inherit_models"] == ["mail.thread", "res.partner"]
+    assert data["languages"] == ["de"]
+    assert data["installed_state"]["installed"] is True
+    assert data["test_cases"][0]["path"].endswith("tests/test_partner.py")
 
 
 def test_agent_plan_update_returns_risk_summary(tmp_path: Path) -> None:
@@ -868,23 +874,24 @@ def test_agent_plan_update_returns_risk_summary(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "update_plan"
     assert payload["operation"] == "plan_update"
-    assert payload["impact_set"] == ["x_sale_ext"]
-    assert payload["backup_advised"] is True
-    assert payload["write_protect_db"] is False
-    assert payload["agent_write_protect_db"] is False
-    assert payload["needs_mutation_flag"] is False
-    assert payload["agent_needs_mutation_flag"] is False
-    assert payload["human_runtime_db_mutation_policy"] == "allow"
-    assert payload["human_runtime_db_mutation_allowed"] is True
-    assert payload["human_runtime_db_mutation_requires_flag"] is False
-    assert payload["agent_runtime_db_mutation_policy"] == "allow"
-    assert payload["agent_runtime_db_mutation_allowed"] is True
-    assert payload["agent_runtime_db_mutation_requires_flag"] is False
-    assert payload["risk_score"] > 0
-    assert payload["risk_level"] in {"low", "medium", "high"}
-    assert payload["recommended_sequence"]
+    assert data["impact_set"] == ["x_sale_ext"]
+    assert data["backup_advised"] is True
+    assert data["write_protect_db"] is False
+    assert data["agent_write_protect_db"] is False
+    assert data["needs_mutation_flag"] is False
+    assert data["agent_needs_mutation_flag"] is False
+    assert data["human_runtime_db_mutation_policy"] == "allow"
+    assert data["human_runtime_db_mutation_allowed"] is True
+    assert data["human_runtime_db_mutation_requires_flag"] is False
+    assert data["agent_runtime_db_mutation_policy"] == "allow"
+    assert data["agent_runtime_db_mutation_allowed"] is True
+    assert data["agent_runtime_db_mutation_requires_flag"] is False
+    assert data["risk_score"] > 0
+    assert data["risk_level"] in {"low", "medium", "high"}
+    assert data["recommended_sequence"]
 
 
 def test_agent_plan_update_exposes_explicit_policy_flags(tmp_path: Path) -> None:
@@ -907,17 +914,18 @@ def test_agent_plan_update_exposes_explicit_policy_flags(tmp_path: Path) -> None
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["backup_advised"] is True
-    assert payload["write_protect_db"] is True
-    assert payload["agent_write_protect_db"] is True
-    assert payload["needs_mutation_flag"] is True
-    assert payload["agent_needs_mutation_flag"] is True
-    assert payload["human_runtime_db_mutation_policy"] == "forbidden"
-    assert payload["human_runtime_db_mutation_allowed"] is False
-    assert payload["human_runtime_db_mutation_requires_flag"] is False
-    assert payload["agent_runtime_db_mutation_policy"] == "forbidden"
-    assert payload["agent_runtime_db_mutation_allowed"] is False
-    assert payload["agent_runtime_db_mutation_requires_flag"] is False
+    data = _payload_data(payload)
+    assert data["backup_advised"] is True
+    assert data["write_protect_db"] is True
+    assert data["agent_write_protect_db"] is True
+    assert data["needs_mutation_flag"] is True
+    assert data["agent_needs_mutation_flag"] is True
+    assert data["human_runtime_db_mutation_policy"] == "forbidden"
+    assert data["human_runtime_db_mutation_allowed"] is False
+    assert data["human_runtime_db_mutation_requires_flag"] is False
+    assert data["agent_runtime_db_mutation_policy"] == "forbidden"
+    assert data["agent_runtime_db_mutation_allowed"] is False
+    assert data["agent_runtime_db_mutation_requires_flag"] is False
 
 
 def test_prepare_addon_change_bundles_read_only_planning_steps(tmp_path: Path) -> None:
@@ -996,23 +1004,24 @@ def test_prepare_addon_change_bundles_read_only_planning_steps(tmp_path: Path) -
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "addon_change_context"
     assert payload["operation"] == "prepare_addon_change"
-    assert payload["module"] == "my_partner"
-    assert payload["model"] == "res.partner"
-    assert payload["field"] == "email3"
-    assert payload["steps"]["context"]["success"] is True
-    assert payload["steps"]["inspect_addon"]["success"] is True
-    assert payload["steps"]["plan_update"]["success"] is True
-    assert payload["steps"]["locate_model"]["success"] is True
-    assert payload["steps"]["list_addon_tests"]["data"]["tests"][0]["path"].endswith(
+    assert data["module"] == "my_partner"
+    assert data["model"] == "res.partner"
+    assert data["field"] == "email3"
+    assert data["steps"]["context"]["success"] is True
+    assert data["steps"]["inspect_addon"]["success"] is True
+    assert data["steps"]["plan_update"]["success"] is True
+    assert data["steps"]["locate_model"]["success"] is True
+    assert data["steps"]["list_addon_tests"]["data"]["tests"][0]["path"].endswith(
         "tests/test_partner.py"
     )
-    assert payload["steps"]["get_model_fields"]["data"]["field_names"] == [
+    assert data["steps"]["get_model_fields"]["data"]["field_names"] == [
         "name",
         "email",
     ]
-    assert payload["recommended_next_steps"]
+    assert data["recommended_next_steps"]
 
 
 def test_agent_query_model_wraps_odoo_query(tmp_path: Path) -> None:
@@ -1061,7 +1070,7 @@ def test_agent_query_model_wraps_odoo_query(tmp_path: Path) -> None:
     assert payload["type"] == "query_result"
     assert payload["operation"] == "query_model"
     assert payload["read_only"] is True
-    assert payload["count"] == 1
+    assert payload["data"]["count"] == 1
     ops.query_model.assert_called_once_with(
         "res.partner",
         domain=[["customer_rank", ">", 0]],
@@ -1115,11 +1124,12 @@ def test_agent_list_installed_addons_returns_structured_payload(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "installed_addon_inventory"
     assert payload["operation"] == "list_installed_addons"
-    assert payload["addons"][0]["module"] == "x_sale"
-    assert payload["states"] == ["installed"]
-    assert payload["modules_filter"] == ["x_sale"]
+    assert data["addons"][0]["module"] == "x_sale"
+    assert data["states"] == ["installed"]
+    assert data["modules_filter"] == ["x_sale"]
     ops.list_installed_addons.assert_called_once_with(
         modules=["x_sale"],
         states=None,
@@ -1238,11 +1248,12 @@ def test_agent_get_model_views_returns_primary_and_extension_views(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "model_view_inventory"
     assert payload["operation"] == "get_model_views"
-    assert payload["requested_types"] == ["form", "tree"]
-    assert payload["primary_views"][0]["name"] == "DVO Form"
-    assert payload["extension_views"][0]["inherit_id"] == [1501, "DVO Form"]
+    assert data["requested_types"] == ["form", "tree"]
+    assert data["primary_views"][0]["name"] == "DVO Form"
+    assert data["extension_views"][0]["inherit_id"] == [1501, "DVO Form"]
     ops.get_model_views.assert_called_once_with(
         "dvo.dvo",
         view_types=["form", "tree"],
@@ -1292,8 +1303,9 @@ def test_agent_get_model_views_summary_omits_arch_db(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["summary"] is True
-    assert "arch_db" not in payload["primary_views"][0]
+    data = _payload_data(payload)
+    assert data["summary"] is True
+    assert "arch_db" not in data["primary_views"][0]
     ops.get_model_views.assert_called_once_with(
         "dvo.dvo",
         view_types=None,
@@ -1453,12 +1465,13 @@ def test_agent_addon_doc_returns_structured_bundle(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "addon_documentation"
     assert payload["operation"] == "addon_doc"
-    assert payload["module"] == "my_partner"
+    assert data["module"] == "my_partner"
     assert payload["read_only"] is True
     assert payload["safety_level"] == "safe_read_only"
-    assert payload["markdown"] == "# Addon documentation: my_partner\n"
+    assert data["markdown"] == "# Addon documentation: my_partner\n"
     assert ops.build_addon_documentation.call_args.kwargs["path_prefix"] == "/workspace"
 
 
@@ -1521,23 +1534,27 @@ def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "test_summary"
     assert payload["operation"] == "test_summary"
     assert payload["read_only"] is True
     assert payload["safety_level"] == "safe_read_only"
     assert payload["error_code"] == "runtime.test_failure"
-    assert payload["generated_at"] == payload["timestamp"]
-    assert payload["selected_modules"] == ["x_sale"]
-    assert payload["failed_tests"] == 1
-    assert payload["error_tests"] == 1
-    assert payload["failure_details"]
-    assert payload["traceback_summary"]
-    assert payload["traceback_summary"][0]["source_line"] is not None
-    assert payload["traceback_summary"][0]["broken_line_count"] >= 1
-    assert payload["traceback_summary"][0]["failure_excerpt"]
-    assert payload["error_output_excerpt"]
-    assert "AssertionError: expected value" in payload["error_output_excerpt"]
-    assert payload["suggested_next_steps"]
+    assert "timestamp" not in payload
+    assert "generated_at" not in payload
+    assert payload["meta"]["timestamp"]
+    assert "generated_at" not in payload["meta"]
+    assert data["selected_modules"] == ["x_sale"]
+    assert data["failed_tests"] == 1
+    assert data["error_tests"] == 1
+    assert data["failure_details"]
+    assert data["traceback_summary"]
+    assert data["traceback_summary"][0]["source_line"] is not None
+    assert data["traceback_summary"][0]["broken_line_count"] >= 1
+    assert data["traceback_summary"][0]["failure_excerpt"]
+    assert data["error_output_excerpt"]
+    assert "AssertionError: expected value" in data["error_output_excerpt"]
+    assert data["suggested_next_steps"]
 
 
 def test_agent_help_lists_show_command_flag() -> None:
@@ -1588,6 +1605,7 @@ def test_agent_test_summary_hides_command_by_default(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["type"] == "test_summary"
     assert "command" not in payload
+    assert "command" not in payload["data"]
 
 
 def test_agent_test_summary_shows_command_when_requested(tmp_path: Path) -> None:
@@ -1630,7 +1648,8 @@ def test_agent_test_summary_shows_command_when_requested(tmp_path: Path) -> None
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["type"] == "test_summary"
-    assert payload["command"] == command
+    assert "command" not in payload
+    assert payload["data"]["command"] == command
 
 
 def test_agent_test_summary_includes_error_output_excerpt_without_failures(
@@ -1680,9 +1699,10 @@ def test_agent_test_summary_includes_error_output_excerpt_without_failures(
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
-    assert payload.get("failure_details", []) == []
-    assert payload["error_output_excerpt"]
-    assert payload["error_output_excerpt"][-1] == "ValueError: missing dependency"
+    data = _payload_data(payload)
+    assert data.get("failure_details", []) == []
+    assert data["error_output_excerpt"]
+    assert data["error_output_excerpt"][-1] == "ValueError: missing dependency"
 
 
 def test_agent_test_summary_preserves_parser_warnings_and_raw_failure_excerpt(
@@ -1751,12 +1771,13 @@ def test_agent_test_summary_preserves_parser_warnings_and_raw_failure_excerpt(
         "Partially parsed failure 'BasicTestCase.test_missing_location'; "
         "preserved raw_failure_excerpt."
     ]
-    assert payload["failure_details"][0]["raw_failure_excerpt"] == [
+    data = _payload_data(payload)
+    assert data["failure_details"][0]["raw_failure_excerpt"] == [
         "FAIL: BasicTestCase.test_missing_location",
         "Traceback (most recent call last):",
         "AssertionError: expected truthy value",
     ]
-    assert payload["traceback_summary"][0]["raw_failure_excerpt"] == [
+    assert data["traceback_summary"][0]["raw_failure_excerpt"] == [
         "FAIL: BasicTestCase.test_missing_location",
         "Traceback (most recent call last):",
         "AssertionError: expected truthy value",
@@ -1884,11 +1905,12 @@ def test_agent_uninstall_module_dry_run_returns_planning_payload(
     payload = json.loads(result.output)
     assert payload["type"] == "module_uninstallation"
     assert payload["read_only"] is True
-    assert payload["planned_action"] == "uninstall"
-    assert payload["config_allows_uninstall"] is True
-    assert payload["allow_uninstall_flag"] is False
-    assert payload["dependent_modules"] == ["sale_crm"]
-    assert payload["blocked"] is True
+    data = _payload_data(payload)
+    assert data["planned_action"] == "uninstall"
+    assert data["config_allows_uninstall"] is True
+    assert data["allow_uninstall_flag"] is False
+    assert data["dependent_modules"] == ["sale_crm"]
+    assert data["blocked"] is True
 
 
 def test_agent_uninstall_module_requires_allow_uninstall(tmp_path: Path) -> None:
@@ -2038,13 +2060,14 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "addon_change_validation"
     assert payload["safety_level"] == "controlled_runtime_mutation"
-    assert payload["requested_actions"]["test_tags"] == "/x_sale"
-    assert payload["mutation_action"]["action"] == "update"
-    assert payload["sub_results"]["module_tests"]["success"] is True
-    assert payload["sub_results"]["discovered_tests"]["data"]["executed"] is False
-    for step in payload["sub_results"].values():
+    assert data["requested_actions"]["test_tags"] == "/x_sale"
+    assert data["mutation_action"]["action"] == "update"
+    assert data["sub_results"]["module_tests"]["success"] is True
+    assert data["sub_results"]["discovered_tests"]["data"]["executed"] is False
+    for step in data["sub_results"].values():
         assert isinstance(step["duration_ms"], int)
         assert step["duration_ms"] >= 0
     ops.get_addon_install_state.assert_called_once_with("x_sale")
@@ -2129,13 +2152,14 @@ def test_agent_preflight_addon_change_returns_read_only_snapshot(
     assert payload["type"] == "addon_change_preflight"
     assert payload["read_only"] is True
     assert payload["safety_level"] == "safe_read_only"
-    assert payload["ready_for_mutation"] is True
-    assert payload["preflight_summary"].get("failed_step") is None
-    assert payload["sub_results"]["field_source"]["success"] is True
-    assert payload["sub_results"]["addon_tests"]["success"] is True
-    assert payload["sub_results"]["field_source"]["data"]["field"] == "email3"
-    assert payload["sub_results"]["addon_tests"]["data"]["module"] == "x_sale"
-    for step in payload["sub_results"].values():
+    data = _payload_data(payload)
+    assert data["ready_for_mutation"] is True
+    assert data["preflight_summary"].get("failed_step") is None
+    assert data["sub_results"]["field_source"]["success"] is True
+    assert data["sub_results"]["addon_tests"]["success"] is True
+    assert data["sub_results"]["field_source"]["data"]["field"] == "email3"
+    assert data["sub_results"]["addon_tests"]["data"]["module"] == "x_sale"
+    for step in data["sub_results"].values():
         assert isinstance(step["duration_ms"], int)
         assert step["duration_ms"] >= 0
 
@@ -2187,8 +2211,8 @@ def test_agent_resolve_addon_root_returns_unique_root(tmp_path: Path) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["type"] == "addon_root_resolution"
-    assert payload["unique"] is True
-    assert payload["addon_root"].endswith("addons/x_sale")
+    assert payload["data"]["unique"] is True
+    assert payload["data"]["addon_root"].endswith("addons/x_sale")
 
 
 def test_agent_get_addon_files_returns_filtered_inventory(tmp_path: Path) -> None:
@@ -2224,7 +2248,10 @@ def test_agent_get_addon_files_returns_filtered_inventory(tmp_path: Path) -> Non
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["type"] == "addon_file_inventory"
-    assert payload["files"] == ["models/res_partner.py", "tests/test_partner.py"]
+    assert payload["data"]["files"] == [
+        "models/res_partner.py",
+        "tests/test_partner.py",
+    ]
 
 
 def test_agent_check_addons_installed_returns_runtime_states(tmp_path: Path) -> None:
@@ -2274,8 +2301,8 @@ def test_agent_check_addons_installed_returns_runtime_states(tmp_path: Path) -> 
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["type"] == "addon_install_checks"
-    assert payload["installed_modules"] == ["x_sale"]
-    assert payload["not_installed_modules"] == ["crm"]
+    assert payload["data"]["installed_modules"] == ["x_sale"]
+    assert payload["data"]["not_installed_modules"] == ["crm"]
 
 
 def test_agent_check_addons_installed_preserves_empty_lists(tmp_path: Path) -> None:
@@ -2314,9 +2341,10 @@ def test_agent_check_addons_installed_preserves_empty_lists(tmp_path: Path) -> N
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["installed_modules"] == ["x_sale"]
-    assert payload["not_installed_modules"] == []
-    assert payload["unknown_modules"] == []
+    data = _payload_data(payload)
+    assert data["installed_modules"] == ["x_sale"]
+    assert data["not_installed_modules"] == []
+    assert data["unknown_modules"] == []
 
 
 def test_agent_check_model_exists_reports_source_and_runtime(tmp_path: Path) -> None:
@@ -2363,10 +2391,11 @@ def test_agent_check_model_exists_reports_source_and_runtime(tmp_path: Path) -> 
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["type"] == "model_existence"
-    assert payload["exists"] is True
-    assert payload["source_exists"] is True
-    assert payload["runtime_exists"] is True
-    assert payload["source_addon_candidates"] == ["my_partner"]
+    data = _payload_data(payload)
+    assert data["exists"] is True
+    assert data["source_exists"] is True
+    assert data["runtime_exists"] is True
+    assert data["source_addon_candidates"] == ["my_partner"]
 
 
 def test_agent_get_addon_files_preserves_empty_globs(tmp_path: Path) -> None:
@@ -2385,8 +2414,9 @@ def test_agent_get_addon_files_preserves_empty_globs(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["globs"] == []
-    assert "__manifest__.py" in payload["files"]
+    data = _payload_data(payload)
+    assert data["globs"] == []
+    assert "__manifest__.py" in data["files"]
 
 
 def test_agent_check_field_exists_reports_runtime_and_source(tmp_path: Path) -> None:
@@ -2434,10 +2464,11 @@ def test_agent_check_field_exists_reports_runtime_and_source(tmp_path: Path) -> 
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["type"] == "field_existence"
-    assert payload["exists"] is True
-    assert payload["runtime_exists"] is True
-    assert payload["source_exists"] is True
-    assert payload["runtime_source_modules"] == ["my_partner"]
+    data = _payload_data(payload)
+    assert data["exists"] is True
+    assert data["runtime_exists"] is True
+    assert data["source_exists"] is True
+    assert data["runtime_source_modules"] == ["my_partner"]
 
 
 def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> None:
@@ -2500,8 +2531,9 @@ def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> Non
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["installed_state"]["installed"] is False
-    assert payload["mutation_action"]["action"] == "install"
+    data = _payload_data(payload)
+    assert data["installed_state"]["installed"] is False
+    assert data["mutation_action"]["action"] == "install"
     ops.get_addon_install_state.assert_called_once_with("x_sale")
     ops.install_module.assert_called_once()
     ops.update_module.assert_not_called()
@@ -2545,11 +2577,12 @@ def test_agent_validate_addon_change_fails_when_doctor_fails(tmp_path: Path) -> 
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["success"] is False
-    assert payload["verification_summary"]["failed_step"] == "doctor"
+    data = _payload_data(payload)
+    assert data["verification_summary"]["failed_step"] == "doctor"
     assert "Doctor found" in payload["error"]
     assert "odoo_bin" in payload["error"]
     assert payload["error_type"] == "DoctorCheckError"
-    assert payload["sub_results"]["doctor"]["success"] is False
+    assert data["sub_results"]["doctor"]["success"] is False
     assert payload["remediation"]
 
 
@@ -2595,12 +2628,11 @@ def test_agent_validate_addon_change_fails_when_target_module_is_duplicated(
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["success"] is False
-    assert payload["verification_summary"]["failed_step"] == "duplicates"
+    data = _payload_data(payload)
+    assert data["verification_summary"]["failed_step"] == "duplicates"
     assert payload["error_type"] == "DuplicateModuleError"
     assert payload["error_code"] == "module.duplicate_name"
-    assert (
-        payload["sub_results"]["duplicates"]["data"]["target_module_duplicated"] is True
-    )
+    assert data["sub_results"]["duplicates"]["data"]["target_module_duplicated"] is True
     assert payload["remediation"]
 
 
@@ -2653,11 +2685,12 @@ def test_agent_validate_addon_change_surfaces_installed_state_query_failure(
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["success"] is False
-    assert payload["verification_summary"]["failed_step"] == "installed_state"
+    data = _payload_data(payload)
+    assert data["verification_summary"]["failed_step"] == "installed_state"
     assert payload["error"] == "database unavailable"
     assert payload["error_type"] == "QueryError"
     assert payload["error_code"] == "runtime.query_failed"
-    assert payload["sub_results"]["installed_state"]["success"] is False
+    assert data["sub_results"]["installed_state"]["success"] is False
     assert (
         "Verify database access and retry the module-state lookup."
         in payload["remediation"]
@@ -2719,13 +2752,14 @@ def test_agent_validate_addon_change_surfaces_module_action_failure(
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["success"] is False
-    assert payload["verification_summary"]["failed_step"] == "module_action"
+    data = _payload_data(payload)
+    assert data["verification_summary"]["failed_step"] == "module_action"
     assert payload["error"] == "module install failed"
     assert payload["error_type"] == "ModuleOperationError"
     assert payload["error_code"] == "runtime.module_operation_failed"
-    assert payload["sub_results"]["module_action"]["success"] is False
-    assert payload["sub_results"]["module_action"]["read_only"] is False
-    assert payload["sub_results"]["module_action"]["safety_level"] == (
+    assert data["sub_results"]["module_action"]["success"] is False
+    assert data["sub_results"]["module_action"]["read_only"] is False
+    assert data["sub_results"]["module_action"]["safety_level"] == (
         "controlled_runtime_mutation"
     )
     assert (
@@ -2793,13 +2827,14 @@ def test_agent_validate_addon_change_surfaces_test_failure(tmp_path: Path) -> No
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["success"] is False
-    assert payload["verification_summary"]["failed_step"] == "module_tests"
+    data = _payload_data(payload)
+    assert data["verification_summary"]["failed_step"] == "module_tests"
     assert payload["error"] == "failed test run"
     assert payload["error_type"] == "TestFailure"
     assert payload["error_code"] == "runtime.test_failure"
-    assert payload["sub_results"]["module_tests"]["success"] is False
-    assert payload["sub_results"]["discovered_tests"]["skipped"] is True
-    assert payload["sub_results"]["discovered_tests"]["data"]["reason"] == (
+    assert data["sub_results"]["module_tests"]["success"] is False
+    assert data["sub_results"]["discovered_tests"]["skipped"] is True
+    assert data["sub_results"]["discovered_tests"]["data"]["reason"] == (
         "skipped_after_failed_required_step"
     )
 
@@ -2863,10 +2898,11 @@ def test_agent_validate_addon_change_surfaces_discovered_tests_failure(
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["success"] is False
-    assert payload["verification_summary"]["failed_step"] == "discovered_tests"
+    data = _payload_data(payload)
+    assert data["verification_summary"]["failed_step"] == "discovered_tests"
     assert payload["error"] == "invalid discovery inputs"
     assert payload["error_type"] == "ConfigError"
-    assert payload["sub_results"]["discovered_tests"]["success"] is False
+    assert data["sub_results"]["discovered_tests"]["success"] is False
     assert (
         "Verify the addon path and test discovery inputs before retrying."
         in (payload["remediation"])
@@ -2930,12 +2966,12 @@ def test_agent_validate_addon_change_skips_module_action_when_already_installed(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["mutation_action"] == {
+    assert payload["data"]["mutation_action"] == {
         "action": "none",
         "performed": False,
         "reason": "module_already_installed",
     }
-    assert payload["sub_results"]["module_action"]["skipped"] is True
+    assert payload["data"]["sub_results"]["module_action"]["skipped"] is True
     ops.install_module.assert_not_called()
     ops.update_module.assert_not_called()
 
@@ -3003,7 +3039,7 @@ def test_agent_validate_addon_change_prefers_install_when_update_is_requested(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["mutation_action"] == {
+    assert payload["data"]["mutation_action"] == {
         "action": "install",
         "performed": True,
         "reason": "module_not_installed",
@@ -3063,5 +3099,5 @@ def test_agent_test_summary_module_uses_fast_test_tags_semantics(
         log_level=None,
     )
     payload = json.loads(result.output)
-    assert payload["selected_modules"] == ["x_sale"]
-    assert payload["selection"].get("install") is None
+    assert payload["data"]["selected_modules"] == ["x_sale"]
+    assert payload["data"]["selection"].get("install") is None

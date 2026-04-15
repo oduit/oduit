@@ -2,22 +2,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/addon-change-preflight.schema.json",
   "type": "object",
-  "required": [
-    "type",
-    "module",
-    "sub_results",
-    "preflight_summary",
-    "ready_for_mutation"
-  ],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "addon_change_preflight" },
-    "module": { "type": "string" },
-    "model": { "type": ["string", "null"] },
-    "field": { "type": ["string", "null"] },
-    "installed_state": { "type": ["object", "null"] },
-    "sub_results": { "type": "object" },
-    "ready_for_mutation": { "type": "boolean" },
-    "preflight_summary": { "type": "object" }
+    "type": {
+      "const": "addon_change_preflight"
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "module",
+        "sub_results",
+        "preflight_summary",
+        "ready_for_mutation"
+      ],
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "model": {
+          "type": ["string", "null"]
+        },
+        "field": {
+          "type": ["string", "null"]
+        },
+        "installed_state": {
+          "type": ["object", "null"]
+        },
+        "sub_results": {
+          "type": "object"
+        },
+        "ready_for_mutation": {
+          "type": "boolean"
+        },
+        "preflight_summary": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

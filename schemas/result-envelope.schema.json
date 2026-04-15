@@ -77,22 +77,10 @@
         "timestamp": {
           "type": "string"
         },
-        "generated_at": {
-          "type": "string"
-        },
         "duration": {
           "type": "number"
         }
       }
-    },
-    "timestamp": {
-      "type": "string"
-    },
-    "generated_at": {
-      "type": "string"
-    },
-    "duration": {
-      "type": "number"
     }
   },
   "additionalProperties": true

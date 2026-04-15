@@ -7,8 +7,13 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+import typer
+
 from oduit.cli.agent.payloads import (
+    agent_fail,
     agent_output_result_to_json,
+    agent_payload,
     build_error_output_excerpt,
 )
 from oduit.cli.agent.services import build_agent_test_summary_details
@@ -114,7 +119,9 @@ def test_agent_output_result_to_json_hides_command_by_default() -> None:
     )
 
     assert "command" not in payload
+    assert "command" not in payload["data"]
     assert "stdout" not in payload
+    assert "stdout" not in payload["data"]
 
 
 def test_agent_output_result_to_json_preserves_command_when_requested() -> None:
@@ -132,4 +139,49 @@ def test_agent_output_result_to_json_preserves_command_when_requested() -> None:
             result_type="module_installation",
         )
 
-    assert payload["command"] == ["python3", "odoo-bin", "-i", "sale"]
+    assert "command" not in payload
+    assert payload["data"]["command"] == ["python3", "odoo-bin", "-i", "sale"]
+
+
+def test_agent_payload_is_not_flattened() -> None:
+    payload = agent_payload(
+        "addon_info",
+        "addon_info",
+        {"module": "sale", "depends": ["base"]},
+    )
+
+    assert payload["data"]["module"] == "sale"
+    assert payload["data"]["depends"] == ["base"]
+    assert "module" not in payload
+    assert "depends" not in payload
+    assert "timestamp" not in payload
+    assert "generated_at" not in payload
+    assert "timestamp" in payload["meta"]
+    assert "generated_at" not in payload["meta"]
+
+
+def test_agent_fail_uses_canonical_error_shape() -> None:
+    emitted: list[dict[str, object]] = []
+
+    with pytest.raises(typer.Exit) as exc_info:
+        agent_fail(
+            "inspect_addon",
+            "addon_inspection",
+            "addon missing",
+            error_type="ModuleNotFoundError",
+            details={"module": "sale"},
+            remediation=["Check the module name."],
+            emit_payload_fn=emitted.append,
+        )
+
+    assert exc_info.value.exit_code == 1
+    payload = emitted[0]
+    assert payload["error"] == "addon missing"
+    assert payload["error_type"] == "ModuleNotFoundError"
+    assert payload["data"]["module"] == "sale"
+    assert payload["remediation"] == ["Check the module name."]
+    assert "module" not in payload
+    assert "timestamp" not in payload
+    assert "generated_at" not in payload
+    assert "timestamp" in payload["meta"]
+    assert "generated_at" not in payload["meta"]

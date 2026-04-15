@@ -8,6 +8,10 @@ from typer.testing import CliRunner
 from oduit.cli.app import app
 
 
+def _payload_data(payload: dict) -> dict:
+    return payload["data"]
+
+
 def _make_executable(path: Path) -> str:
     path.write_text("#!/bin/sh\nexit 0\n")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
@@ -89,15 +93,16 @@ def test_agent_locate_model_returns_ranked_candidates(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "model_source_location"
-    assert payload["model"] == "res.partner"
-    assert payload["module"] == "my_partner"
-    assert payload["resolution"] == "ambiguous"
-    assert payload["ambiguous"] is True
-    assert payload["candidates"][0]["path"].endswith("models/res_partner.py")
-    assert payload["candidates"][0]["match_kind"] == "inherit"
-    assert payload["candidates"][0]["match_strength"] == "confirmed"
-    assert payload["candidates"][0]["evidence"]
+    assert data["model"] == "res.partner"
+    assert data["module"] == "my_partner"
+    assert data["resolution"] == "ambiguous"
+    assert data["ambiguous"] is True
+    assert data["candidates"][0]["path"].endswith("models/res_partner.py")
+    assert data["candidates"][0]["match_kind"] == "inherit"
+    assert data["candidates"][0]["match_strength"] == "confirmed"
+    assert data["candidates"][0]["evidence"]
 
 
 def test_agent_locate_field_reports_existing_field_and_insertion_candidate(
@@ -166,26 +171,24 @@ def test_agent_locate_field_reports_existing_field_and_insertion_candidate(
 
     existing_payload = json.loads(existing.output)
     missing_payload = json.loads(missing.output)
+    existing_data = _payload_data(existing_payload)
+    missing_data = _payload_data(missing_payload)
     assert existing.exit_code == 0
-    assert existing_payload["exists"] is True
-    assert existing_payload["resolution"] == "confirmed"
-    assert existing_payload["ambiguous"] is False
-    assert existing_payload["source_exists"] is True
-    assert existing_payload["candidates"][0]["field_name"] == "email3"
-    assert existing_payload["candidates"][0]["reason"]
-    assert existing_payload["candidates"][0]["match_strength"] == "confirmed"
-    assert (
-        existing_payload["candidates"][0]["evidence"][0]["kind"] == "field_definition"
-    )
+    assert existing_data["exists"] is True
+    assert existing_data["resolution"] == "confirmed"
+    assert existing_data["ambiguous"] is False
+    assert existing_data["source_exists"] is True
+    assert existing_data["candidates"][0]["field_name"] == "email3"
+    assert existing_data["candidates"][0]["reason"]
+    assert existing_data["candidates"][0]["match_strength"] == "confirmed"
+    assert existing_data["candidates"][0]["evidence"][0]["kind"] == "field_definition"
     assert missing.exit_code == 0
-    assert missing_payload["exists"] is False
-    assert missing_payload["resolution"] == "suggested"
-    assert missing_payload["insertion_candidate"]["path"].endswith(
-        "models/res_partner.py"
-    )
-    assert missing_payload["insertion_line_range"]
-    assert missing_payload["insertion_reason"]
-    assert missing_payload["runtime_exists"] is False
+    assert missing_data["exists"] is False
+    assert missing_data["resolution"] == "suggested"
+    assert missing_data["insertion_candidate"]["path"].endswith("models/res_partner.py")
+    assert missing_data["insertion_line_range"]
+    assert missing_data["insertion_reason"]
+    assert missing_data["runtime_exists"] is False
 
 
 def test_agent_list_addon_tests_ranks_references_and_handles_invalid_python(
@@ -244,10 +247,11 @@ def test_agent_list_addon_tests_ranks_references_and_handles_invalid_python(
     tests_payload = json.loads(tests_result.output)
     locate_payload = json.loads(locate_result.output)
     assert tests_result.exit_code == 0
-    assert tests_payload["tests"][0]["path"].endswith("tests/test_partner.py")
-    assert tests_payload["tests"][0]["references_model"] is True
-    assert tests_payload["tests"][0]["references_field"] is True
-    assert tests_payload["tests"][0]["ranking_signals"]
+    tests_data = _payload_data(tests_payload)
+    assert tests_data["tests"][0]["path"].endswith("tests/test_partner.py")
+    assert tests_data["tests"][0]["references_model"] is True
+    assert tests_data["tests"][0]["references_field"] is True
+    assert tests_data["tests"][0]["ranking_signals"]
     assert locate_result.exit_code == 0
     assert locate_payload["warnings"]
 
@@ -299,15 +303,16 @@ def test_agent_recommend_tests_maps_changed_files_to_ranked_tests(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "recommended_test_plan"
-    assert payload["module"] == "my_partner"
-    assert payload["paths"] == [
+    assert data["module"] == "my_partner"
+    assert data["paths"] == [
         "models/res_partner.py",
         "views/res_partner_views.xml",
     ]
-    assert payload["tests"][0]["ranking_signals"]
-    assert payload["suggested_test_tags"] == ["/my_partner"]
-    assert payload["full_addon_suite_recommended"] is True
+    assert data["tests"][0]["ranking_signals"]
+    assert data["suggested_test_tags"] == ["/my_partner"]
+    assert data["full_addon_suite_recommended"] is True
 
 
 def test_agent_list_addon_models_returns_static_inventory(tmp_path: Path) -> None:
@@ -339,14 +344,15 @@ def test_agent_list_addon_models_returns_static_inventory(tmp_path: Path) -> Non
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "addon_model_inventory"
-    assert payload["module"] == "my_partner"
-    assert payload["model_count"] == 2
-    assert payload["models"][0]["model"] == "res.partner"
-    assert payload["models"][0]["relation_kind"] == "extends"
-    assert payload["models"][1]["model"] == "x.partner.score"
-    assert payload["models"][1]["relation_kind"] == "declares"
-    assert payload["models"][1]["inherited_models"] == ["mail.thread"]
+    assert data["module"] == "my_partner"
+    assert data["model_count"] == 2
+    assert data["models"][0]["model"] == "res.partner"
+    assert data["models"][0]["relation_kind"] == "extends"
+    assert data["models"][1]["model"] == "x.partner.score"
+    assert data["models"][1]["relation_kind"] == "declares"
+    assert data["models"][1]["inherited_models"] == ["mail.thread"]
 
 
 def test_agent_find_model_extensions_combines_source_and_runtime_metadata(
@@ -447,20 +453,17 @@ def test_agent_find_model_extensions_combines_source_and_runtime_metadata(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    data = _payload_data(payload)
     assert payload["type"] == "model_extension_inventory"
-    assert payload["model"] == "dvo.dvo"
-    assert payload["base_declarations"][0]["module"] == "dvo"
-    assert payload["source_extensions"][0]["module"] == "dvo_helpdesk"
-    assert payload["source_extensions"][0]["added_fields"] == ["helpdesk_team_ids"]
-    assert payload["source_extensions"][0]["added_methods"] == [
-        "_get_salesman_for_ticket"
-    ]
-    assert payload["source_view_extensions"][0]["module"] == "dvo_helpdesk"
-    assert (
-        payload["source_view_extensions"][0]["inherit_ref"] == "dvo.dvo_dvo_view_form"
-    )
-    assert payload["installed_extension_fields"][0]["modules"] == "dvo_helpdesk"
-    assert payload["installed_view_extensions"][0]["priority"] == 101
+    assert data["model"] == "dvo.dvo"
+    assert data["base_declarations"][0]["module"] == "dvo"
+    assert data["source_extensions"][0]["module"] == "dvo_helpdesk"
+    assert data["source_extensions"][0]["added_fields"] == ["helpdesk_team_ids"]
+    assert data["source_extensions"][0]["added_methods"] == ["_get_salesman_for_ticket"]
+    assert data["source_view_extensions"][0]["module"] == "dvo_helpdesk"
+    assert data["source_view_extensions"][0]["inherit_ref"] == "dvo.dvo_dvo_view_form"
+    assert data["installed_extension_fields"][0]["modules"] == "dvo_helpdesk"
+    assert data["installed_view_extensions"][0]["priority"] == 101
 
 
 def test_agent_find_model_extensions_summary_omits_scanned_files(
@@ -513,7 +516,8 @@ def test_agent_find_model_extensions_summary_omits_scanned_files(
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["summary"] is True
-    assert payload["base_declaration_count"] == 1
-    assert payload["source_extension_count"] == 0
-    assert "scanned_python_files" not in payload
+    data = _payload_data(payload)
+    assert data["summary"] is True
+    assert data["base_declaration_count"] == 1
+    assert data["source_extension_count"] == 0
+    assert "scanned_python_files" not in data

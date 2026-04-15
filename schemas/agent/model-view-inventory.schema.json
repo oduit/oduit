@@ -2,26 +2,54 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/model-view-inventory.schema.json",
   "type": "object",
-  "required": [
-    "type",
-    "model",
-    "requested_types",
-    "primary_views",
-    "extension_views",
-    "view_counts"
-  ],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "model_view_inventory" },
-    "model": { "type": "string" },
-    "requested_types": {
-      "type": "array",
-      "items": { "type": "string" }
+    "type": {
+      "const": "model_view_inventory"
     },
-    "primary_views": { "type": "array", "items": { "type": "object" } },
-    "extension_views": { "type": "array", "items": { "type": "object" } },
-    "view_counts": { "type": "object" },
-    "database": { "type": "string" },
-    "summary": { "type": "boolean" }
+    "data": {
+      "type": "object",
+      "required": [
+        "model",
+        "requested_types",
+        "primary_views",
+        "extension_views",
+        "view_counts"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "requested_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "primary_views": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "extension_views": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "view_counts": {
+          "type": "object"
+        },
+        "database": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

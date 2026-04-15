@@ -207,12 +207,18 @@ class ResultMeta:
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     duration: float | None = None
 
-    def to_dict(self, include_null_values: bool = False) -> dict[str, Any]:
+    def to_dict(
+        self,
+        include_null_values: bool = False,
+        *,
+        include_generated_at: bool = False,
+    ) -> dict[str, Any]:
         payload = {
             "timestamp": self.timestamp,
-            "generated_at": self.timestamp,
             "duration": self.duration,
         }
+        if include_generated_at:
+            payload["generated_at"] = self.timestamp
         if not include_null_values:
             payload = _strip_none_values(payload)
         return payload
@@ -241,7 +247,14 @@ class ResultEnvelope:
         self,
         include_null_values: bool = False,
         flatten_data: bool = True,
+        *,
+        flatten_meta_aliases: bool = True,
+        include_generated_at: bool = True,
     ) -> dict[str, Any]:
+        meta_payload = self.meta.to_dict(
+            include_null_values=include_null_values,
+            include_generated_at=include_generated_at,
+        )
         payload: dict[str, Any] = {
             "schema_version": self.schema_version,
             "type": self.payload_type,
@@ -256,7 +269,7 @@ class ResultEnvelope:
             "error_type": self.error_type,
             "error_code": self.error_code,
             "data": self.data,
-            "meta": self.meta.to_dict(include_null_values=include_null_values),
+            "meta": meta_payload,
         }
 
         if flatten_data:
@@ -264,13 +277,15 @@ class ResultEnvelope:
                 if key not in payload:
                     payload[key] = value
 
-        timestamp = payload["meta"].get("timestamp")
-        duration = payload["meta"].get("duration")
-        if timestamp is not None:
-            payload["timestamp"] = timestamp
-            payload["generated_at"] = timestamp
-        if duration is not None:
-            payload["duration"] = duration
+        if flatten_meta_aliases:
+            timestamp = meta_payload.get("timestamp")
+            duration = meta_payload.get("duration")
+            if timestamp is not None:
+                payload["timestamp"] = timestamp
+                if include_generated_at:
+                    payload["generated_at"] = timestamp
+            if duration is not None:
+                payload["duration"] = duration
 
         if not include_null_values:
             payload = _strip_none_values(payload)

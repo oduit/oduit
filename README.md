@@ -202,8 +202,8 @@ for machine-facing contract changes.
 
 Agent commands always emit JSON and do not require the global `--json` flag.
 Structured payloads include an explicit `schema_version`, currently `2.0`.
-The top-level raw `command` field is hidden by default; pass
-`oduit agent --show-command ...` when you need it for debugging.
+Raw command metadata is hidden by default; pass
+`oduit agent --show-command ...` when you need `data.command` for debugging.
 Prefer the read-only planning path first: `context`, `resolve-config`,
 `resolve-addon-root`, `get-addon-files`, `preflight-addon-change`, and only then
 controlled mutation commands such as `validate-addon-change`.

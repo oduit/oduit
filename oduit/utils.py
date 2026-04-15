@@ -67,6 +67,10 @@ def build_json_payload(
     data: dict[str, Any] | None = None,
     success: bool | None = None,
     include_null_values: bool = False,
+    *,
+    flatten_data: bool = True,
+    flatten_meta_aliases: bool = True,
+    include_generated_at: bool = True,
 ) -> dict[str, Any]:
     """Build a versioned JSON payload envelope."""
     payload_data = dict(data or {})
@@ -94,7 +98,8 @@ def build_json_payload(
     command_data = {
         key: value
         for key, value in payload_data.items()
-        if key not in COMMON_ENVELOPE_KEYS and key not in {"timestamp", "duration"}
+        if key not in COMMON_ENVELOPE_KEYS
+        and key not in {"timestamp", "generated_at", "duration"}
     }
 
     if error and not errors:
@@ -124,7 +129,12 @@ def build_json_payload(
         error_code=error_code,
         data=command_data,
         meta=meta,
-    ).to_dict(include_null_values=include_null_values)
+    ).to_dict(
+        include_null_values=include_null_values,
+        flatten_data=flatten_data,
+        flatten_meta_aliases=flatten_meta_aliases,
+        include_generated_at=include_generated_at,
+    )
 
 
 def output_result_to_json(
@@ -133,6 +143,10 @@ def output_result_to_json(
     exclude_fields: list[str] | None = None,
     include_null_values: bool = False,
     result_type: str = "result",
+    *,
+    flatten_data: bool = True,
+    flatten_meta_aliases: bool = True,
+    include_generated_at: bool = True,
 ) -> dict[str, Any]:
     """Generate JSON output for the operation result
 
@@ -162,6 +176,9 @@ def output_result_to_json(
         data=output,
         success=output.get("success", False),
         include_null_values=include_null_values,
+        flatten_data=flatten_data,
+        flatten_meta_aliases=flatten_meta_aliases,
+        include_generated_at=include_generated_at,
     )
 
     # Remove empty lists/dicts unless they're meaningful for the operation

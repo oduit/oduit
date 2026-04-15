@@ -2,25 +2,37 @@
 
 This page tracks machine-facing changes to the `oduit agent` JSON contract.
 
-## 2.x stability policy
+## Current stability policy
 
-- **Stable:** `schema_version`, `type`, `operation`, `success`, `read_only`,
-  `safety_level`, `warnings`, `errors`, `remediation`, `error`, `error_type`,
-  `error_code`, `data`, `meta`
-- **Soft-stable:** additive command-specific fields flattened from `data`, plus
-  optional metadata such as `generated_at`, `duration`, `config_source`,
-  `database`, and `resolved_addons_path`
-- **Experimental:** newly introduced command-specific fields that are not yet
-  called out in the public docs
+- **Stable envelope:** `schema_version`, `type`, `operation`, `success`,
+  `read_only`, `safety_level`, `warnings`, `errors`, `remediation`, `error`,
+  `error_type`, `error_code`, `data`, `meta`
+- **Stable command payload location:** command-specific fields live under
+  `data`
+- **Canonical timestamp:** `meta.timestamp`
+- **Soft-stable:** optional debug metadata such as `data.command` and optional
+  timing metadata such as `meta.duration`
+- **Experimental:** newly introduced command-specific fields inside `data` that
+  are not yet called out in the public docs
 
 ## Recent changes
 
+### Removed flattened agent payload aliases
+
+- Agent payloads no longer flatten command-specific `data` fields into the root
+- The top-level `timestamp` alias is no longer emitted for agent payloads
+- The top-level `generated_at` alias is no longer emitted for agent payloads
+- `meta.generated_at` is no longer emitted for agent payloads
+- Consumers must read command-specific fields from `payload["data"]`
+- When `--show-command` is enabled, the raw command is emitted as
+  `payload["data"]["command"]`
+
 ### Hid raw command metadata by default
 
-- Agent payloads now hide the top-level `command` field by default
+- Agent payloads hide raw command metadata by default
 - Callers that need the raw command can opt in with `oduit agent --show-command ...`
-- The field remains optional debug metadata and is only present when the command
-  produced it
+- The field remains optional debug metadata and is only present under
+  `payload["data"]["command"]` when the command produced it
 
 ### Added generated command inventories and command tiers
 
@@ -59,8 +71,8 @@ This page tracks machine-facing changes to the `oduit agent` JSON contract.
 
 ### Added source-evidence and ambiguity metadata
 
-- `locate-model` and `locate-field` now expose top-level `resolution`,
-  `ambiguous`, and `ambiguity_reason` fields
+- `locate-model` and `locate-field` expose `resolution`, `ambiguous`, and
+  `ambiguity_reason` inside `payload["data"]`
 - Source candidates now include `match_strength` and explicit `evidence`
   entries instead of relying on confidence alone
 
@@ -78,8 +90,7 @@ This page tracks machine-facing changes to the `oduit agent` JSON contract.
   - `runtime.test_failure`
   - `runtime.install_dependency_error`
 
-### Added normalized generation metadata
+### Canonical generation metadata
 
-- Structured payloads now expose `generated_at` as an alias of the canonical
-  envelope timestamp
-- `duration` remains optional and may appear when the caller provides it
+- `meta.timestamp` is the only canonical creation timestamp for agent payloads
+- `meta.duration` remains optional and may appear when the caller provides it

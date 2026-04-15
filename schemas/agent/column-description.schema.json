@@ -2,12 +2,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/column-description.schema.json",
   "type": "object",
-  "required": ["type", "operation", "table_name", "column"],
+  "required": ["type", "operation", "data"],
   "properties": {
-    "type": { "const": "column_description" },
-    "operation": { "const": "describe_column" },
-    "table_name": { "type": "string" },
-    "column": { "type": "object" }
+    "type": {
+      "const": "column_description"
+    },
+    "operation": {
+      "const": "describe_column"
+    },
+    "data": {
+      "type": "object",
+      "required": ["table_name", "column"],
+      "properties": {
+        "table_name": {
+          "type": "string"
+        },
+        "column": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

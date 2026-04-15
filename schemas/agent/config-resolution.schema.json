@@ -2,25 +2,55 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/config-resolution.schema.json",
   "type": "object",
-  "required": [
-    "type",
-    "environment",
-    "effective_config",
-    "normalized_config",
-    "config_shape",
-    "deprecation_warnings",
-    "missing_required_keys"
-  ],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "config_resolution" },
-    "environment": { "type": "object" },
-    "effective_config": { "type": "object" },
-    "normalized_config": { "type": "object" },
-    "config_shape": { "type": "object" },
-    "deprecation_warnings": { "type": "array", "items": { "type": "string" } },
-    "missing_required_keys": { "type": "array", "items": { "type": "string" } },
-    "resolved_binaries": { "type": "object" },
-    "addons_paths": { "type": "object" }
+    "type": {
+      "const": "config_resolution"
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "environment",
+        "effective_config",
+        "normalized_config",
+        "config_shape",
+        "deprecation_warnings",
+        "missing_required_keys"
+      ],
+      "properties": {
+        "environment": {
+          "type": "object"
+        },
+        "effective_config": {
+          "type": "object"
+        },
+        "normalized_config": {
+          "type": "object"
+        },
+        "config_shape": {
+          "type": "object"
+        },
+        "deprecation_warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_required_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resolved_binaries": {
+          "type": "object"
+        },
+        "addons_paths": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

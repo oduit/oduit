@@ -157,12 +157,18 @@ def test_agent_workflow_for_partner_field_change(tmp_path: Path) -> None:
             ).output
         )
 
-    assert inspect_payload["module_path"].endswith("my_partner")
-    assert "email3" not in fields_payload["field_names"]
-    assert locate_payload["candidates"][0]["path"].endswith("models/res_partner.py")
-    assert plan_payload["module"] == "my_partner"
+    inspect_data = inspect_payload["data"]
+    fields_data = fields_payload["data"]
+    locate_data = locate_payload["data"]
+    plan_data = plan_payload["data"]
+    tests_data = tests_payload["data"]
+
+    assert inspect_data["module_path"].endswith("my_partner")
+    assert "email3" not in fields_data["field_names"]
+    assert locate_data["candidates"][0]["path"].endswith("models/res_partner.py")
+    assert plan_data["module"] == "my_partner"
     assert tests_payload["success"] is True
-    assert tests_payload["selected_modules"] == ["my_partner"]
+    assert tests_data["selected_modules"] == ["my_partner"]
 
 
 def test_prepare_addon_change_matches_partner_field_planning_flow(
@@ -243,15 +249,16 @@ def test_prepare_addon_change_matches_partner_field_planning_flow(
         )
 
     assert payload["success"] is True
-    assert payload["steps"]["locate_model"]["data"]["candidates"][0]["path"].endswith(
+    data = payload["data"]
+    assert data["steps"]["locate_model"]["data"]["candidates"][0]["path"].endswith(
         "models/res_partner.py"
     )
-    assert payload["steps"]["locate_field"]["data"]["insertion_candidate"][
+    assert data["steps"]["locate_field"]["data"]["insertion_candidate"][
         "path"
     ].endswith("models/res_partner.py")
-    assert payload["steps"]["list_addon_tests"]["data"]["tests"][0]["path"].endswith(
+    assert data["steps"]["list_addon_tests"]["data"]["tests"][0]["path"].endswith(
         "tests/test_partner.py"
     )
-    assert payload["recommended_next_steps"][-2].startswith(
+    assert data["recommended_next_steps"][-2].startswith(
         "Run `oduit --env dev agent validate-addon-change my_partner"
     )

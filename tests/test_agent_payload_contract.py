@@ -113,6 +113,10 @@ def _validate_schema(schema: dict, payload: object) -> None:
             _validate_schema(schema["items"], item)
 
 
+def _payload_data(payload: dict) -> dict:
+    return payload["data"]
+
+
 def test_agent_schema_files_exist_and_are_valid_json() -> None:
     expected = [
         SCHEMAS / "result-envelope.schema.json",
@@ -865,11 +869,10 @@ def test_resolve_config_redacts_sensitive_values(tmp_path: Path) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["type"] == "config_resolution"
-    assert payload["effective_config"]["db_password"] == "***redacted***"
-    assert (
-        payload["normalized_config"]["odoo_params"]["db_password"] == "***redacted***"
-    )
-    assert payload["config_shape"]["normalized_shape"] == "sectioned"
+    data = _payload_data(payload)
+    assert data["effective_config"]["db_password"] == "***redacted***"
+    assert data["normalized_config"]["odoo_params"]["db_password"] == "***redacted***"
+    assert data["config_shape"]["normalized_shape"] == "sectioned"
 
 
 def test_validate_addon_change_failure_payload_validates_against_schema(
@@ -937,5 +940,5 @@ def test_validate_addon_change_failure_payload_validates_against_schema(
     )
     _validate_schema(envelope_schema, payload)
     _validate_schema(command_schema, payload)
-    assert payload["verification_summary"]["failed_step"] == "discovered_tests"
+    assert payload["data"]["verification_summary"]["failed_step"] == "discovered_tests"
     assert payload["error_type"] == "ConfigError"

@@ -2,14 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/addon-file-inventory.schema.json",
   "type": "object",
-  "required": ["type", "module", "addon_root", "globs", "files", "file_count"],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "addon_file_inventory" },
-    "module": { "type": "string" },
-    "addon_root": { "type": "string" },
-    "globs": { "type": "array" },
-    "files": { "type": "array" },
-    "file_count": { "type": "integer" }
+    "type": {
+      "const": "addon_file_inventory"
+    },
+    "data": {
+      "type": "object",
+      "required": ["module", "addon_root", "globs", "files", "file_count"],
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "addon_root": {
+          "type": "string"
+        },
+        "globs": {
+          "type": "array"
+        },
+        "files": {
+          "type": "array"
+        },
+        "file_count": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

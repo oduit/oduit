@@ -2,11 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/duplicate-modules.schema.json",
   "type": "object",
-  "required": ["type", "duplicate_modules", "duplicate_count"],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "duplicate_modules" },
-    "duplicate_modules": { "type": "object" },
-    "duplicate_count": { "type": "integer" }
+    "type": {
+      "const": "duplicate_modules"
+    },
+    "data": {
+      "type": "object",
+      "required": ["duplicate_modules", "duplicate_count"],
+      "properties": {
+        "duplicate_modules": {
+          "type": "object"
+        },
+        "duplicate_count": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

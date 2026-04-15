@@ -2,13 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/addon-inventory.schema.json",
   "type": "object",
-  "required": ["type", "addons", "total", "sorting"],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "addon_inventory" },
-    "addons": { "type": "array", "items": { "type": "object" } },
-    "total": { "type": "integer" },
-    "sorting": { "type": "string" },
-    "duplicate_modules": { "type": "object" }
+    "type": {
+      "const": "addon_inventory"
+    },
+    "data": {
+      "type": "object",
+      "required": ["addons", "total", "sorting"],
+      "properties": {
+        "addons": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "total": {
+          "type": "integer"
+        },
+        "sorting": {
+          "type": "string"
+        },
+        "duplicate_modules": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

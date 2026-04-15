@@ -2,14 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/cron-inspection.schema.json",
   "type": "object",
-  "required": ["type", "operation", "xmlid", "trigger_requested"],
+  "required": ["type", "operation", "data"],
   "properties": {
-    "type": { "const": "cron_inspection" },
-    "operation": { "const": "inspect_cron" },
-    "xmlid": { "type": "string" },
-    "trigger_requested": { "type": "boolean" },
-    "triggered": { "type": "boolean" },
-    "is_cron": { "type": "boolean" }
+    "type": {
+      "const": "cron_inspection"
+    },
+    "operation": {
+      "const": "inspect_cron"
+    },
+    "data": {
+      "type": "object",
+      "required": ["xmlid", "trigger_requested"],
+      "properties": {
+        "xmlid": {
+          "type": "string"
+        },
+        "trigger_requested": {
+          "type": "boolean"
+        },
+        "triggered": {
+          "type": "boolean"
+        },
+        "is_cron": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

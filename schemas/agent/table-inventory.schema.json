@@ -2,12 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/table-inventory.schema.json",
   "type": "object",
-  "required": ["type", "operation", "tables"],
+  "required": ["type", "operation", "data"],
   "properties": {
-    "type": { "const": "table_inventory" },
-    "operation": { "const": "list_tables" },
-    "tables": { "type": "array", "items": { "type": "string" } },
-    "pattern": { "type": "string" }
+    "type": {
+      "const": "table_inventory"
+    },
+    "operation": {
+      "const": "list_tables"
+    },
+    "data": {
+      "type": "object",
+      "required": ["tables"],
+      "properties": {
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pattern": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

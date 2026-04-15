@@ -2,42 +2,64 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/addon-documentation.schema.json",
   "type": "object",
-  "required": [
-    "type",
-    "module",
-    "source_only",
-    "dependency_graph",
-    "models",
-    "diagrams",
-    "markdown"
-  ],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "addon_documentation" },
-    "module": { "type": "string" },
-    "database": { "type": "string" },
-    "source_only": { "type": "boolean" },
-    "addon_info": {
-      "type": ["object", "null"]
+    "type": {
+      "const": "addon_documentation"
     },
-    "dependency_graph": {
-      "type": "object"
-    },
-    "models": {
-      "type": "array",
-      "items": { "type": "object" }
-    },
-    "recommended_tests": {
-      "type": "object"
-    },
-    "diagrams": {
-      "type": "array",
-      "items": { "type": "object" }
-    },
-    "sections": {
-      "type": "array",
-      "items": { "type": "object" }
-    },
-    "markdown": { "type": "string" }
+    "data": {
+      "type": "object",
+      "required": [
+        "module",
+        "source_only",
+        "dependency_graph",
+        "models",
+        "diagrams",
+        "markdown"
+      ],
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "source_only": {
+          "type": "boolean"
+        },
+        "addon_info": {
+          "type": ["object", "null"]
+        },
+        "dependency_graph": {
+          "type": "object"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "recommended_tests": {
+          "type": "object"
+        },
+        "diagrams": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "markdown": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

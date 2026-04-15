@@ -316,7 +316,7 @@ def test_agent_contract_change_log_exists() -> None:
     content = (ROOT / "docs" / "maintainer" / "agent_contract_changes.md").read_text()
     required_markers = [
         "Agent Contract Changes",
-        "2.x stability policy",
+        "Current stability policy",
         "error_code",
         "generated_at",
         "runtime.test_failure",

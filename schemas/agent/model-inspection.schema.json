@@ -2,14 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/model-inspection.schema.json",
   "type": "object",
-  "required": ["type", "operation", "model", "exists"],
+  "required": ["type", "operation", "data"],
   "properties": {
-    "type": { "const": "model_inspection" },
-    "operation": { "const": "inspect_model" },
-    "model": { "type": "string" },
-    "exists": { "type": "boolean" },
-    "table": { "type": "string" },
-    "field_count": { "type": "integer" }
+    "type": {
+      "const": "model_inspection"
+    },
+    "operation": {
+      "const": "inspect_model"
+    },
+    "data": {
+      "type": "object",
+      "required": ["model", "exists"],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "table": {
+          "type": "string"
+        },
+        "field_count": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

@@ -52,6 +52,9 @@ def agent_output_result_to_json(
         exclude_fields=_agent_effective_exclude_fields(exclude_fields),
         include_null_values=include_null_values,
         result_type=result_type,
+        flatten_data=False,
+        flatten_meta_aliases=False,
+        include_generated_at=False,
     )
 
 

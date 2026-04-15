@@ -2,12 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/constraint-inventory.schema.json",
   "type": "object",
-  "required": ["type", "operation", "table_name", "constraints"],
+  "required": ["type", "operation", "data"],
   "properties": {
-    "type": { "const": "constraint_inventory" },
-    "operation": { "const": "list_constraints" },
-    "table_name": { "type": "string" },
-    "constraints": { "type": "array", "items": { "type": "object" } }
+    "type": {
+      "const": "constraint_inventory"
+    },
+    "operation": {
+      "const": "list_constraints"
+    },
+    "data": {
+      "type": "object",
+      "required": ["table_name", "constraints"],
+      "properties": {
+        "table_name": {
+          "type": "string"
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

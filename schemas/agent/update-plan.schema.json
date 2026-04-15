@@ -2,47 +2,87 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/update-plan.schema.json",
   "type": "object",
-  "required": [
-    "type",
-    "module",
-    "impact_set",
-    "risk_score",
-    "risk_level",
-    "write_protect_db",
-    "agent_write_protect_db",
-    "needs_mutation_flag",
-    "agent_needs_mutation_flag",
-    "human_runtime_db_mutation_policy",
-    "human_runtime_db_mutation_allowed",
-    "human_runtime_db_mutation_requires_flag",
-    "agent_runtime_db_mutation_policy",
-    "agent_runtime_db_mutation_allowed",
-    "agent_runtime_db_mutation_requires_flag",
-    "verification_steps"
-  ],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "update_plan" },
-    "module": { "type": "string" },
-    "impact_set": { "type": "array", "items": { "type": "string" } },
-    "risk_score": { "type": "integer" },
-    "risk_level": { "type": "string" },
-    "write_protect_db": { "type": "boolean" },
-    "agent_write_protect_db": { "type": "boolean" },
-    "needs_mutation_flag": { "type": "boolean" },
-    "agent_needs_mutation_flag": { "type": "boolean" },
-    "human_runtime_db_mutation_policy": {
-      "type": "string",
-      "enum": ["allow", "require_allow_mutation", "forbidden"]
+    "type": {
+      "const": "update_plan"
     },
-    "human_runtime_db_mutation_allowed": { "type": "boolean" },
-    "human_runtime_db_mutation_requires_flag": { "type": "boolean" },
-    "agent_runtime_db_mutation_policy": {
-      "type": "string",
-      "enum": ["allow", "require_allow_mutation", "forbidden"]
-    },
-    "agent_runtime_db_mutation_allowed": { "type": "boolean" },
-    "agent_runtime_db_mutation_requires_flag": { "type": "boolean" },
-    "verification_steps": { "type": "array", "items": { "type": "string" } }
+    "data": {
+      "type": "object",
+      "required": [
+        "module",
+        "impact_set",
+        "risk_score",
+        "risk_level",
+        "write_protect_db",
+        "agent_write_protect_db",
+        "needs_mutation_flag",
+        "agent_needs_mutation_flag",
+        "human_runtime_db_mutation_policy",
+        "human_runtime_db_mutation_allowed",
+        "human_runtime_db_mutation_requires_flag",
+        "agent_runtime_db_mutation_policy",
+        "agent_runtime_db_mutation_allowed",
+        "agent_runtime_db_mutation_requires_flag",
+        "verification_steps"
+      ],
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "impact_set": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "risk_score": {
+          "type": "integer"
+        },
+        "risk_level": {
+          "type": "string"
+        },
+        "write_protect_db": {
+          "type": "boolean"
+        },
+        "agent_write_protect_db": {
+          "type": "boolean"
+        },
+        "needs_mutation_flag": {
+          "type": "boolean"
+        },
+        "agent_needs_mutation_flag": {
+          "type": "boolean"
+        },
+        "human_runtime_db_mutation_policy": {
+          "type": "string",
+          "enum": ["allow", "require_allow_mutation", "forbidden"]
+        },
+        "human_runtime_db_mutation_allowed": {
+          "type": "boolean"
+        },
+        "human_runtime_db_mutation_requires_flag": {
+          "type": "boolean"
+        },
+        "agent_runtime_db_mutation_policy": {
+          "type": "string",
+          "enum": ["allow", "require_allow_mutation", "forbidden"]
+        },
+        "agent_runtime_db_mutation_allowed": {
+          "type": "boolean"
+        },
+        "agent_runtime_db_mutation_requires_flag": {
+          "type": "boolean"
+        },
+        "verification_steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

@@ -2,13 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/query-result.schema.json",
   "type": "object",
-  "required": ["type", "operation", "model", "count", "records"],
+  "required": ["type", "operation", "data"],
   "properties": {
-    "type": { "const": "query_result" },
-    "operation": { "const": "query_model" },
-    "model": { "type": "string" },
-    "count": { "type": "integer" },
-    "records": { "type": "array", "items": { "type": "object" } }
+    "type": {
+      "const": "query_result"
+    },
+    "operation": {
+      "const": "query_model"
+    },
+    "data": {
+      "type": "object",
+      "required": ["model", "count", "records"],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

@@ -2,56 +2,106 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://oduit.dev/schemas/agent/field-source-location.schema.json",
   "type": "object",
-  "required": [
-    "type",
-    "model",
-    "field",
-    "module",
-    "addon_root",
-    "exists",
-    "resolution",
-    "ambiguous",
-    "candidates"
-  ],
+  "required": ["type", "data"],
   "properties": {
-    "type": { "const": "field_source_location" },
-    "model": { "type": "string" },
-    "field": { "type": "string" },
-    "module": { "type": "string" },
-    "addon_root": { "type": "string" },
-    "exists": { "type": "boolean" },
-    "resolution": { "type": "string" },
-    "ambiguous": { "type": "boolean" },
-    "ambiguity_reason": { "type": "string" },
-    "candidates": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "path",
-          "class_name",
-          "field_name",
-          "match_kind",
-          "declared_model",
-          "confidence",
-          "match_strength",
-          "evidence"
-        ],
-        "properties": {
-          "path": { "type": "string" },
-          "class_name": { "type": "string" },
-          "field_name": { "type": "string" },
-          "match_kind": { "type": "string" },
-          "declared_model": { "type": "string" },
-          "confidence": { "type": "number" },
-          "match_strength": { "type": "string" },
-          "evidence": { "type": "array", "items": { "type": "object" } }
-        },
-        "additionalProperties": true
-      }
+    "type": {
+      "const": "field_source_location"
     },
-    "insertion_candidate": { "type": "object" },
-    "related_files": { "type": "array", "items": { "type": "string" } }
+    "data": {
+      "type": "object",
+      "required": [
+        "model",
+        "field",
+        "module",
+        "addon_root",
+        "exists",
+        "resolution",
+        "ambiguous",
+        "candidates"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "addon_root": {
+          "type": "string"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "resolution": {
+          "type": "string"
+        },
+        "ambiguous": {
+          "type": "boolean"
+        },
+        "ambiguity_reason": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "class_name",
+              "field_name",
+              "match_kind",
+              "declared_model",
+              "confidence",
+              "match_strength",
+              "evidence"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "class_name": {
+                "type": "string"
+              },
+              "field_name": {
+                "type": "string"
+              },
+              "match_kind": {
+                "type": "string"
+              },
+              "declared_model": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "match_strength": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "insertion_candidate": {
+          "type": "object"
+        },
+        "related_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }
