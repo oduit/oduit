@@ -626,7 +626,10 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             None,
             "--module",
             "--modules",
-            help="Comma-separated addon names to inspect at runtime",
+            help=(
+                "Comma-separated addon names to inspect at runtime; "
+                "reads stdin when omitted"
+            ),
         ),
         state: list[str] = INSTALLED_ADDON_STATE_OPTION,
         separator: str | None = typer.Option(
@@ -719,7 +722,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     def list_depends(
         ctx: typer.Context,
         modules: str | None = typer.Argument(
-            None, help="Comma-separated module names to check dependencies for"
+            None,
+            help=(
+                "Comma-separated module names to check dependencies for; "
+                "reads stdin when omitted"
+            ),
         ),
         separator: str | None = typer.Option(
             None,
@@ -827,7 +834,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     def explain_install_order(
         ctx: typer.Context,
         modules: str | None = typer.Argument(
-            None, help="Comma-separated module names to explain install-order for"
+            None,
+            help=(
+                "Comma-separated module names to explain install-order for; "
+                "reads stdin when omitted"
+            ),
         ),
         select_dir: str | None = typer.Option(
             None,
@@ -870,7 +881,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     def list_missing(
         ctx: typer.Context,
         modules: str | None = typer.Argument(
-            None, help="Comma-separated module names to check for missing dependencies"
+            None,
+            help=(
+                "Comma-separated module names to check for missing dependencies; "
+                "reads stdin when omitted"
+            ),
         ),
         separator: str | None = typer.Option(
             None,

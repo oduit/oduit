@@ -902,6 +902,43 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
+    def test_list_installed_addons_reads_modules_from_stdin(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test list-installed-addons accepts piped module filters."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.list_installed_addons.return_value = InstalledAddonInventory(
+            success=True,
+            operation="list_installed_addons",
+            addons=[
+                InstalledAddonRecord(
+                    module="sale",
+                    state="installed",
+                    installed=True,
+                ),
+            ],
+            total=1,
+            states=["installed"],
+        )
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "list-installed-addons"],
+            input="sale,purchase\n",
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.list_installed_addons.assert_called_once_with(
+            modules=["sale", "purchase"],
+            states=None,
+        )
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_list_installed_addons_include_state_and_separator(
         self, mock_config_loader_class, mock_odoo_ops
     ):
@@ -1117,6 +1154,32 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn("base", result.output)
         self.assertIn("web", result.output)
         self.assertIn("sale", result.output)
+
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_list_depends_reads_modules_from_stdin(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-depends accepts piped module lists."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.get_direct_dependencies.return_value = ["base", "web"]
+        mock_manager_instance.sort_modules.return_value = ["base", "web"]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "list-depends"],
+            input="sale,purchase\n",
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_direct_dependencies.assert_called_once_with(
+            "sale", "purchase"
+        )
+        self.assertIn("base", result.output)
 
     @patch("oduit.cli.app.ModuleManager")
     @patch("oduit.cli.app.ConfigLoader")
@@ -1456,6 +1519,49 @@ class TestCLICommands(unittest.TestCase):
             payload["cycle_edges"][0], {"from": "module_a", "to": "module_b"}
         )
         self.assertEqual(payload["modules"]["module_a"]["depends"], ["module_b"])
+
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_explain_install_order_reads_modules_from_stdin(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test explain-install-order accepts piped module lists."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.side_effect = (
+            lambda module: f"/test/addons/{module}"
+        )
+        mock_manager_instance.analyze_dependency_cycle.return_value = {
+            "requested_modules": ["sale", "purchase"],
+            "graph": {},
+            "cycle_path": [],
+            "cycle_length": 0,
+            "cycle_edges": [],
+            "cycle_modules": [],
+            "modules": {},
+        }
+        mock_manager_instance.get_install_order.return_value = [
+            "base",
+            "sale",
+            "purchase",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "--json", "explain-install-order"],
+            input="sale,purchase\n",
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["requested_modules"], ["sale", "purchase"])
+        self.assertEqual(payload["source"], "stdin")
+        mock_manager_instance.get_install_order.assert_called_once_with(
+            "sale", "purchase"
+        )
 
     @patch("oduit.cli.app.ModuleManager")
     @patch("oduit.cli.app.ConfigLoader")
@@ -2079,7 +2185,10 @@ class TestCLICommands(unittest.TestCase):
         result = self.runner.invoke(app, ["--env", "dev", "list-depends"])
 
         self.assertEqual(result.exit_code, 1)
-        self.assertIn("Either provide module names or use --select-dir", result.output)
+        self.assertIn(
+            "Either provide module names, pipe module names, or use --select-dir",
+            result.output,
+        )
 
     @patch("oduit.cli.app.ModuleManager")
     @patch("oduit.cli.app.ConfigLoader")
@@ -2100,6 +2209,33 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn(
             "Cannot use both module names and --select-dir option", result.output
         )
+
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_list_missing_reads_modules_from_stdin(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test list-missing accepts piped module lists."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_missing_dependencies.side_effect = [
+            ["base"],
+            ["web"],
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "list-missing", "--separator", ","],
+            input="sale,purchase\n",
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.find_missing_dependencies.assert_any_call("sale")
+        mock_manager_instance.find_missing_dependencies.assert_any_call("purchase")
+        self.assertEqual(result.output.strip(), "base,web")
 
     @patch("oduit.cli.app.ModuleManager")
     @patch("oduit.cli.app.ConfigLoader")

@@ -153,12 +153,16 @@ def list_depends_command(
     """List direct dependencies for one or more modules."""
     global_config, env_config = resolve_command_env_config_fn(ctx)
     module_manager = module_manager_cls(env_config["addons_path"])
+    module_list, module_source = resolve_module_names(modules)
 
-    if modules is None and select_dir is None:
-        print_error("Either provide module names or use --select-dir option")
+    if not module_list and select_dir is None:
+        print_error(
+            "Either provide module names, pipe module names, "
+            "or use --select-dir option"
+        )
         raise typer.Exit(1) from None
 
-    if modules is not None and select_dir is not None:
+    if module_list and select_dir is not None:
         print_error("Cannot use both module names and --select-dir option")
         raise typer.Exit(1) from None
 
@@ -170,11 +174,11 @@ def list_depends_command(
                 raise typer.Exit(1) from None
             module_list = sorted(addons)
             source_desc = f"directory '{select_dir}'"
+        elif module_source == "stdin":
+            source_desc = f"modules [{', '.join(module_list)}]"
         else:
-            assert modules is not None
-            module_list = [module.strip() for module in modules.split(",")]
             if len(module_list) == 1:
-                source_desc = f"'{modules}'"
+                source_desc = f"'{module_list[0]}'"
             else:
                 source_desc = f"modules [{', '.join(module_list)}]"
 
@@ -509,12 +513,16 @@ def list_missing_command(
     """Find missing dependencies for one or more modules."""
     _, env_config = resolve_command_env_config_fn(ctx)
     module_manager = module_manager_cls(env_config["addons_path"])
+    module_list, _ = resolve_module_names(modules)
 
-    if modules is None and select_dir is None:
-        print_error("Either provide module names or use --select-dir option")
+    if not module_list and select_dir is None:
+        print_error(
+            "Either provide module names, pipe module names, "
+            "or use --select-dir option"
+        )
         raise typer.Exit(1) from None
 
-    if modules is not None and select_dir is not None:
+    if module_list and select_dir is not None:
         print_error("Cannot use both module names and --select-dir option")
         raise typer.Exit(1) from None
 
@@ -524,9 +532,6 @@ def list_missing_command(
             if not module_list:
                 print_error(f"No modules found in directory '{select_dir}'")
                 raise typer.Exit(1) from None
-        else:
-            assert modules is not None
-            module_list = [module.strip() for module in modules.split(",")]
 
         all_missing: set[str] = set()
         for module in module_list:

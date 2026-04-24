@@ -15,15 +15,7 @@ from ...cli_types import (
 from ...module_manager import ModuleManager
 from ...output import print_error, print_info, print_warning
 from ...utils import output_result_to_json
-from .module_input import resolve_module_argument
-
-
-def _parse_csv_items(raw_value: str | None) -> list[str] | None:
-    """Parse a comma-separated CLI option into a list of strings."""
-    if raw_value is None:
-        return None
-    items = [item.strip() for item in raw_value.split(",") if item.strip()]
-    return items or None
+from .module_input import resolve_module_argument, resolve_module_names
 
 
 def _config_flag_enabled(value: Any) -> bool:
@@ -71,8 +63,9 @@ def list_installed_addons_command(
     """List runtime addon inventory from the active database."""
     global_config, _ = resolve_command_env_config_fn(ctx)
     odoo_operations = build_odoo_operations_fn(global_config)
+    module_names, _ = resolve_module_names(modules)
     result = odoo_operations.list_installed_addons(
-        modules=_parse_csv_items(modules),
+        modules=module_names or None,
         states=state or None,
     )
 
