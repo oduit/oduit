@@ -156,6 +156,7 @@ def agent_get_model_fields_command(
     *,
     model: str,
     attributes: str | None,
+    module: str | None,
     database: str | None,
     timeout: float,
     resolve_agent_ops_fn: Any,
@@ -172,6 +173,7 @@ def agent_get_model_fields_command(
     result = ops.get_model_fields(
         model,
         attributes=parse_csv_items_fn(attributes),
+        module=module,
         database=database,
         timeout=timeout,
     )

@@ -15,6 +15,7 @@ from ...cli_types import (
 from ...module_manager import ModuleManager
 from ...output import print_error, print_info, print_warning
 from ...utils import output_result_to_json
+from .module_input import resolve_module_argument
 
 
 def _parse_csv_items(raw_value: str | None) -> list[str] | None:
@@ -143,7 +144,7 @@ def shell_command(
 def install_command(
     ctx: typer.Context,
     *,
-    module: str,
+    module: str | None,
     without_demo: str | None,
     with_demo: bool,
     language: str | None,
@@ -160,6 +161,7 @@ def install_command(
     print_command_error_result_fn: Any,
 ) -> None:
     """Install a module."""
+    module, _ = resolve_module_argument(module)
     if not module:
         print_error("Module name is required for install")
         raise typer.Exit(1) from None
@@ -210,7 +212,7 @@ def install_command(
 def update_command(
     ctx: typer.Context,
     *,
-    module: str,
+    module: str | None,
     without_demo: str | None,
     language: str | None,
     i18n_overwrite: bool,
@@ -225,6 +227,7 @@ def update_command(
     print_command_error_result_fn: Any,
 ) -> None:
     """Update a module."""
+    module, _ = resolve_module_argument(module)
     if not module:
         print_error("Module name is required for update")
         raise typer.Exit(1) from None

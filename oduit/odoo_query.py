@@ -181,6 +181,7 @@ class OdooQuery:
         self,
         model: str,
         attributes: list[str] | tuple[str, ...] | None = None,
+        module: str | None = None,
         database: str | None = None,
         timeout: float = 30.0,
     ) -> dict[str, Any]:
@@ -205,20 +206,48 @@ class OdooQuery:
                 model=model,
             )
 
-        query_code = self._build_get_model_fields_code(model, validated_attributes)
+        query_attributes = (
+            list(validated_attributes) if validated_attributes is not None else []
+        )
+        if module is not None and "modules" not in query_attributes:
+            query_attributes.append("modules")
+
+        query_code = self._build_get_model_fields_code(model, query_attributes or None)
         result = self._executor._execute_generated_code(
             query_code,
             database=database,
             commit=False,
             timeout=timeout,
         )
-        return self._finalize_result(
+        final = self._finalize_result(
             "get_model_fields",
             result,
             model=model,
             attributes=validated_attributes,
             database=database,
         )
+
+        if module is not None and final.get("success"):
+            final = self._apply_module_filter(final, module)
+
+        return final
+
+    @staticmethod
+    def _apply_module_filter(result: dict[str, Any], module: str) -> dict[str, Any]:
+        field_definitions = result.get("field_definitions", {})
+        filtered: dict[str, dict[str, Any]] = {}
+        for field_name, field_def in field_definitions.items():
+            modules_raw = field_def.get("modules", "")
+            if not isinstance(modules_raw, str):
+                continue
+            modules_set = {m.strip() for m in modules_raw.split(",") if m.strip()}
+            if module in modules_set:
+                filtered[field_name] = field_def
+
+        result["field_definitions"] = filtered
+        result["field_names"] = sorted(filtered.keys())
+        result["module"] = module
+        return result
 
     def _validate_common_inputs(
         self,

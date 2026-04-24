@@ -9,6 +9,7 @@ from ...cli_types import OutputFormat
 from ...module_manager import ModuleManager
 from ...output import print_error, print_info
 from ...utils import output_result_to_json
+from .module_input import resolve_module_names
 
 
 def _resolve_requested_modules(
@@ -18,9 +19,6 @@ def _resolve_requested_modules(
     select_dir: str | None,
 ) -> tuple[list[str], str]:
     """Resolve requested modules from explicit names or a selected directory."""
-    if modules is None and select_dir is None:
-        raise ValueError("Either provide module names or use --select-dir option")
-
     if modules is not None and select_dir is not None:
         raise ValueError("Cannot use both module names and --select-dir option")
 
@@ -30,10 +28,12 @@ def _resolve_requested_modules(
             raise ValueError(f"No modules found in directory '{select_dir}'")
         return module_list, "select_dir"
 
-    assert modules is not None
-    module_list = [module.strip() for module in modules.split(",") if module.strip()]
+    module_list, module_source = resolve_module_names(modules)
     if not module_list:
-        raise ValueError("At least one module name must be provided")
+        raise ValueError(
+            "Either provide module names, pipe module names, "
+            "or use --select-dir option"
+        )
 
     missing_modules = [
         module
@@ -45,7 +45,7 @@ def _resolve_requested_modules(
             f"Modules not found in addons_path: {', '.join(missing_modules)}"
         )
 
-    return module_list, "modules"
+    return module_list, "stdin" if module_source == "stdin" else "modules"
 
 
 def _install_order_cycle_remediation(module_list: list[str]) -> list[str]:
@@ -58,6 +58,14 @@ def _install_order_cycle_remediation(module_list: list[str]) -> list[str]:
             "manifest-level details."
         ),
     ]
+
+
+def _analyze_dependency_cycle(
+    module_manager: ModuleManager, module_list: list[str]
+) -> dict[str, Any] | None:
+    """Return cycle analysis when the manager provides a real payload."""
+    cycle_analysis = module_manager.analyze_dependency_cycle(*module_list)
+    return cycle_analysis if isinstance(cycle_analysis, dict) else None
 
 
 def _explain_cycle_remediation() -> list[str]:
@@ -271,7 +279,7 @@ def install_order_command(
     try:
         ordered_modules = module_manager.get_install_order(*module_list)
     except ValueError as exc:
-        cycle_analysis = module_manager.analyze_dependency_cycle(*module_list)
+        cycle_analysis = _analyze_dependency_cycle(module_manager, module_list)
         cycle_details = dependency_error_details_fn(
             module_manager,
             str(exc),
@@ -370,7 +378,7 @@ def explain_install_order_command(
         )
         raise typer.Exit(1) from None
 
-    cycle_analysis = module_manager.analyze_dependency_cycle(*module_list)
+    cycle_analysis = _analyze_dependency_cycle(module_manager, module_list) or {}
     remediation = _explain_cycle_remediation()
 
     if cycle_analysis.get("cycle_path"):

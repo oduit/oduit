@@ -668,12 +668,17 @@ class OdooOperations:
         self,
         model: str,
         attributes: list[str] | tuple[str, ...] | None = None,
+        module: str | None = None,
         database: str | None = None,
         timeout: float = 30.0,
     ) -> ModelFieldsResult:
         """Delegate typed field metadata queries to ``OdooQuery``."""
         return self._query_service.get_model_fields(
-            model=model, attributes=attributes, database=database, timeout=timeout
+            model=model,
+            attributes=attributes,
+            module=module,
+            database=database,
+            timeout=timeout,
         )
 
     def get_model_views(

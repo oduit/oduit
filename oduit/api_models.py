@@ -291,6 +291,7 @@ class ModelFieldsResult(DictModel):
     operation: str
     model: str
     attributes: list[str] | None = None
+    module: str | None = None
     field_names: list[str] = dataclass_field(default_factory=list)
     field_definitions: dict[str, dict[str, Any]] = dataclass_field(default_factory=dict)
     database: str | None = None
@@ -305,6 +306,7 @@ class ModelFieldsResult(DictModel):
             operation=str(result.get("operation", "get_model_fields")),
             model=str(result.get("model", "")),
             attributes=result.get("attributes"),
+            module=result.get("module"),
             field_names=list(result.get("field_names", [])),
             field_definitions=dict(result.get("field_definitions", {})),
             database=result.get("database"),

@@ -231,6 +231,7 @@ class QueryOperationsService(OperationsService):
         self,
         model: str,
         attributes: list[str] | tuple[str, ...] | None = None,
+        module: str | None = None,
         database: str | None = None,
         timeout: float = 30.0,
     ) -> ModelFieldsResult:
@@ -239,6 +240,7 @@ class QueryOperationsService(OperationsService):
             self.operations._get_query_helper().get_model_fields(
                 model,
                 attributes=attributes,
+                module=module,
                 database=database,
                 timeout=timeout,
             )

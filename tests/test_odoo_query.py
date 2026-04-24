@@ -154,3 +154,164 @@ def test_get_model_fields_happy_path() -> None:
     assert result["operation"] == "get_model_fields"
     assert result["field_names"] == ["id", "name"]
     assert result["field_definitions"]["name"]["type"] == "char"
+
+
+def test_get_model_fields_with_module_filter() -> None:
+    query = _query()
+    query._executor._execute_generated_code = MagicMock(
+        return_value={
+            "success": True,
+            "value": {
+                "model": "woocommerce.order",
+                "attributes": ["string", "type", "modules"],
+                "field_names": [
+                    "id",
+                    "name",
+                    "woo_field_a",
+                    "woo_field_b",
+                ],
+                "field_definitions": {
+                    "id": {
+                        "string": "ID",
+                        "type": "integer",
+                        "modules": "base",
+                    },
+                    "name": {
+                        "string": "Name",
+                        "type": "char",
+                        "modules": "base,sale",
+                    },
+                    "woo_field_a": {
+                        "string": "Woo A",
+                        "type": "char",
+                        "modules": "base,fastapi_newcustomer_shop",
+                    },
+                    "woo_field_b": {
+                        "string": "Woo B",
+                        "type": "selection",
+                        "modules": "fastapi_newcustomer_shop",
+                    },
+                },
+            },
+            "output": "",
+            "error": "",
+            "traceback": "",
+        }
+    )
+
+    result = query.get_model_fields(
+        "woocommerce.order",
+        attributes=["string", "type"],
+        module="fastapi_newcustomer_shop",
+    )
+
+    assert result["success"] is True
+    assert result["module"] == "fastapi_newcustomer_shop"
+    assert result["field_names"] == ["woo_field_a", "woo_field_b"]
+    assert "woo_field_a" in result["field_definitions"]
+    assert "woo_field_b" in result["field_definitions"]
+    assert "id" not in result["field_definitions"]
+    assert "name" not in result["field_definitions"]
+
+
+def test_get_model_fields_module_filter_no_match() -> None:
+    query = _query()
+    query._executor._execute_generated_code = MagicMock(
+        return_value={
+            "success": True,
+            "value": {
+                "model": "res.partner",
+                "attributes": ["string", "type", "modules"],
+                "field_names": ["id", "name"],
+                "field_definitions": {
+                    "id": {
+                        "string": "ID",
+                        "type": "integer",
+                        "modules": "base",
+                    },
+                    "name": {
+                        "string": "Name",
+                        "type": "char",
+                        "modules": "base",
+                    },
+                },
+            },
+            "output": "",
+            "error": "",
+            "traceback": "",
+        }
+    )
+
+    result = query.get_model_fields(
+        "res.partner",
+        attributes=["string", "type"],
+        module="nonexistent_module",
+    )
+
+    assert result["success"] is True
+    assert result["module"] == "nonexistent_module"
+    assert result["field_names"] == []
+    assert result["field_definitions"] == {}
+
+
+def test_get_model_fields_module_adds_modules_attribute() -> None:
+    query = _query()
+    query._executor._execute_generated_code = MagicMock(
+        return_value={
+            "success": True,
+            "value": {
+                "model": "res.partner",
+                "attributes": ["string", "modules"],
+                "field_names": ["name"],
+                "field_definitions": {
+                    "name": {
+                        "string": "Name",
+                        "modules": "base",
+                    },
+                },
+            },
+            "output": "",
+            "error": "",
+            "traceback": "",
+        }
+    )
+
+    result = query.get_model_fields(
+        "res.partner",
+        attributes=["string"],
+        module="base",
+    )
+
+    assert result["success"] is True
+    call_args = query._executor._execute_generated_code.call_args
+    generated_code = call_args[0][0]
+    assert "modules" in generated_code
+    assert result["field_names"] == ["name"]
+
+
+def test_get_model_fields_without_module_no_filtering() -> None:
+    query = _query()
+    query._executor._execute_generated_code = MagicMock(
+        return_value={
+            "success": True,
+            "value": {
+                "model": "res.partner",
+                "attributes": ["string", "type"],
+                "field_names": ["id", "name"],
+                "field_definitions": {
+                    "id": {"string": "ID", "type": "integer"},
+                    "name": {"string": "Name", "type": "char"},
+                },
+            },
+            "output": "",
+            "error": "",
+            "traceback": "",
+        }
+    )
+
+    result = query.get_model_fields("res.partner", attributes=["string", "type"])
+
+    assert result["success"] is True
+    assert result.get("module") is None
+    assert result["field_names"] == ["id", "name"]
+    assert len(result["field_definitions"]) == 2

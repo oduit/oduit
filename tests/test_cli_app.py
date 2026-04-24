@@ -211,6 +211,30 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
+    def test_install_command_reads_modules_from_stdin(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test install command accepts piped module lists."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.install_module.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "install", "--allow-mutation"],
+            input="sale,purchase\n",
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.install_module.assert_called_once()
+        args, kwargs = mock_ops_instance.install_module.call_args
+        self.assertEqual(args[0], "sale,purchase")
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_install_command_with_options(
         self, mock_config_loader_class, mock_odoo_ops
     ):
@@ -259,6 +283,30 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         mock_ops_instance.update_module.assert_called_once()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_update_command_reads_modules_from_stdin(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test update command accepts piped module lists."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.update_module.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "update", "--allow-mutation"],
+            input="sale\npurchase\n",
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.update_module.assert_called_once()
+        args, kwargs = mock_ops_instance.update_module.call_args
+        self.assertEqual(args[0], "sale,purchase")
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
@@ -1184,6 +1232,38 @@ class TestCLICommands(unittest.TestCase):
         self.assertIn("base", result.output)
         self.assertIn("sale", result.output)
         self.assertIn("my_module", result.output)
+
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_install_order_command_reads_modules_from_stdin(
+        self, mock_config_loader_class, mock_module_manager
+    ):
+        """Test install-order command accepts piped module lists."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.find_module_path.side_effect = (
+            lambda module: f"/test/addons/{module}"
+        )
+        mock_manager_instance.get_install_order.return_value = [
+            "base",
+            "sale",
+            "purchase",
+        ]
+        mock_module_manager.return_value = mock_manager_instance
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "install-order"],
+            input="sale,purchase\n",
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_manager_instance.get_install_order.assert_called_once_with(
+            "sale", "purchase"
+        )
+        self.assertIn("base", result.output)
 
     @patch("oduit.cli.app.ModuleManager")
     @patch("oduit.cli.app.ConfigLoader")

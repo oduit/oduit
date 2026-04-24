@@ -153,7 +153,13 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     @app.command()
     def install(
         ctx: typer.Context,
-        module: str = typer.Argument(help="Module to install"),
+        module: str | None = typer.Argument(
+            None,
+            help=(
+                "Module or comma-separated modules to install; "
+                "reads stdin when omitted"
+            ),
+        ),
         without_demo: str | None = typer.Option(
             None, "--without-demo", help="Install without demo data"
         ),
@@ -208,7 +214,13 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     @app.command()
     def update(
         ctx: typer.Context,
-        module: str = typer.Argument(help="Module to update"),
+        module: str | None = typer.Argument(
+            None,
+            help=(
+                "Module or comma-separated modules to update; "
+                "reads stdin when omitted"
+            ),
+        ),
         without_demo: str | None = typer.Option(
             None, "--without-demo", help="Update without demo data"
         ),
@@ -782,7 +794,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     def install_order(
         ctx: typer.Context,
         modules: str | None = typer.Argument(
-            None, help="Comma-separated module names to compute install order for"
+            None,
+            help=(
+                "Comma-separated module names to compute install order for; "
+                "reads stdin when omitted"
+            ),
         ),
         separator: str | None = typer.Option(
             None,

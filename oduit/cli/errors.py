@@ -149,7 +149,7 @@ def dependency_error_details(
         }
 
     cycle_path = module_manager.parse_cycle_error(message)
-    if not cycle_path:
+    if not isinstance(cycle_path, list) or not cycle_path:
         suspected_modules = _parse_suspected_modules(message)
         return {"suspected_modules": suspected_modules} if suspected_modules else {}
 

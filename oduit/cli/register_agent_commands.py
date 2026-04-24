@@ -1620,6 +1620,11 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             "--attributes",
             help="Comma-separated field attributes",
         ),
+        module: str | None = typer.Option(
+            None,
+            "--module",
+            help="Filter to fields defined by this Odoo module",
+        ),
         database: str | None = typer.Option(
             None, "--database", help="Override database name"
         ),
@@ -1632,6 +1637,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             ctx,
             model=model,
             attributes=attributes,
+            module=module,
             database=database,
             timeout=timeout,
             resolve_agent_ops_fn=resolve_agent_ops_fn,
