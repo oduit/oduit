@@ -53,6 +53,7 @@ def create_db_command(
         db_user=db_user,
     )
     db_exists = exists_result.get("exists", False)
+    creation_confirmed = False
 
     if db_exists:
         if drop:
@@ -82,6 +83,7 @@ def create_db_command(
                 if not drop_result.get("success", False):
                     print_error("Failed to drop database")
                     raise typer.Exit(1) from None
+                creation_confirmed = True
             else:
                 print_info("Database drop cancelled.")
                 raise typer.Exit(0) from None
@@ -92,8 +94,8 @@ def create_db_command(
             )
             raise typer.Exit(1) from None
 
-    confirmation = ""
-    if not db_exists:
+    if not creation_confirmed:
+        confirmation = ""
         if effective_non_interactive:
             confirmation_required_error_fn(
                 global_config,
@@ -107,8 +109,10 @@ def create_db_command(
         print_warning(f"This will create a new database named '{db_name}'.")
         message = "Are you sure you want to create a new database?"
         confirmation = input(f"{message} (y/N): ").strip().lower()
+        if confirmation == "y":
+            creation_confirmed = True
 
-    if confirmation == "y":
+    if creation_confirmed:
         odoo_operations.create_db(
             create_role=create_role,
             alter_role=alter_role,

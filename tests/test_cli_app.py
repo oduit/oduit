@@ -632,6 +632,62 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
+    @patch("builtins.input")
+    def test_create_db_with_drop_recreates_in_one_run(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test create-db --drop drops and recreates in a single run."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": True, "success": True}
+        mock_ops_instance.drop_db.return_value = {"success": True}
+        mock_ops_instance.create_db.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+        mock_input.return_value = "y"
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "create-db", "--drop"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.db_exists.assert_called_once()
+        mock_ops_instance.drop_db.assert_called_once()
+        mock_ops_instance.create_db.assert_called_once()
+        self.assertNotIn("Database creation cancelled", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("builtins.input")
+    def test_create_db_with_drop_cancelled_does_not_create(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test create-db --drop cancelled: no drop, no create."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": True, "success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+        mock_input.return_value = "n"
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "create-db", "--drop"],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.db_exists.assert_called_once()
+        mock_ops_instance.drop_db.assert_not_called()
+        mock_ops_instance.create_db.assert_not_called()
+        self.assertIn("Database drop cancelled", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     def test_create_db_non_interactive_fails_fast(
         self, mock_config_loader_class, mock_odoo_ops
     ):
@@ -1274,8 +1330,8 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.find_module_path.side_effect = (
-            lambda module: f"/test/addons/{module}"
+        mock_manager_instance.find_module_path.side_effect = lambda module: (
+            f"/test/addons/{module}"
         )
         mock_manager_instance.get_install_order.return_value = [
             "base",
@@ -1306,8 +1362,8 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.find_module_path.side_effect = (
-            lambda module: f"/test/addons/{module}"
+        mock_manager_instance.find_module_path.side_effect = lambda module: (
+            f"/test/addons/{module}"
         )
         mock_manager_instance.get_install_order.return_value = [
             "base",
@@ -1530,8 +1586,8 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
-        mock_manager_instance.find_module_path.side_effect = (
-            lambda module: f"/test/addons/{module}"
+        mock_manager_instance.find_module_path.side_effect = lambda module: (
+            f"/test/addons/{module}"
         )
         mock_manager_instance.analyze_dependency_cycle.return_value = {
             "requested_modules": ["sale", "purchase"],
