@@ -1,0 +1,20 @@
+# Project-local taskledger configuration.
+# This file lives in the source project root.
+config_version = 1
+taskledger_dir = '.taskledger'
+
+# Project-local taskledger overrides.
+# The source-budget settings below are the active composition defaults.
+# Lower them for stricter prompts, or raise them when a run needs more context.
+# Supported keys:
+# default_memory_update_mode = "replace"
+# default_file_render_mode = "content"
+# default_save_run_reports = true
+# default_source_max_chars = 12000
+# default_total_source_max_chars = 48000
+# default_source_head_lines = 200
+# default_source_tail_lines = 50
+# default_context_order = ["memory", "file", "item", "inline", "loop_artifact"]
+# workflow_schema = "opsx-lite"
+# project_context = "Project-specific workflow guidance."
+# default_artifact_order = ["analysis", "plan", "implementation", "validation"]

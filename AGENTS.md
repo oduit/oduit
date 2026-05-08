@@ -347,7 +347,21 @@ Notes:
 - Run `mypy` when touching typed/public/core logic.
 - Do not install packages unless the user explicitly asks.
 
-## 11. What good agent work looks like here
+## 11. Packaging Rule for Skills
+
+Skills must stay outside the Python package.
+
+Required direction:
+
+- keep the canonical skill under `skills/oduit/`
+- do not mirror skills under `oduit/skills/`
+- do not include skills as Python package data
+- do not use `importlib.resources` to expose skills from the `oduit` package
+- update tests/docs so they expect external skills, not packaged skills
+
+The Python package should provide the CLI/library. Skill installation/distribution belongs outside the package artifact.
+
+## 12. What good agent work looks like here
 
 A strong change in this repo usually has these properties:
 
@@ -360,7 +374,7 @@ A strong change in this repo usually has these properties:
 - updates docs when public behavior changes
 - stays small unless a larger redesign is actually required
 
-## 12. What to avoid
+## 13. What to avoid
 
 - fixing library problems only in CLI wrappers
 - changing text/JSON output without tests
