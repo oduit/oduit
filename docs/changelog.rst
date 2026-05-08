@@ -1,6 +1,36 @@
 Changelog
 =========
 
+0.4.3
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Improved dependency cycle detection
+
+- Allow stdin for install update and install order
+
+- Add stdin for commands that consume addon naems directly
+
+- Add skill and explain install order
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- (db) Fix db creation
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update changelog
+
+
 0.4.2
 ----------
 
