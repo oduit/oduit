@@ -171,11 +171,27 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     def agent_inspect_addon(
         ctx: typer.Context,
         module: str = typer.Argument(help="Addon to inspect"),
+        full: bool = typer.Option(
+            False,
+            "--full",
+            help=(
+                "Include full legacy inspection payload, including full manifest "
+                "and dependency lists"
+            ),
+        ),
+        max_items: int = typer.Option(
+            25,
+            "--max-items",
+            min=0,
+            help="Maximum sample size for long list fields in summary mode",
+        ),
     ) -> None:
         """Return a one-shot addon inspection payload."""
         inspect_addon_command_impl(
             ctx,
             module=module,
+            full=full,
+            max_items=max_items,
             resolve_agent_global_config_fn=resolve_agent_global_config_fn,
             agent_fail_fn=agent_fail_fn,
             agent_payload_fn=agent_payload_fn,

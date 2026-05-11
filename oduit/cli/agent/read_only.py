@@ -99,6 +99,83 @@ def _cycle_remediation_lines() -> list[str]:
     ]
 
 
+def _limited_list(items: list[str], *, max_items: int) -> dict[str, Any]:
+    """Return list sampling metadata for bounded agent payloads."""
+    count = len(items)
+    if max_items <= 0:
+        return {"count": count, "sample": [], "truncated": count > 0}
+    sample = list(items[:max_items])
+    return {"count": count, "sample": sample, "truncated": count > len(sample)}
+
+
+def _compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Return the manifest keys needed for addon summary inspection."""
+    keys = (
+        "name",
+        "version",
+        "summary",
+        "depends",
+        "installable",
+        "auto_install",
+        "license",
+        "category",
+    )
+    return {key: manifest[key] for key in keys if key in manifest}
+
+
+def _compact_addon_inspection(
+    inspection: Any, *, max_items: int = 25
+) -> dict[str, Any]:
+    """Project full addon inspection into a compact summary payload."""
+    raw = inspection.to_dict()
+    direct_dependencies = list(raw.get("direct_dependencies") or [])
+    reverse_dependencies = list(raw.get("reverse_dependencies") or [])
+    install_order = list(raw.get("install_order_slice") or [])
+    missing_dependencies = list(raw.get("missing_dependencies") or [])
+    dependency_cycle = list(raw.get("dependency_cycle") or [])
+    python_dependencies = list(raw.get("python_dependencies") or [])
+    binary_dependencies = list(raw.get("binary_dependencies") or [])
+
+    reverse_limited = _limited_list(reverse_dependencies, max_items=max_items)
+    install_limited = _limited_list(install_order, max_items=max_items)
+
+    return {
+        "module": raw.get("module"),
+        "exists": raw.get("exists"),
+        "module_path": raw.get("module_path"),
+        "addon_type": raw.get("addon_type"),
+        "version_display": raw.get("version_display"),
+        "series": raw.get("series"),
+        "manifest": _compact_manifest(dict(raw.get("manifest") or {})),
+        "manifest_fields": raw.get("manifest_fields") or [],
+        "dependency_summary": {
+            "direct_dependency_count": len(direct_dependencies),
+            "reverse_dependency_count": len(reverse_dependencies),
+            "install_order_count": len(install_order),
+            "missing_dependency_count": len(missing_dependencies),
+            "has_dependency_cycle": bool(dependency_cycle),
+            "python_dependency_count": len(python_dependencies),
+            "binary_dependency_count": len(binary_dependencies),
+        },
+        "direct_dependencies": direct_dependencies,
+        "missing_dependencies": missing_dependencies,
+        "dependency_cycle": dependency_cycle,
+        "python_dependencies": python_dependencies,
+        "binary_dependencies": binary_dependencies,
+        "reverse_dependencies_sample": reverse_limited["sample"],
+        "reverse_dependencies_truncated": reverse_limited["truncated"],
+        "install_order_sample": install_limited["sample"],
+        "install_order_truncated": install_limited["truncated"],
+        "output_profile": "summary",
+        "omitted_fields": [
+            "manifest.full",
+            "reverse_dependencies.full",
+            "install_order_slice.full",
+            "impacted_modules.full",
+        ],
+    }
+
+
 def agent_inspect_ref_command(
     ctx: typer.Context,
     *,
@@ -637,6 +714,8 @@ def agent_inspect_addon_command(
     ctx: typer.Context,
     *,
     module: str,
+    full: bool,
+    max_items: int,
     resolve_agent_global_config_fn: Any,
     agent_fail_fn: Any,
     agent_payload_fn: Any,
@@ -652,6 +731,15 @@ def agent_inspect_addon_command(
     if global_config.env_config is None:
         agent_fail_fn(operation, result_type, "No environment configuration available")
     assert global_config.env_config is not None
+
+    if max_items < 0:
+        agent_fail_fn(
+            operation,
+            result_type,
+            "--max-items must be >= 0",
+            error_type="ValidationError",
+            details={"max_items": max_items},
+        )
 
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
     try:
@@ -669,10 +757,15 @@ def agent_inspect_addon_command(
             ],
         )
 
+    data = (
+        {**inspection.to_dict(), "output_profile": "full"}
+        if full
+        else _compact_addon_inspection(inspection, max_items=max_items)
+    )
     payload = agent_payload_fn(
         operation,
         result_type,
-        inspection.to_dict(),
+        data,
         warnings=list(inspection.warnings),
         remediation=list(inspection.remediation),
         read_only=True,

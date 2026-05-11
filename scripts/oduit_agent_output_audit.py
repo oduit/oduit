@@ -40,6 +40,30 @@ DEFAULT_MATRIX = [
         "expect_json": False,
     },
     {
+        "name": "agent-context",
+        "args": ["agent", "context"],
+        "mutates": False,
+        "expect_json": True,
+    },
+    {
+        "name": "agent-inspect-addon",
+        "args": ["agent", "inspect-addon", "{module}"],
+        "mutates": False,
+        "expect_json": True,
+    },
+    {
+        "name": "agent-inspect-addon-full",
+        "args": ["agent", "inspect-addon", "{module}", "--full"],
+        "mutates": False,
+        "expect_json": True,
+    },
+    {
+        "name": "agent-list-duplicates",
+        "args": ["agent", "list-duplicates"],
+        "mutates": False,
+        "expect_json": True,
+    },
+    {
         "name": "agent-test-summary",
         "args": ["agent", "test-summary", "--module", "{module}"],
         "mutates": False,
@@ -52,6 +76,12 @@ DEFAULT_MATRIX = [
         "expect_json": True,
     },
 ]
+
+DEFAULT_BUDGETS: dict[str, int | None] = {
+    "agent-context": 12000,
+    "agent-inspect-addon": 6000,
+    "agent-inspect-addon-full": None,
+}
 
 
 def strip_ansi(text: str) -> str:
@@ -232,7 +262,11 @@ def run_one(
 
 
 def measure_record(
-    name: str, cmd: list[str], raw: dict[str, Any], expect_json: bool
+    name: str,
+    cmd: list[str],
+    raw: dict[str, Any],
+    expect_json: bool,
+    max_bytes: int | None = None,
 ) -> dict[str, Any]:
     stdout = raw.get("stdout") or ""
     stderr = raw.get("stderr") or ""
@@ -258,6 +292,10 @@ def measure_record(
         record.update(summarize_json(payload))
     elif expect_json:
         record["json_error"] = "No JSON payload could be parsed from stdout."
+    if max_bytes is not None:
+        record["budget_bytes"] = int(max_bytes)
+        if record["combined_bytes"] > int(max_bytes):
+            record["budget_exceeded"] = True
     if raw.get("error"):
         record["error"] = raw["error"]
     return record
@@ -394,7 +432,12 @@ def write_markdown_summary(
 
 def load_matrix(path: Path | None) -> list[dict[str, Any]]:
     if not path:
-        return DEFAULT_MATRIX
+        matrix = [dict(spec) for spec in DEFAULT_MATRIX]
+        for spec in matrix:
+            name = str(spec.get("name") or "")
+            if "max_bytes" not in spec and name in DEFAULT_BUDGETS:
+                spec["max_bytes"] = DEFAULT_BUDGETS[name]
+        return matrix
     data = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(data, dict):
         data = data.get("commands", [])
@@ -428,6 +471,7 @@ def main() -> int:
         "--allow-mutating", action="store_true", help="Allow specs with mutates=true"
     )
     parser.add_argument("--skip-discovery", action="store_true")
+    parser.add_argument("--fail-on-budget", action="store_true")
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -464,7 +508,13 @@ def main() -> int:
         (raw_dir / f"{safe_name}.stderr.txt").write_text(
             raw.get("stderr") or "", encoding="utf-8"
         )
-        rec = measure_record(name, cmd, raw, bool(spec.get("expect_json", True)))
+        rec = measure_record(
+            name,
+            cmd,
+            raw,
+            bool(spec.get("expect_json", True)),
+            (int(spec["max_bytes"]) if spec.get("max_bytes") is not None else None),
+        )
         records.append(rec)
         print(
             f"{name}: {rec['combined_bytes']} bytes, "
@@ -487,6 +537,8 @@ def main() -> int:
     print(f"\nWrote {jsonl_path}")
     print(f"Wrote {json_path}")
     print(f"Wrote {args.out_dir / 'agent-output-audit.md'}")
+    if args.fail_on_budget and any(r.get("budget_exceeded") for r in records):
+        return 1
     return 0
 
 

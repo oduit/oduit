@@ -871,11 +871,108 @@ def test_agent_inspect_addon_returns_dependency_snapshot(tmp_path: Path) -> None
     data = _payload_data(payload)
     assert payload["type"] == "addon_inspection"
     assert payload["operation"] == "inspect_addon"
+    assert data["output_profile"] == "summary"
     assert data["module"] == "x_sale"
     assert data["addon_type"] == "custom"
     assert data["direct_dependencies"] == ["base"]
+    assert data["dependency_summary"]["reverse_dependency_count"] == 1
+    assert data["reverse_dependencies_sample"] == ["x_sale_ext"]
+    assert data["reverse_dependencies_truncated"] is False
+    assert data["install_order_sample"] == ["base", "x_sale"]
+    assert data["install_order_truncated"] is False
+    assert "environment" not in data
+    assert "resolved_binaries" not in data
+    assert "addons_paths" not in data
+    assert "duplicate_modules" not in data
+    assert "doctor_checks" not in data
+
+
+def test_agent_inspect_addon_full_preserves_legacy_payload(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    _make_addon(addons_dir, "x_sale_ext", depends=["x_sale"])
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app, ["--env", "dev", "agent", "inspect-addon", "x_sale", "--full"]
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["type"] == "addon_inspection"
+    assert payload["operation"] == "inspect_addon"
+    assert data["output_profile"] == "full"
+    assert data["manifest"]["depends"] == ["base"]
     assert data["reverse_dependencies"] == ["x_sale_ext"]
     assert data["install_order_slice"] == ["base", "x_sale"]
+
+
+def test_agent_inspect_addon_summary_truncates_long_lists(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+    _make_addon(addons_dir, "x_sale_ext1", depends=["x_sale"])
+    _make_addon(addons_dir, "x_sale_ext2", depends=["x_sale"])
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "inspect-addon",
+                "x_sale",
+                "--max-items",
+                "1",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert data["dependency_summary"]["reverse_dependency_count"] == 2
+    assert len(data["reverse_dependencies_sample"]) == 1
+    assert data["reverse_dependencies_truncated"] is True
+    assert len(data["install_order_sample"]) == 1
+    assert data["install_order_truncated"] is True
+
+
+def test_agent_inspect_addon_does_not_return_environment_context(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "x_sale", depends=["base"])
+
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app, ["--env", "dev", "agent", "inspect-addon", "x_sale"]
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["operation"] == "inspect_addon"
+    assert payload["type"] == "addon_inspection"
+    assert payload["operation"] != "agent_context"
+    assert payload["type"] != "environment_context"
 
 
 def test_agent_addon_info_returns_combined_summary(tmp_path: Path) -> None:
