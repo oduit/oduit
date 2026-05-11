@@ -225,3 +225,5 @@ context_oduit.index.json
 .codex
 .taskledger/
 todo.md
+.oduit-output-audit/
+.pi-lens/

@@ -1,0 +1,40 @@
+{
+  "commands": [
+    {
+      "name": "agent-help",
+      "args": ["agent", "--help"],
+      "mutates": false,
+      "expect_json": false
+    },
+    {
+      "name": "test-summary",
+      "args": ["agent", "test-summary", "--module", "{module}"],
+      "mutates": false,
+      "expect_json": true
+    },
+    {
+      "name": "test-summary-short",
+      "args": ["agent", "test-summary", "--module", "{module}", "--short"],
+      "mutates": false,
+      "expect_json": true
+    },
+    {
+      "name": "version",
+      "args": ["agent", "version"],
+      "mutates": false,
+      "expect_json": true
+    },
+    {
+      "name": "module-info",
+      "args": ["agent", "module-info", "--module", "{module}"],
+      "mutates": false,
+      "expect_json": true
+    },
+    {
+      "name": "model-info-res-partner",
+      "args": ["agent", "model-info", "--model", "res.partner"],
+      "mutates": false,
+      "expect_json": true
+    }
+  ]
+}

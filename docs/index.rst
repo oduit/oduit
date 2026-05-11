@@ -49,6 +49,7 @@ Contents
    quickstart
    agent_contract
    agent_command_inventory
+   agent_output_audit
    interfaces
    cli
    command_inventory
