@@ -7,6 +7,9 @@
 import os
 from collections.abc import Iterator
 
+from manifestoo_core.core_addons import is_core_ce_addon
+from manifestoo_core.odoo_series import OdooSeries, detect_from_addon_version
+
 from .manifest import Manifest, ManifestError
 from .manifest_collection import ManifestCollection
 
@@ -22,6 +25,8 @@ class AddonsPathManager:
         """
         self.addons_path = addons_path
         self._base_addons_paths_cache: list[str] | None = None
+        self._detected_odoo_series_cache: OdooSeries | None = None
+        self._odoo_series_checked = False
 
     def _find_odoo_base_addons_paths(self) -> list[str]:
         """Find Odoo base addons paths by looking for odoo-bin in parent dirs.
@@ -84,6 +89,64 @@ class AddonsPathManager:
         """Get auto-discovered base Odoo addon paths."""
         return list(self._find_odoo_base_addons_paths())
 
+    def _detect_odoo_series(self) -> OdooSeries | None:
+        """Detect the Odoo series from addon manifest versions."""
+        if self._odoo_series_checked:
+            return self._detected_odoo_series_cache
+
+        self._odoo_series_checked = True
+        for path in self.get_all_paths():
+            for _, manifest in self._iter_modules_in_path(path, skip_invalid=True):
+                if manifest.version:
+                    series = detect_from_addon_version(manifest.version)
+                    if series:
+                        self._detected_odoo_series_cache = series
+                        return series
+
+        return None
+
+    @staticmethod
+    def _classify_official_module_location(location: str) -> tuple[str, str] | None:
+        """Return the checkout root plus location kind for standard Odoo layouts."""
+        normalized = os.path.normpath(os.path.abspath(location))
+        module_parent = os.path.dirname(normalized)
+        parent_name = os.path.basename(module_parent)
+
+        if parent_name == "enterprise":
+            return os.path.dirname(module_parent), "enterprise"
+
+        if parent_name != "addons":
+            return None
+
+        addons_owner = os.path.basename(os.path.dirname(module_parent))
+        if addons_owner == "odoo":
+            return os.path.dirname(os.path.dirname(module_parent)), "community"
+
+        return None
+
+    def _is_official_enterprise_mirror_duplicate(
+        self,
+        module_name: str,
+        locations: list[str],
+        odoo_series: OdooSeries | None,
+    ) -> bool:
+        """Return True for standard Odoo CE addons mirrored under enterprise."""
+        if odoo_series is None or len(locations) != 2:
+            return False
+        if not is_core_ce_addon(module_name, odoo_series):
+            return False
+
+        classified_locations: list[tuple[str, str]] = []
+        for location in locations:
+            classified_location = self._classify_official_module_location(location)
+            if classified_location is None:
+                return False
+            classified_locations.append(classified_location)
+
+        roots = {root for root, _ in classified_locations}
+        kinds = {kind for _, kind in classified_locations}
+        return len(roots) == 1 and kinds == {"community", "enterprise"}
+
     def find_duplicate_module_names(self) -> dict[str, list[str]]:
         """Return module names that appear in more than one addons path."""
         module_locations: dict[str, list[str]] = {}
@@ -98,10 +161,14 @@ class AddonsPathManager:
                 if os.path.isdir(full_path) and os.path.exists(manifest_file):
                     module_locations.setdefault(entry, []).append(full_path)
 
+        odoo_series = self._detect_odoo_series()
         return {
             module_name: locations
             for module_name, locations in module_locations.items()
             if len(locations) > 1
+            and not self._is_official_enterprise_mirror_duplicate(
+                module_name, locations, odoo_series
+            )
         }
 
     def _iter_modules_in_path(

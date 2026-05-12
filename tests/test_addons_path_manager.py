@@ -4,12 +4,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at https://mozilla.org/MPL/2.0/.
 
-
 import pytest
 
 from oduit.addons_path_manager import AddonsPathManager
 from oduit.manifest import Manifest, ManifestError
 from oduit.manifest_collection import ManifestCollection
+
+
+def _create_addon(path, version="1.0.0"):
+    path.mkdir(parents=True)
+    (path / "__manifest__.py").write_text(
+        f'{{"name": "{path.name}", "version": "{version}"}}'
+    )
 
 
 def test_get_collection_from_path_valid_directory(tmp_path):
@@ -327,3 +333,53 @@ def test_get_module_names_with_filter(tmp_path):
     names = manager.get_module_names(filter_dir="addons1")
 
     assert names == ["module_a"]
+
+
+def test_find_duplicate_module_names_reports_real_duplicates(tmp_path):
+    addons1 = tmp_path / "addons1"
+    addons2 = tmp_path / "addons2"
+    _create_addon(addons1 / "shared_mod")
+    _create_addon(addons2 / "shared_mod")
+
+    duplicates = AddonsPathManager(f"{addons1},{addons2}").find_duplicate_module_names()
+
+    assert duplicates == {
+        "shared_mod": [str(addons1 / "shared_mod"), str(addons2 / "shared_mod")]
+    }
+
+
+def test_find_duplicate_module_names_ignores_official_enterprise_mirrors(tmp_path):
+    checkout_root = tmp_path / "checkout"
+    community_root = checkout_root / "odoo" / "addons"
+    enterprise_root = checkout_root / "enterprise"
+    _create_addon(community_root / "sale", version="17.0.1.0.0")
+    _create_addon(community_root / "website_sale_mrp")
+    _create_addon(enterprise_root / "website_sale_mrp")
+
+    duplicates = AddonsPathManager(
+        f"{community_root},{enterprise_root}"
+    ).find_duplicate_module_names()
+
+    assert duplicates == {}
+
+
+def test_find_duplicate_module_names_keeps_custom_duplicates_in_official_roots(
+    tmp_path,
+):
+    checkout_root = tmp_path / "checkout"
+    community_root = checkout_root / "odoo" / "addons"
+    enterprise_root = checkout_root / "enterprise"
+    _create_addon(community_root / "sale", version="17.0.1.0.0")
+    _create_addon(community_root / "custom_shared")
+    _create_addon(enterprise_root / "custom_shared")
+
+    duplicates = AddonsPathManager(
+        f"{community_root},{enterprise_root}"
+    ).find_duplicate_module_names()
+
+    assert duplicates == {
+        "custom_shared": [
+            str(community_root / "custom_shared"),
+            str(enterprise_root / "custom_shared"),
+        ]
+    }
