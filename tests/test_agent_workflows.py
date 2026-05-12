@@ -262,3 +262,98 @@ def test_prepare_addon_change_matches_partner_field_planning_flow(
     assert data["recommended_next_steps"][-2].startswith(
         "Run `oduit --env dev agent validate-addon-change my_partner"
     )
+
+
+def test_agent_install_module_dry_run_payload_has_data_nesting(tmp_path: Path) -> None:
+    """Verify install-module --dry-run nests module info under payload["data"]."""
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "my_mod", depends=["base"])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        payload = json.loads(
+            runner.invoke(
+                app,
+                ["--env", "dev", "agent", "install-module", "my_mod", "--dry-run"],
+            ).output
+        )
+
+    assert payload["type"] == "addon_inspection"
+    assert payload["operation"] == "install_module"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    data = payload["data"]
+    assert data["module"] == "my_mod"
+    assert data["planned_action"] == "install"
+    assert data["dry_run"] is True
+
+
+def test_agent_validate_addon_change_failure_payload_has_data_nesting(
+    tmp_path: Path,
+) -> None:
+    """Verify validate-addon-change failure nests verification_summary under data."""
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "bad_mod", depends=["nonexistent_dep"])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    install_state = MagicMock()
+    install_state.success = True
+    install_state.record_found = False
+    install_state.state = "uninstalled"
+    install_state.installed = False
+    install_state.database = "test_db"
+    install_state.error = None
+    install_state.error_type = None
+
+    install_result = {
+        "success": False,
+        "operation": "install",
+        "error": "dependency not found",
+        "error_type": "DependencyError",
+        "return_code": 1,
+    }
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.app.OdooOperations.get_addon_install_state",
+            return_value=install_state,
+        ),
+        patch(
+            "oduit.cli.app.OdooOperations.install_module",
+            return_value=install_result,
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "bad_mod",
+                "--allow-mutation",
+                "--install-if-needed",
+            ],
+        )
+        payload = json.loads(result.output.splitlines()[-1])
+
+    assert result.exit_code == 1
+    assert payload["success"] is False
+    assert payload["type"] == "addon_change_validation"
+    assert payload["operation"] == "validate_addon_change"
+    assert payload["read_only"] is False
+    assert payload["safety_level"] == "controlled_runtime_mutation"
+    data = payload["data"]
+    assert data["module"] == "bad_mod"
+    assert data["verification_summary"]["failed_step"] is not None
+    assert payload["errors"]
+    assert payload["remediation"]
