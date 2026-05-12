@@ -129,6 +129,12 @@ class TestSec3TrustedExecution(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertIn("timed out", result["error"].lower())
 
+    def test_normalize_db_name_accepts_odoo19_list_shape(self) -> None:
+        self.assertEqual(
+            OdooCodeExecutor._normalize_db_name(["test_19_addons_V1"]),
+            "test_19_addons_V1",
+        )
+
     def test_execute_with_database_rolls_back_on_failure(self) -> None:
         executor = OdooCodeExecutor(MagicMock())
         cursor = MagicMock()
@@ -178,6 +184,77 @@ class TestSec3TrustedExecution(unittest.TestCase):
             )
 
         self.assertFalse(result["success"])
+        cursor.rollback.assert_called_once_with()
+        cursor.commit.assert_not_called()
+
+    def test_execute_with_database_supports_odoo19_module_layout(self) -> None:
+        executor = OdooCodeExecutor(MagicMock())
+        cursor = MagicMock()
+
+        class FakeCursorContext:
+            def __enter__(self) -> MagicMock:
+                return cursor
+
+            def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+                return False
+
+        class FakeRegistry:
+            def cursor(self) -> FakeCursorContext:
+                return FakeCursorContext()
+
+        class FakeRegistryClass:
+            @staticmethod
+            def new(db_name: str) -> FakeRegistry:
+                return FakeRegistry()
+
+        class FakeEnvironment:
+            def __getitem__(self, item: str) -> Any:
+                return types.SimpleNamespace(context_get=lambda: {})
+
+        odoo_stub = types.ModuleType("odoo")
+        odoo_stub.__path__ = []
+        odoo_stub.SUPERUSER_ID = 1
+
+        odoo_api_stub = types.ModuleType("odoo.api")
+        odoo_api_stub.Environment = lambda cr, uid, ctx: FakeEnvironment()
+
+        odoo_modules_stub = types.ModuleType("odoo.modules")
+        odoo_modules_stub.__path__ = []
+
+        odoo_registry_stub = types.ModuleType("odoo.modules.registry")
+        odoo_registry_stub.Registry = FakeRegistryClass
+
+        with (
+            patch.dict(
+                sys.modules,
+                {
+                    "odoo": odoo_stub,
+                    "odoo.api": odoo_api_stub,
+                    "odoo.modules": odoo_modules_stub,
+                    "odoo.modules.registry": odoo_registry_stub,
+                },
+            ),
+            patch.object(
+                executor,
+                "_execute_trusted",
+                return_value={
+                    "success": True,
+                    "value": {"ok": True},
+                    "output": "",
+                    "error": "",
+                    "traceback": "",
+                },
+            ),
+        ):
+            result = executor._execute_with_database(
+                "{'ok': True}",
+                "test_db",
+                commit=False,
+                timeout=1.0,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["value"], {"ok": True})
         cursor.rollback.assert_called_once_with()
         cursor.commit.assert_not_called()
 

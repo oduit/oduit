@@ -123,7 +123,12 @@ class OdooCodeExecutor:
                 if value is not None:
                     config[key] = value
 
-            db_name = database or config.get("db_name")
+            raw_db_name = (
+                database
+                if database is not None
+                else self.config_provider.get_optional("db_name")
+            )
+            db_name = self._normalize_db_name(raw_db_name)
             if not db_name:
                 return None, {
                     "success": False,
@@ -133,7 +138,7 @@ class OdooCodeExecutor:
                     ),
                 }
 
-            return str(db_name), {}
+            return db_name, {}
 
         except ImportError as e:
             error_msg = f"Odoo not available for code execution: {e}"
@@ -147,6 +152,24 @@ class OdooCodeExecutor:
                 "error": error_msg,
                 "traceback": traceback.format_exc(),
             }
+
+    @staticmethod
+    def _normalize_db_name(value: Any) -> str | None:
+        """Normalize db_name values across Odoo series/config formats."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                normalized = OdooCodeExecutor._normalize_db_name(item)
+                if normalized:
+                    return normalized
+            return None
+
+        stripped = str(value).strip()
+        return stripped or None
 
     def _execute_generated_code(
         self,
@@ -173,13 +196,14 @@ class OdooCodeExecutor:
             cast(Any, threading.current_thread()).dbname = db_name
 
             # Get registry and create environment
-            registry = odoo.registry(db_name)
+            registry = self._resolve_registry(odoo, db_name)
+            odoo_api = self._resolve_api_module(odoo)
 
             with registry.cursor() as cr:
                 # Create Odoo environment
                 uid = odoo.SUPERUSER_ID
-                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()
-                env = odoo.api.Environment(cr, uid, ctx)
+                ctx = odoo_api.Environment(cr, uid, {})["res.users"].context_get()
+                env = odoo_api.Environment(cr, uid, ctx)
 
                 # Set up execution context
                 execution_context = {
@@ -214,6 +238,28 @@ class OdooCodeExecutor:
                 "error": error_msg,
                 "traceback": traceback.format_exc(),
             }
+
+    @staticmethod
+    def _resolve_registry(odoo_module: Any, db_name: str) -> Any:
+        """Return a registry object across Odoo series."""
+        registry_factory = getattr(odoo_module, "registry", None)
+        if callable(registry_factory):
+            return registry_factory(db_name)
+
+        from odoo.modules.registry import Registry
+
+        return Registry.new(db_name)
+
+    @staticmethod
+    def _resolve_api_module(odoo_module: Any) -> Any:
+        """Return the API module across Odoo series."""
+        api_module = getattr(odoo_module, "api", None)
+        if api_module is not None:
+            return api_module
+
+        import odoo.api as odoo_api
+
+        return odoo_api
 
     def _execute_trusted(
         self, code: str, context: dict[str, Any], timeout: float
@@ -441,13 +487,14 @@ class OdooCodeExecutor:
             cast(Any, threading.current_thread()).dbname = db_name
 
             # Get registry and create environment
-            registry = odoo.registry(db_name)
+            registry = self._resolve_registry(odoo, db_name)
+            odoo_api = self._resolve_api_module(odoo)
 
             with registry.cursor() as cr:
                 # Create Odoo environment
                 uid = odoo.SUPERUSER_ID
-                ctx = odoo.api.Environment(cr, uid, {})["res.users"].context_get()
-                env = odoo.api.Environment(cr, uid, ctx)
+                ctx = odoo_api.Environment(cr, uid, {})["res.users"].context_get()
+                env = odoo_api.Environment(cr, uid, ctx)
 
                 # Set up execution context (shared across all blocks)
                 execution_context = {
