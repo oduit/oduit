@@ -161,7 +161,7 @@ class OdooCodeExecutor:
         if isinstance(value, str):
             stripped = value.strip()
             return stripped or None
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list | tuple):
             for item in value:
                 normalized = OdooCodeExecutor._normalize_db_name(item)
                 if normalized:
