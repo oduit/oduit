@@ -18,6 +18,49 @@ from .mutation_policy import raise_if_legacy_db_risk_level
 CANONICAL_CONFIG_SHAPE = "sectioned"
 CANONICAL_CONFIG_SHAPE_VERSION = "1.0"
 _BINARY_CONFIG_KEYS = frozenset({"python_bin", "odoo_bin", "coverage_bin"})
+_HANDLED_ODOO_CONF_OPTION_KEYS = frozenset(
+    {
+        "addons_path",
+        "admin_passwd",
+        "csv_internal_sep",
+        "data_dir",
+        "db_host",
+        "db_maxconn",
+        "db_name",
+        "db_password",
+        "db_port",
+        "db_user",
+        "email_from",
+        "from_filter",
+        "gevent_port",
+        "http_port",
+        "limit_memory_hard",
+        "limit_memory_soft",
+        "limit_request",
+        "limit_time_cpu",
+        "limit_time_real",
+        "limit_time_real_cron",
+        "list_db",
+        "log_level",
+        "logfile",
+        "max_cron_threads",
+        "osv_memory_age_limit",
+        "osv_memory_count_limit",
+        "pg_path",
+        "pidfile",
+        "proxy_mode",
+        "reportgz",
+        "server_wide_modules",
+        "smtp_password",
+        "smtp_port",
+        "smtp_server",
+        "smtp_ssl",
+        "smtp_user",
+        "syslog",
+        "workers",
+        "xmlrpc_interface",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -32,6 +75,16 @@ class LoadedConfigDetails:
     format_type: str
     config_path: str | None
     deprecation_warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ImportedOdooConfDetails:
+    """Imported Odoo conf plus metadata useful for migration UX."""
+
+    config: dict[str, Any]
+    handled_option_keys: tuple[str, ...]
+    unknown_option_keys: tuple[str, ...]
+    odoo_bin_candidates: tuple[str, ...]
 
 
 class ConfigLoader:
@@ -420,22 +473,10 @@ class ConfigLoader:
         if "smtp_password" in options and options["smtp_password"] != "False":
             oduit_config["smtp_password"] = options["smtp_password"]
 
-    def import_odoo_conf(
+    def inspect_odoo_conf_import(
         self, conf_path: str, sectioned: bool = False
-    ) -> dict[str, Any]:
-        """Import Odoo configuration from .conf file and convert to oduit format.
-
-        Args:
-            conf_path: Path to the Odoo .conf file
-            sectioned: If True, return configuration in sectioned format
-
-        Returns:
-            Dictionary with oduit-compatible configuration
-
-        Raises:
-            FileNotFoundError: If conf file doesn't exist
-            ValueError: If conf file format is invalid
-        """
+    ) -> ImportedOdooConfDetails:
+        """Import Odoo configuration and return migration-friendly metadata."""
         if not os.path.exists(conf_path):
             raise FileNotFoundError(f"Odoo configuration file not found: {conf_path}")
 
@@ -463,37 +504,71 @@ class ConfigLoader:
         self._parse_misc_config(options, oduit_config)
 
         # Try to find odoo-bin based on addons_path
+        odoo_bin_candidates: tuple[str, ...] = ()
         if "addons_path" in oduit_config:
-            odoo_bin_path = self._find_odoo_bin_from_addons_path(
+            candidates = self._find_odoo_bin_candidates_from_addons_path(
                 oduit_config["addons_path"]
             )
-            if odoo_bin_path:
-                oduit_config["odoo_bin"] = odoo_bin_path
+            odoo_bin_candidates = tuple(candidates)
+            if candidates:
+                oduit_config["odoo_bin"] = candidates[0]
 
         # Add config_file reference to original conf
         oduit_config["config_file"] = conf_path
 
+        handled_option_keys = tuple(
+            sorted(set(options.keys()) & _HANDLED_ODOO_CONF_OPTION_KEYS)
+        )
+        unknown_option_keys = tuple(
+            sorted(set(options.keys()) - _HANDLED_ODOO_CONF_OPTION_KEYS)
+        )
+
         if sectioned:
             # Convert to sectioned format using ConfigProvider
             provider = ConfigProvider(oduit_config)
-            return provider.to_sectioned_dict()
+            oduit_config = provider.to_sectioned_dict()
 
-        return oduit_config
+        return ImportedOdooConfDetails(
+            config=oduit_config,
+            handled_option_keys=handled_option_keys,
+            unknown_option_keys=unknown_option_keys,
+            odoo_bin_candidates=odoo_bin_candidates,
+        )
 
-    def _find_odoo_bin_from_addons_path(self, addons_path: str) -> str | None:
-        """Find odoo-bin by looking in parent directories of addons paths.
+    def import_odoo_conf(
+        self, conf_path: str, sectioned: bool = False
+    ) -> dict[str, Any]:
+        """Import Odoo configuration from .conf file and convert to oduit format.
+
+        Args:
+            conf_path: Path to the Odoo .conf file
+            sectioned: If True, return configuration in sectioned format
+
+        Returns:
+            Dictionary with oduit-compatible configuration
+
+        Raises:
+            FileNotFoundError: If conf file doesn't exist
+            ValueError: If conf file format is invalid
+        """
+        return self.inspect_odoo_conf_import(conf_path, sectioned=sectioned).config
+
+    def _find_odoo_bin_candidates_from_addons_path(self, addons_path: str) -> list[str]:
+        """Find executable odoo-bin candidates relative to addon paths.
 
         Args:
             addons_path: Comma-separated list of addon paths
 
         Returns:
-            Path to odoo-bin if found, None otherwise
+            Candidate paths in discovery order
         """
         if not addons_path:
-            return None
+            return []
 
         # Split addons_path and check each directory
         addon_dirs = [path.strip() for path in addons_path.split(",")]
+        candidates: list[str] = []
+        seen: set[str] = set()
 
         for addon_dir in addon_dirs:
             if not addon_dir:
@@ -501,32 +576,33 @@ class ConfigLoader:
 
             # Convert to absolute path for consistency
             addon_dir = os.path.abspath(addon_dir)
-
-            # Look for odoo-bin in parent directory (../odoo-bin)
             parent_dir = os.path.dirname(addon_dir)
-            potential_odoo_bin = os.path.join(parent_dir, "odoo-bin")
 
-            if os.path.exists(potential_odoo_bin) and os.access(
-                potential_odoo_bin, os.X_OK
-            ):
-                return potential_odoo_bin
-
-            # Also check if the addon_dir itself contains odoo-bin
-            potential_odoo_bin = os.path.join(addon_dir, "odoo-bin")
-            if os.path.exists(potential_odoo_bin) and os.access(
-                potential_odoo_bin, os.X_OK
-            ):
-                return potential_odoo_bin
-
-            # Check common subdirectories within the addon path
-            for subdir in [".", "..", "../..", "../../.."]:
-                check_dir = os.path.normpath(os.path.join(addon_dir, subdir))
-                potential_odoo_bin = os.path.join(check_dir, "odoo-bin")
-                if os.path.exists(potential_odoo_bin) and os.access(
-                    potential_odoo_bin, os.X_OK
+            for base_dir in (addon_dir, parent_dir):
+                for relative_path in (
+                    "odoo-bin",
+                    os.path.join("odoo", "odoo-bin"),
+                    os.path.join("..", "odoo-bin"),
+                    os.path.join("..", "odoo", "odoo-bin"),
                 ):
-                    return potential_odoo_bin
+                    potential_odoo_bin = os.path.normpath(
+                        os.path.join(base_dir, relative_path)
+                    )
+                    if potential_odoo_bin in seen:
+                        continue
+                    if os.path.exists(potential_odoo_bin) and os.access(
+                        potential_odoo_bin, os.X_OK
+                    ):
+                        seen.add(potential_odoo_bin)
+                        candidates.append(potential_odoo_bin)
 
+        return candidates
+
+    def _find_odoo_bin_from_addons_path(self, addons_path: str) -> str | None:
+        """Return the first discovered odoo-bin candidate, if any."""
+        candidates = self._find_odoo_bin_candidates_from_addons_path(addons_path)
+        if candidates:
+            return candidates[0]
         return None
 
     def load_config(self, env_name: str) -> dict[str, Any]:

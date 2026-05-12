@@ -206,6 +206,24 @@ def test_cli_api_docs_mark_canonical_and_compatibility_modules() -> None:
     assert "canonical CLI composition root" in api_index_content
 
 
+def test_readme_documents_odoo_conf_migration() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "--from-conf" in text
+    assert "doctor" in text
+    assert "print-config" in text
+
+
+def test_configuration_docs_document_odoo_conf_migration() -> None:
+    text = (ROOT / "docs" / "configuration.rst").read_text(encoding="utf-8")
+    assert "odoo.conf" in text
+    assert "--from-conf" in text
+
+
+def test_migration_guide_is_in_toctree() -> None:
+    index = (ROOT / "docs" / "index.rst").read_text(encoding="utf-8")
+    assert "migrate-odoo-conf" in index
+
+
 def test_readme_and_quickstart_show_agent_verification_loop() -> None:
     targets = [
         ROOT / "README.md",

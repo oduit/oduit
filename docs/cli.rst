@@ -113,6 +113,42 @@ Plain ``test`` runs stay read-only. Runtime DB mutation is only consulted when a
 command actually installs, updates, uninstalls, creates a database, or triggers
 another runtime write path.
 
+Import an existing Odoo config
+------------------------------
+
+Use ``init`` to migrate an ``odoo.conf`` into oduit's sectioned TOML format:
+
+.. code-block:: bash
+
+   oduit init dev --from-conf /etc/odoo/odoo.conf
+
+Useful overrides:
+
+.. code-block:: bash
+
+   oduit init dev \
+     --from-conf ./odoo.conf \
+     --python-bin ./.venv/bin/python \
+     --odoo-bin ./odoo-bin \
+     --coverage-bin ./.venv/bin/coverage
+
+By default ``init`` writes ``~/.config/oduit/<env>.toml``. For project-local
+workflows you can write ``.oduit.toml`` directly or preview the generated TOML:
+
+.. code-block:: bash
+
+   oduit init dev --from-conf ./odoo.conf --local
+   oduit init dev --from-conf ./odoo.conf --output ./configs/dev.toml
+   oduit init dev --from-conf ./odoo.conf --dry-run
+
+After generating the config, validate it with:
+
+.. code-block:: bash
+
+   oduit --env dev print-config
+   oduit --env dev doctor
+   oduit --env dev list-addons
+
 Basic Usage
 -----------
 

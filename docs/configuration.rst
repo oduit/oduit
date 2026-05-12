@@ -24,8 +24,30 @@ Local or environment configs should look like this:
     http_port = 8069
     write_protect_db = false
     agent_write_protect_db = false
-    needs_mutation_flag = false
-    agent_needs_mutation_flag = false
+     needs_mutation_flag = false
+     agent_needs_mutation_flag = false
+
+Recommended setup for existing Odoo projects
+--------------------------------------------
+
+If you already have an ``odoo.conf`` file, prefer importing it instead of
+rewriting the config by hand:
+
+.. code-block:: bash
+
+   oduit init dev --from-conf ./odoo.conf
+   oduit --env dev print-config
+   oduit --env dev doctor
+
+For a project-local config, write ``.oduit.toml`` directly:
+
+.. code-block:: bash
+
+   oduit init dev --from-conf ./odoo.conf --local
+   oduit print-config
+
+Use ``--dry-run`` to preview the generated TOML without writing a file. The
+generated config may include secrets imported from ``odoo.conf``.
 
 Runtime DB mutation policy is controlled by explicit flags:
 
@@ -153,11 +175,8 @@ Python Usage
 Import Existing Odoo Configuration
 ----------------------------------
 
-If you already have an ``odoo.conf`` file, import or convert it with the CLI:
-
-.. code-block:: bash
-
-   oduit init dev --from-conf /path/to/odoo.conf
+For the full migration workflow, including validation steps and no-pytest smoke
+checks, see :doc:`migrate-odoo-conf`.
 
 Diagnostics
 -----------

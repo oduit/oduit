@@ -179,6 +179,8 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
 
     def _apply_default_config(self) -> None:
         """Apply default configuration from config provider"""
+        if config_file := self.config.get_optional("config_file"):
+            self.config_file(config_file)
         if addons_path := self.config.get_optional("addons_path"):
             expanded_path = self._expand_addons_path(addons_path)
             self.addons_path(expanded_path)

@@ -257,6 +257,15 @@ class TestConfigProvider(unittest.TestCase):
         self.assertNotIn("--workers=4", params_list)
         self.assertNotIn("--log-level=info", params_list)
 
+    def test_get_odoo_params_list_maps_config_file_to_config(self):
+        """Test config_file uses Odoo's --config option name."""
+        provider = ConfigProvider({"config_file": "/etc/odoo/odoo.conf"})
+
+        self.assertEqual(
+            provider.get_odoo_params_list([]),
+            ["--config=/etc/odoo/odoo.conf"],
+        )
+
     def test_get_optional_allow_uninstall_defaults_false(self):
         """Test get_optional returns the provided default for missing keys."""
         provider = ConfigProvider({"addons_path": "/path/to/addons"})

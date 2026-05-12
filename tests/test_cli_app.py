@@ -7,6 +7,7 @@
 import json
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import typer
@@ -2547,6 +2548,59 @@ class TestInitCommandHelpers(unittest.TestCase):
 
         check_environment_exists(mock_loader, "dev")
 
+    def test_resolve_init_target_rejects_local_and_output_together(self):
+        """Test local/output target selection is mutually exclusive."""
+        from oduit.cli.init_env import resolve_init_target
+
+        with self.assertRaises(typer.Exit) as context:
+            resolve_init_target(
+                env_name="dev",
+                config_loader=MagicMock(),
+                local=True,
+                output_path=Path("custom.toml"),
+                force=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(context.exception.exit_code, 1)
+
+    def test_resolve_init_target_dry_run_skips_environment_checks(self):
+        """Test dry-run resolves to stdout without touching the filesystem."""
+        from oduit.cli.init_env import resolve_init_target
+
+        mock_loader = MagicMock()
+
+        target = resolve_init_target(
+            env_name="dev",
+            config_loader=mock_loader,
+            local=False,
+            output_path=None,
+            force=False,
+            dry_run=True,
+        )
+
+        self.assertIsNone(target)
+        mock_loader.get_available_environments.assert_not_called()
+
+    @patch("pathlib.Path.exists", return_value=False)
+    def test_resolve_init_target_local_file(self, mock_exists):
+        """Test local init target resolves to .oduit.toml."""
+        from oduit.cli.init_env import resolve_init_target
+
+        target = resolve_init_target(
+            env_name="dev",
+            config_loader=MagicMock(),
+            local=True,
+            output_path=None,
+            force=False,
+            dry_run=False,
+        )
+
+        self.assertIsNotNone(target)
+        if target is not None:
+            self.assertEqual(target.name, ".oduit.toml")
+        mock_exists.assert_called()
+
     @patch("shutil.which")
     def test_detect_binaries_all_provided(self, mock_which):
         """Test _detect_binaries with all binaries provided."""
@@ -2690,13 +2744,19 @@ class TestInitCommandHelpers(unittest.TestCase):
     ):
         """Test _import_or_convert_config imports from .conf file."""
         from oduit.cli.init_env import import_or_convert_config
+        from oduit.config_loader import ImportedOdooConfDetails
 
         mock_exists.return_value = True
         mock_loader = MagicMock()
-        mock_loader.import_odoo_conf.return_value = {
-            "odoo_params": {"db_name": "test_db"},
-            "binaries": {},
-        }
+        mock_loader.inspect_odoo_conf_import.return_value = ImportedOdooConfDetails(
+            config={
+                "odoo_params": {"db_name": "test_db"},
+                "binaries": {"odoo_bin": "/workspace/odoo-bin"},
+            },
+            handled_option_keys=("db_name",),
+            unknown_option_keys=(),
+            odoo_bin_candidates=("/workspace/odoo-bin",),
+        )
 
         env_config = {"python_bin": "/usr/bin/python3"}
         result = import_or_convert_config(
@@ -2708,13 +2768,13 @@ class TestInitCommandHelpers(unittest.TestCase):
             "/usr/bin/coverage",
         )
 
-        mock_loader.import_odoo_conf.assert_called_once_with(
+        mock_loader.inspect_odoo_conf_import.assert_called_once_with(
             "/path/to/odoo.conf", sectioned=True
         )
         self.assertIn("odoo_params", result)
         self.assertIn("binaries", result)
         self.assertEqual(result["binaries"]["python_bin"], "/usr/bin/python3")
-        self.assertEqual(result["binaries"]["odoo_bin"], "/usr/bin/odoo")
+        self.assertEqual(result["binaries"]["odoo_bin"], "/workspace/odoo-bin")
         self.assertEqual(result["binaries"]["coverage_bin"], "/usr/bin/coverage")
         self.assertNotIn("python_bin", result)
 
@@ -2749,7 +2809,7 @@ class TestInitCommandHelpers(unittest.TestCase):
 
         mock_exists.return_value = True
         mock_loader = MagicMock()
-        mock_loader.import_odoo_conf.side_effect = Exception("Parse error")
+        mock_loader.inspect_odoo_conf_import.side_effect = Exception("Parse error")
 
         env_config = {"python_bin": "/usr/bin/python3"}
         with self.assertRaises(typer.Exit) as context:
@@ -2760,6 +2820,38 @@ class TestInitCommandHelpers(unittest.TestCase):
                 "/usr/bin/python3",
                 None,
                 None,
+            )
+
+        self.assertEqual(context.exception.exit_code, 1)
+
+    @patch("os.path.exists")
+    def test_import_or_convert_config_requires_explicit_odoo_bin_when_ambiguous(
+        self, mock_exists
+    ):
+        """Test ambiguous odoo-bin discovery asks for an explicit override."""
+        from oduit.cli.init_env import import_or_convert_config
+        from oduit.config_loader import ImportedOdooConfDetails
+
+        mock_exists.return_value = True
+        mock_loader = MagicMock()
+        mock_loader.inspect_odoo_conf_import.return_value = ImportedOdooConfDetails(
+            config={
+                "odoo_params": {"db_name": "test_db"},
+                "binaries": {"odoo_bin": "/workspace/odoo-bin"},
+            },
+            handled_option_keys=("db_name",),
+            unknown_option_keys=(),
+            odoo_bin_candidates=("/workspace/odoo-bin", "/workspace/odoo/odoo-bin"),
+        )
+
+        with self.assertRaises(typer.Exit) as context:
+            import_or_convert_config(
+                {"python_bin": "/usr/bin/python3"},
+                "/path/to/odoo.conf",
+                mock_loader,
+                "/usr/bin/python3",
+                "/usr/bin/odoo",
+                "/usr/bin/coverage",
             )
 
         self.assertEqual(context.exception.exit_code, 1)
@@ -2830,29 +2922,37 @@ class TestInitCommandHelpers(unittest.TestCase):
 
         self.assertNotIn("addons_path", env_config["odoo_params"])
 
-    @patch("os.makedirs")
-    @patch("oduit.cli.app.ConfigLoader")
-    def test_save_config_file_success(self, mock_config_loader_class, mock_makedirs):
+    def test_save_config_file_success(self):
         """Test _save_config_file saves config successfully."""
-        from unittest.mock import mock_open
-
         from oduit.cli.init_env import save_config_file
 
         mock_loader = MagicMock()
         mock_tomli_w = MagicMock()
         mock_loader._import_toml_libs.return_value = (None, mock_tomli_w)
-        mock_loader.config_dir = "/home/user/.config/oduit"
+        mock_tomli_w.dumps.return_value = (
+            '[binaries]\npython_bin = "/usr/bin/python3"\n'
+        )
 
         env_config = {"binaries": {"python_bin": "/usr/bin/python3"}}
 
-        with patch("builtins.open", mock_open()):
-            save_config_file("/path/to/config.toml", env_config, mock_loader)
+        with patch("pathlib.Path.mkdir", autospec=True) as mock_mkdir:
+            with patch("pathlib.Path.write_text", autospec=True) as mock_write_text:
+                save_config_file("/path/to/config.toml", env_config, mock_loader)
 
-        mock_makedirs.assert_called_once_with("/home/user/.config/oduit", exist_ok=True)
-        mock_tomli_w.dump.assert_called_once()
+        mock_mkdir.assert_called_once()
+        mkdir_args, mkdir_kwargs = mock_mkdir.call_args
+        self.assertEqual(Path(mkdir_args[0]).as_posix(), "/path/to")
+        self.assertEqual(mkdir_kwargs, {"parents": True, "exist_ok": True})
+        mock_tomli_w.dumps.assert_called_once_with(env_config)
+        write_args, write_kwargs = mock_write_text.call_args
+        self.assertEqual(Path(write_args[0]).as_posix(), "/path/to/config.toml")
+        self.assertEqual(
+            write_args[1],
+            '[binaries]\npython_bin = "/usr/bin/python3"\n',
+        )
+        self.assertEqual(write_kwargs, {"encoding": "utf-8"})
 
-    @patch("oduit.cli.app.ConfigLoader")
-    def test_save_config_file_no_tomli_w(self, mock_config_loader_class):
+    def test_save_config_file_no_tomli_w(self):
         """Test _save_config_file exits if tomli_w not available."""
         from oduit.cli.init_env import save_config_file
 
@@ -2861,10 +2961,12 @@ class TestInitCommandHelpers(unittest.TestCase):
 
         env_config = {"binaries": {"python_bin": "/usr/bin/python3"}}
 
-        with self.assertRaises(typer.Exit) as context:
-            save_config_file("/path/to/config.toml", env_config, mock_loader)
+        with patch("pathlib.Path.mkdir", autospec=True) as mock_mkdir:
+            with self.assertRaises(typer.Exit) as context:
+                save_config_file("/path/to/config.toml", env_config, mock_loader)
 
         self.assertEqual(context.exception.exit_code, 1)
+        mock_mkdir.assert_not_called()
 
     def test_display_config_summary_full_config(self):
         """Test _display_config_summary displays full config."""
@@ -2923,13 +3025,13 @@ class TestInitCommand(unittest.TestCase):
         mock_which,
     ):
         """Test init command creates environment successfully."""
-        from unittest.mock import mock_open
-
         mock_loader = MagicMock()
         mock_loader.get_available_environments.return_value = []
         mock_loader.get_config_path.return_value = "/home/user/.config/oduit/dev.toml"
-        mock_loader.config_dir = "/home/user/.config/oduit"
         mock_tomli_w = MagicMock()
+        mock_tomli_w.dumps.return_value = (
+            '[binaries]\npython_bin = "/usr/bin/python3"\n'
+        )
         mock_loader._import_toml_libs.return_value = (None, mock_tomli_w)
         mock_config_loader_class.return_value = mock_loader
 
@@ -2946,8 +3048,8 @@ class TestInitCommand(unittest.TestCase):
             "coverage": "/usr/bin/coverage",
         }.get(x)
 
-        with patch("builtins.open", mock_open()):
-            with patch("os.makedirs"):
+        with patch("pathlib.Path.mkdir"):
+            with patch("pathlib.Path.write_text"):
                 result = self.runner.invoke(app, ["init", "dev"])
 
         self.assertEqual(result.exit_code, 0)
@@ -2961,7 +3063,17 @@ class TestInitCommand(unittest.TestCase):
         """Test init command fails if environment already exists."""
         mock_loader = MagicMock()
         mock_loader.get_available_environments.return_value = ["dev", "prod"]
+        mock_loader.get_config_path.return_value = "/home/user/.config/oduit/dev.toml"
+        mock_loader.resolve_config_path.return_value = (
+            "/home/user/.config/oduit/dev.toml",
+            "toml",
+        )
         mock_config_loader_class.return_value = mock_loader
+        mock_which.side_effect = lambda x: {
+            "python3": "/usr/bin/python3",
+            "odoo": "/usr/bin/odoo",
+            "coverage": "/usr/bin/coverage",
+        }.get(x)
 
         result = self.runner.invoke(app, ["init", "dev"])
 
@@ -2978,19 +3090,27 @@ class TestInitCommand(unittest.TestCase):
         mock_exists,
     ):
         """Test init command imports from .conf file."""
-        from unittest.mock import MagicMock, mock_open
+        from oduit.config_loader import ImportedOdooConfDetails
 
         mock_exists.return_value = True
         mock_loader = MagicMock()
         mock_loader.get_available_environments.return_value = []
         mock_loader.get_config_path.return_value = "/home/user/.config/oduit/dev.toml"
-        mock_loader.config_dir = "/home/user/.config/oduit"
-        mock_loader.import_odoo_conf.return_value = {
-            "odoo_params": {"db_name": "test_db"},
-            "binaries": {},
-        }
+        mock_loader.inspect_odoo_conf_import.return_value = ImportedOdooConfDetails(
+            config={
+                "odoo_params": {
+                    "db_name": "test_db",
+                    "config_file": "/etc/odoo.conf",
+                    "db_password": "secret",
+                },
+                "binaries": {"odoo_bin": "/workspace/odoo-bin"},
+            },
+            handled_option_keys=("db_name", "db_password"),
+            unknown_option_keys=("workers_file",),
+            odoo_bin_candidates=("/workspace/odoo-bin",),
+        )
         mock_tomli_w = MagicMock()
-        mock_tomli_w.dump = MagicMock()
+        mock_tomli_w.dumps.return_value = '[odoo_params]\ndb_name = "test_db"\n'
         mock_loader._import_toml_libs.return_value = (None, mock_tomli_w)
         mock_config_loader_class.return_value = mock_loader
 
@@ -2998,34 +3118,27 @@ class TestInitCommand(unittest.TestCase):
             "python3": "/usr/bin/python3",
         }.get(x)
 
-        original_open = open
-
-        def selective_open(path, mode="r", *args, **kwargs):
-            if "/home/user/.config/oduit/dev.toml" in str(path):
-                m = mock_open()
-                return m.return_value
-            return original_open(path, mode, *args, **kwargs)
-
-        with patch("builtins.open", side_effect=selective_open):
-            with patch("os.makedirs"):
+        with patch("pathlib.Path.mkdir"):
+            with patch("pathlib.Path.write_text"):
                 result = self.runner.invoke(
                     app, ["init", "dev", "--from-conf", "/etc/odoo.conf"]
                 )
 
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Imported configuration", result.output)
+        self.assertIn("Converted 2 known options.", result.output)
+        self.assertIn("workers_file", result.output)
+        self.assertIn("may contain database or SMTP credentials", result.output)
 
     @patch("shutil.which")
     @patch("oduit.cli.app.ConfigLoader")
     def test_init_command_custom_binaries(self, mock_config_loader_class, mock_which):
         """Test init command with custom binary paths."""
-        from unittest.mock import mock_open
-
         mock_loader = MagicMock()
         mock_loader.get_available_environments.return_value = []
         mock_loader.get_config_path.return_value = "/home/user/.config/oduit/dev.toml"
-        mock_loader.config_dir = "/home/user/.config/oduit"
         mock_tomli_w = MagicMock()
+        mock_tomli_w.dumps.return_value = '[binaries]\npython_bin = "/custom/python"\n'
         mock_loader._import_toml_libs.return_value = (None, mock_tomli_w)
         mock_config_loader_class.return_value = mock_loader
 
@@ -3040,8 +3153,8 @@ class TestInitCommand(unittest.TestCase):
             }
             mock_provider_class.return_value = mock_provider
 
-            with patch("builtins.open", mock_open()):
-                with patch("os.makedirs"):
+            with patch("pathlib.Path.mkdir"):
+                with patch("pathlib.Path.write_text"):
                     result = self.runner.invoke(
                         app,
                         [
@@ -3078,6 +3191,86 @@ class TestInitCommand(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn("TOML writing support not available", result.output)
+
+    @patch("shutil.which")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.config_provider.ConfigProvider")
+    def test_init_command_dry_run_outputs_toml_without_writing(
+        self,
+        mock_provider_class,
+        mock_config_loader_class,
+        mock_which,
+    ):
+        """Test --dry-run prints TOML and skips writing/availability checks."""
+        mock_loader = MagicMock()
+        mock_tomli_w = MagicMock()
+        mock_tomli_w.dumps.return_value = (
+            '[binaries]\npython_bin = "/usr/bin/python3"\n'
+        )
+        mock_loader._import_toml_libs.return_value = (None, mock_tomli_w)
+        mock_config_loader_class.return_value = mock_loader
+
+        mock_provider = MagicMock()
+        mock_provider.to_sectioned_dict.return_value = {
+            "binaries": {"python_bin": "/usr/bin/python3"},
+            "odoo_params": {},
+        }
+        mock_provider_class.return_value = mock_provider
+
+        mock_which.side_effect = lambda x: {
+            "python3": "/usr/bin/python3",
+            "odoo": "/usr/bin/odoo",
+            "coverage": "/usr/bin/coverage",
+        }.get(x)
+
+        with patch("pathlib.Path.write_text") as mock_write_text:
+            result = self.runner.invoke(app, ["init", "dev", "--dry-run"])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("[binaries]", result.output)
+        self.assertNotIn("Configuration saved to", result.output)
+        mock_loader.get_available_environments.assert_not_called()
+        mock_write_text.assert_not_called()
+
+    @patch("shutil.which")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.config_provider.ConfigProvider")
+    def test_init_command_rejects_local_and_output_together(
+        self,
+        mock_provider_class,
+        mock_config_loader_class,
+        mock_which,
+    ):
+        """Test --local and --output are mutually exclusive at the CLI."""
+        mock_loader = MagicMock()
+        mock_config_loader_class.return_value = mock_loader
+
+        mock_provider = MagicMock()
+        mock_provider.to_sectioned_dict.return_value = {
+            "binaries": {"python_bin": "/usr/bin/python3"},
+            "odoo_params": {},
+        }
+        mock_provider_class.return_value = mock_provider
+
+        mock_which.side_effect = lambda x: {
+            "python3": "/usr/bin/python3",
+            "odoo": "/usr/bin/odoo",
+            "coverage": "/usr/bin/coverage",
+        }.get(x)
+
+        result = self.runner.invoke(
+            app,
+            [
+                "init",
+                "dev",
+                "--local",
+                "--output",
+                "./custom.toml",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("Use either --local or --output, not both.", result.output)
 
 
 class TestCLITypes(unittest.TestCase):

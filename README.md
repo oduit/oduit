@@ -34,6 +34,37 @@ uvx oduit
 
 ## Quick Start
 
+### Migrating an existing `odoo.conf`
+
+When you already have an Odoo config file, generate an oduit TOML config instead
+of writing one by hand:
+
+```bash
+cd /path/to/odoo-project
+
+uvx oduit init dev \
+  --from-conf ./odoo.conf \
+  --python-bin ./.venv/bin/python \
+  --odoo-bin ./odoo-bin
+
+oduit --env dev print-config
+oduit --env dev doctor
+oduit --env dev list-addons
+```
+
+For a project-local config, write `.oduit.toml` directly:
+
+```bash
+oduit init dev --from-conf ./odoo.conf --local
+oduit print-config
+oduit doctor
+```
+
+Use `--dry-run` to preview the generated TOML without writing a file.
+
+The generated file may contain secrets imported from `odoo.conf`; do not commit
+it unless that is intentional.
+
 Create a local `.oduit.toml`:
 
 ```toml
@@ -357,7 +388,8 @@ result = executor.execute_code(
 
 ## Configuration
 
-Preferred format: sectioned TOML.
+Preferred format: sectioned TOML. oduit is TOML-first, with YAML compatibility
+for older configs.
 
 Compatibility support still exists for:
 
@@ -368,6 +400,14 @@ For existing Odoo configs, import them with:
 
 ```bash
 oduit init dev --from-conf /path/to/odoo.conf
+oduit --env dev print-config
+oduit --env dev doctor
+```
+
+You can also write a local project config with:
+
+```bash
+oduit init dev --from-conf ./odoo.conf --local
 ```
 
 ## Why Structured Results Matter

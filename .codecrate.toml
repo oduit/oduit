@@ -3,6 +3,7 @@ output = "context_oduit.md"
 keep_docstrings = true
 dedupe = true
 respect_gitignore = true
+gitignore_allow = ["oduit/_version.py"]
 exclude = ["*/.venv/*", "integration_tests", "examples", "docs"]
 include = ["**/*.py", "**/*.toml", "**/*.rst"]
 split_max_chars = 0

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 from ..cli_types import AddonTemplate, DevFeature, LogLevel, ShellInterface
@@ -922,6 +924,26 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--from-conf",
             help="Import configuration from existing Odoo .conf file",
         ),
+        local: bool = typer.Option(
+            False,
+            "--local",
+            help="Write .oduit.toml in the current directory",
+        ),
+        output_path: Path | None = typer.Option(
+            None,
+            "--output",
+            help="Write TOML to an explicit path",
+        ),
+        force: bool = typer.Option(
+            False,
+            "--force",
+            help="Overwrite an existing target file",
+        ),
+        dry_run: bool = typer.Option(
+            False,
+            "--dry-run",
+            help="Print generated TOML without writing a file",
+        ),
         python_bin: str | None = typer.Option(
             None,
             "--python-bin",
@@ -942,11 +964,17 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
 
         Creates a new environment configuration in ~/.config/oduit/<env_name>.toml.
         Auto-detects python and odoo binaries from PATH unless explicitly provided.
-        Can import settings from existing Odoo .conf file.
+        Can import settings from existing Odoo .conf file, write a local
+        .oduit.toml, write to an explicit output path, or print the generated
+        TOML with --dry-run.
         """
         init_env_command_impl(
             env_name=env_name,
             from_conf=from_conf,
+            local=local,
+            output_path=output_path,
+            force=force,
+            dry_run=dry_run,
             python_bin=python_bin,
             odoo_bin=odoo_bin,
             coverage_bin=coverage_bin,

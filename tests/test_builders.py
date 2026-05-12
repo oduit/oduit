@@ -215,6 +215,34 @@ class TestRunCommandBuilder:
         assert "--dev=all" in cmd
         assert "--log-level=warn" not in cmd
 
+    @pytest.mark.parametrize(
+        ("builder_cls", "builder_args"),
+        [
+            (RunCommandBuilder, ()),
+            (InstallCommandBuilder, ("sale",)),
+            (UpdateCommandBuilder, ("sale",)),
+        ],
+    )
+    def test_builders_apply_config_file(self, builder_cls, builder_args):
+        """Imported config_file should become --config across Odoo builders."""
+        config = ConfigProvider(
+            {
+                "python_bin": "/usr/bin/python3",
+                "odoo_bin": "/opt/odoo/odoo-bin",
+                "addons_path": "/opt/odoo/addons",
+                "config_file": "/etc/odoo/odoo.conf",
+                "db_name": "test_db",
+            }
+        )
+
+        builder = builder_cls(config, *builder_args)
+        cmd = builder.build()
+
+        config_arg = "--config=/etc/odoo/odoo.conf"
+        assert config_arg in cmd
+        assert "--database=test_db" in cmd
+        assert cmd.index(config_arg) < cmd.index("--database=test_db")
+
 
 class TestOdooTestCommandBuilder:
     """Tests for OdooTestCommandBuilder"""

@@ -4,6 +4,31 @@ Quick Start Guide
 This guide shows the current recommended setup and the main user-facing
 workflows.
 
+Migrating from an existing odoo.conf
+------------------------------------
+
+If you already have an Odoo project with an ``odoo.conf``, start with the CLI
+import path:
+
+.. code-block:: bash
+
+   oduit init dev --from-conf ./odoo.conf
+   oduit --env dev doctor
+   oduit --env dev run
+
+Useful overrides:
+
+.. code-block:: bash
+
+   oduit init dev \
+     --from-conf ./odoo.conf \
+     --local \
+     --python-bin ./.venv/bin/python \
+     --odoo-bin ./odoo-bin
+
+Inspect the generated config with ``print-config`` before using it. The
+generated TOML may contain secrets imported from ``odoo.conf``.
+
 Preferred Configuration
 -----------------------
 

@@ -47,6 +47,7 @@ Contents
 
    installation
    quickstart
+   migrate-odoo-conf
    agent_contract
    agent_command_inventory
    agent_output_audit

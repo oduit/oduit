@@ -126,6 +126,7 @@ class ConfigProvider:
             odoo.tools.config.parse_config()
         """
         key_mappings = {
+            "config_file": "config",
             "db_name": "database",
             "addons_path": "addons-path",
             "upgrade_path": "upgrade-path",
