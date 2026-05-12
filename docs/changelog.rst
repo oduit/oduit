@@ -1,6 +1,27 @@
 Changelog
 =========
 
+0.4.4
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add script for benchmark output
+
+- Reduce the inspect addon output
+
+- Better migration workflow for existing odoo.conf files
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update changelog
+
+
 0.4.3
 ----------
 
