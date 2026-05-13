@@ -100,7 +100,7 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         read_only=True,
         safety_level="safe_read_only",
     )
-    assert context_payload["available_module_count"] >= 5
+    assert context_payload["data"]["available_module_count"] >= 5
 
     exit_code, inspect_payload = _invoke_agent(
         monkeypatch, "agent", "inspect-addon", "e"
@@ -113,8 +113,10 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         read_only=True,
         safety_level="safe_read_only",
     )
-    assert inspect_payload["module"] == "e"
-    assert inspect_payload["module_path"].endswith("integration_tests/myaddons/e")
+    assert inspect_payload["data"]["module"] == "e"
+    assert inspect_payload["data"]["module_path"].endswith(
+        "integration_tests/myaddons/e"
+    )
 
     exit_code, addon_info_payload = _invoke_agent(
         monkeypatch, "agent", "addon-info", "e"
@@ -127,8 +129,8 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         read_only=True,
         safety_level="safe_read_only",
     )
-    assert addon_info_payload["module"] == "e"
-    assert addon_info_payload["test_cases"]
+    assert addon_info_payload["data"]["module"] == "e"
+    assert addon_info_payload["data"]["test_cases"]
 
     exit_code, locate_model_payload = _invoke_agent(
         monkeypatch,
@@ -146,7 +148,7 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         read_only=True,
         safety_level="safe_read_only",
     )
-    assert locate_model_payload["candidates"][0]["path"].endswith(
+    assert locate_model_payload["data"]["candidates"][0]["path"].endswith(
         "myaddons/e/models.py"
     )
 
@@ -167,8 +169,8 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         read_only=True,
         safety_level="safe_read_only",
     )
-    assert locate_field_payload["field"] == "integration_note"
-    assert locate_field_payload["candidates"][0]["path"].endswith(
+    assert locate_field_payload["data"]["field"] == "integration_note"
+    assert locate_field_payload["data"]["candidates"][0]["path"].endswith(
         "myaddons/e/models.py"
     )
 
@@ -183,7 +185,7 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         read_only=True,
         safety_level="safe_read_only",
     )
-    assert addon_tests_payload["tests"][0]["path"].endswith(
+    assert addon_tests_payload["data"]["tests"][0]["path"].endswith(
         "myaddons/e/tests/test_basic.py"
     )
 
@@ -206,7 +208,7 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         safety_level="controlled_runtime_mutation",
     )
     assert (
-        validate_payload["sub_results"]["discovered_tests"]["data"][
+        validate_payload["data"]["sub_results"]["discovered_tests"]["data"][
             "execution_strategy"
         ]
         == "inventory_only"
@@ -233,12 +235,12 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         read_only=True,
         safety_level="safe_read_only",
     )
-    assert prepare_payload["steps"]["inspect_addon"]["success"] is True
-    assert prepare_payload["steps"]["locate_model"]["success"] is True
-    assert prepare_payload["steps"]["locate_field"]["success"] is True
-    assert prepare_payload["steps"]["list_addon_tests"]["data"]["tests"]
-    assert prepare_payload["steps"]["get_model_fields"]["success"] is True
-    assert prepare_payload["steps"]["get_model_views"]["success"] is True
+    assert prepare_payload["data"]["steps"]["inspect_addon"]["success"] is True
+    assert prepare_payload["data"]["steps"]["locate_model"]["success"] is True
+    assert prepare_payload["data"]["steps"]["locate_field"]["success"] is True
+    assert prepare_payload["data"]["steps"]["list_addon_tests"]["data"]["tests"]
+    assert prepare_payload["data"]["steps"]["get_model_fields"]["success"] is True
+    assert prepare_payload["data"]["steps"]["get_model_views"]["success"] is True
 
     exit_code, tests_payload = _invoke_agent(
         monkeypatch,
@@ -259,7 +261,7 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         read_only=True,
         safety_level="safe_read_only",
     )
-    assert tests_payload["selected_modules"] == ["e"]
+    assert tests_payload["data"]["selected_modules"] == ["e"]
 
 
 @pytest.mark.integration
@@ -291,8 +293,8 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
             read_only=True,
             safety_level="safe_read_only",
         )
-        assert install_plan_payload["module"] == module
-        assert install_plan_payload["planned_action"] == "install"
+        assert install_plan_payload["data"]["module"] == module
+        assert install_plan_payload["data"]["planned_action"] == "install"
 
         exit_code, install_payload = _invoke_agent(
             monkeypatch,
@@ -311,7 +313,7 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
             read_only=False,
             safety_level="controlled_runtime_mutation",
         )
-        assert install_payload["module"] == module
+        assert install_payload["data"]["module"] == module
 
         exit_code, installed_payload = _invoke_agent(
             monkeypatch,
@@ -331,7 +333,7 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
         )
         assert any(
             addon["module"] == module and addon["installed"] is True
-            for addon in installed_payload["addons"]
+            for addon in installed_payload["data"]["addons"]
         )
 
         exit_code, query_payload = _invoke_agent(
@@ -355,9 +357,9 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
             read_only=True,
             safety_level="safe_read_only",
         )
-        assert query_payload["count"] == 1
-        assert query_payload["records"][0]["name"] == module
-        assert query_payload["records"][0]["state"] == "installed"
+        assert query_payload["data"]["count"] == 1
+        assert query_payload["data"]["records"][0]["name"] == module
+        assert query_payload["data"]["records"][0]["state"] == "installed"
 
         exit_code, update_plan_payload = _invoke_agent(
             monkeypatch,
@@ -375,8 +377,8 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
             read_only=True,
             safety_level="safe_read_only",
         )
-        assert update_plan_payload["module"] == module
-        assert update_plan_payload["planned_action"] == "update"
+        assert update_plan_payload["data"]["module"] == module
+        assert update_plan_payload["data"]["planned_action"] == "update"
 
         exit_code, update_payload = _invoke_agent(
             monkeypatch,
@@ -395,7 +397,7 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
             read_only=False,
             safety_level="controlled_runtime_mutation",
         )
-        assert update_payload["module"] == module
+        assert update_payload["data"]["module"] == module
 
         exit_code, uninstall_plan_payload = _invoke_agent(
             monkeypatch,
@@ -413,13 +415,13 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
             read_only=True,
             safety_level="safe_read_only",
         )
-        assert uninstall_plan_payload["planned_action"] == "uninstall"
-        assert uninstall_plan_payload["config_allows_uninstall"] is True
-        assert uninstall_plan_payload["allow_uninstall_flag"] is False
-        assert uninstall_plan_payload["blocked"] is True
+        assert uninstall_plan_payload["data"]["planned_action"] == "uninstall"
+        assert uninstall_plan_payload["data"]["config_allows_uninstall"] is True
+        assert uninstall_plan_payload["data"]["allow_uninstall_flag"] is False
+        assert uninstall_plan_payload["data"]["blocked"] is True
         assert (
             "--allow-uninstall was not provided"
-            in uninstall_plan_payload["blocked_reasons"]
+            in uninstall_plan_payload["data"]["blocked_reasons"]
         )
 
         exit_code, uninstall_payload = _invoke_agent(
@@ -440,8 +442,8 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
             read_only=False,
             safety_level="controlled_runtime_mutation",
         )
-        assert uninstall_payload["module"] == module
-        assert uninstall_payload["uninstalled"] is True
+        assert uninstall_payload["data"]["module"] == module
+        assert uninstall_payload["data"]["uninstalled"] is True
 
         exit_code, install_state_payload = _invoke_agent(
             monkeypatch,
@@ -459,8 +461,8 @@ def test_agent_real_runtime_matrix_covers_mutation_gates_and_queries(
             read_only=True,
             safety_level="safe_read_only",
         )
-        assert install_state_payload["installed_modules"] == []
-        assert install_state_payload["not_installed_modules"] == [module]
+        assert install_state_payload["data"]["installed_modules"] == []
+        assert install_state_payload["data"]["not_installed_modules"] == [module]
     finally:
         _set_module_install_state(ops, module, installed=initially_installed)
 
@@ -490,6 +492,6 @@ def test_agent_validate_addon_change_reports_dependency_failure(
         read_only=False,
         safety_level="controlled_runtime_mutation",
     )
-    assert payload["verification_summary"]["failed_step"] is not None
+    assert payload["data"]["verification_summary"]["failed_step"] is not None
     assert payload["errors"]
     assert payload["remediation"]
