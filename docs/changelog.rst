@@ -1,6 +1,43 @@
 Changelog
 =========
 
+0.4.5
+----------
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- Duplicate detection fix
+
+- Code executor fixed for odoo 19
+
+- Test integration test
+
+- Adapt to changed output of odoo 19
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update changelog
+
+
+
+Testing
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add test to check agent workflows
+
+
+
+Miscellaneous
+~~~~~~~~~~~~~~~~~~~~~
+
+- Fix pre-commit
+
+
 0.4.4
 ----------
 
