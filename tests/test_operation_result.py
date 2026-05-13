@@ -424,6 +424,24 @@ class TestOperationResult(unittest.TestCase):
         self.assertIn("other_module", result["failed_modules"])
         self.assertIn("another_module", result["failed_modules"])
 
+    def test_parse_install_results_odoo19_no_per_module_lines(self):
+        """Test that modules_installed is populated from target modules when
+        Odoo 19+ does not emit per-module Loading lines."""
+        builder = OperationResult("install", module="c")
+        builder.set_custom_data(modules=["c"])
+        output = """
+2026-01-01 10:00:00,000 6075 INFO ? odoo: loading 1 modules...
+2026-01-01 10:00:00,000 6075 INFO ? odoo: 1 modules loaded in 0.00s, 0 queries (+0 extra)
+2026-01-01 10:00:00,000 6075 INFO ? odoo.modules.loading: updating modules list
+2026-01-01 10:00:00,000 6075 INFO ? odoo.modules.loading: loading 16 modules...
+2026-01-01 10:00:00,000 6075 INFO ? odoo.modules.loading: 16 modules loaded in 0.22s, 0 queries (+0 extra)
+"""
+        result = builder._parse_install_results(output)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["modules_loaded"], 16)
+        self.assertIn("c", result["modules_installed"])
+
     def test_parse_test_results_successful_tests(self):
         """Test parsing successful test output"""
         builder = OperationResult("test", module="test_module")

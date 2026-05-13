@@ -498,6 +498,17 @@ class OperationResult:
                             ):
                                 install_info["success"] = False
 
+        # Fallback: Odoo 19+ does not emit per-module "Loading module X" lines.
+        # If modules were loaded successfully but no individual modules were
+        # captured, infer the target modules as installed.
+        if (
+            not install_info["modules_installed"]
+            and install_info["modules_loaded"] > 0
+            and install_info["success"]
+        ):
+            target_modules = self.result.get("modules", [])
+            install_info["modules_installed"] = list(target_modules)
+
         return install_info
 
     def _parse_test_failure(self, lines: list[str], start_index: int) -> dict[str, Any]:
