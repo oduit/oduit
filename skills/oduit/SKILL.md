@@ -245,7 +245,8 @@ oduit print-manifest sale
 oduit list-depends sale
 oduit install-order sale,purchase
 oduit impact-of-update sale
-oduit docs addon sale --source-only
+oduit docs technical @addons/sale --source-only --output-in-addon
+oduit docs addon sale --source-only  # legacy addon summary, not Arc42 architecture docs
 oduit inspect model res.partner
 oduit inspect field res.partner email --with-db
 oduit db table res_partner

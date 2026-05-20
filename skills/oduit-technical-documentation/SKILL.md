@@ -1,244 +1,281 @@
 ---
 name: oduit-technical-documentation
-description: Use oduit to create detailed technical documentation for Odoo addons, models, fields, views, dependencies, and multi-addon architecture. Trigger only when the user asks you to write, generate, update, or improve detailed technical documentation for Odoo code.
+description: Use oduit to create or update Arc42 technical architecture documentation for Odoo addons. Trigger when the user asks to generate, write, update, review, or improve technical documentation for Odoo addons, especially addon-local docs/architecture.md files.
 ---
 
-# oduit technical documentation skill
+# oduit Arc42 technical documentation skill
 
-## What I do
+## Purpose
 
-Use `oduit` as the source-discovery and runtime-inspection layer for Odoo technical documentation.
+Use `oduit` as the discovery, runtime-inspection, and rendering layer for Odoo addon technical documentation.
 
-This skill helps you:
+The default single-addon output is an Arc42-style Markdown document stored inside the addon:
 
-- Generate addon-level technical documentation.
-- Generate model-level technical documentation.
-- Generate multi-addon documentation bundles with deduplicated shared model pages.
-- Generate dependency graphs and Mermaid diagrams.
-- Enrich documentation with runtime model, field, view, manifest, install-state, and database metadata.
-- Convert `oduit` JSON/Markdown output into readable technical documentation for humans.
+```text
+<addon_root>/docs/architecture.md
+```
 
-## When to use me
+Example:
+
+```text
+@addons/has_base
+→ addons/has_base/docs/architecture.md
+```
+
+## When to use this skill
 
 Use this skill when the user asks for any of the following:
 
-- "write technical documentation for addon `<module>`"
-- "document this Odoo module"
-- "create architecture documentation for these addons"
-- "create model documentation for `<model>`"
-- "create a dependency diagram"
-- "generate Markdown documentation for a folder of addons"
-- "explain how these Odoo addons/models/views relate to each other"
-- "produce developer-facing docs from an Odoo codebase"
+- create technical documentation for an Odoo addon
+- generate Arc42 documentation for an addon
+- update `docs/architecture.md` for an addon
+- document `@addons/<module>`
+- review or improve addon architecture documentation
+- produce developer-facing technical docs from an Odoo addon
+- explain addon architecture, dependencies, models, views, security, routes, or runtime behavior in a durable documentation file
 
 Do not use this skill for:
 
 - implementing feature changes
-- debugging test failures
-- installing, updating, or uninstalling addons
-- quick one-off factual answers where full documentation is not requested
-- production database mutation or any command requiring `--allow-mutation`
+- debugging runtime failures unrelated to documentation
+- installing, updating, or uninstalling Odoo modules
+- running Odoo tests
+- quick factual answers where the user is not asking for durable documentation
+- production database mutation
 
-All workflows in this skill must be read-only unless the user explicitly asks for a separate mutation task.
+## Core rule
 
-## Operating rules
+For a single addon, prefer the Arc42 technical documentation command.
 
-1. Prefer `oduit agent ...` commands for discovery because they return structured payloads.
-2. Prefer `oduit docs ...` commands when you need ready-to-commit Markdown files.
-3. Run only read-only commands.
-4. Do not include raw JSON in the final documentation unless the user explicitly asks for machine-readable output.
-5. Do not include raw XML view architecture unless the user asks for it or it is necessary to explain a specific view customization.
-6. Use `--source-only` when no usable Odoo database is available, when runtime commands fail, or when the user asks for source-only documentation.
-7. Use `--path "$(pwd)"` or another repository root path when generating docs so paths are relative and stable.
-8. Limit output size when needed with `--max-models`, `--max-fields`, and `--max-fields-per-model`.
+Do this:
 
-## Basic setup checks
+```bash
+oduit agent technical-doc @addons/<module>
+oduit agent technical-doc @addons/<module> --allow-mutation
+```
 
-Before generating documentation, identify the oduit environment and confirm that the requested addon/model can be inspected.
+or, for the human CLI fallback:
 
-Use these commands first:
+```bash
+oduit docs technical @addons/<module> --output-in-addon
+```
+
+Do not make this the primary workflow:
+
+```bash
+oduit docs addon <module> --output docs/technical/<module>.md
+```
+
+`oduit docs addon` is a legacy/additional addon summary generator. Use it only for comparison or supplemental detail when the Arc42 document needs extra facts.
+
+## Target syntax
+
+Prefer explicit addon paths for write operations:
+
+```bash
+oduit agent technical-doc @addons/has_base --allow-mutation
+```
+
+Why:
+
+- `@addons/has_base` makes the write target unambiguous.
+- Module names can be duplicated across `addons_path`.
+- oduit refuses ambiguous source writes and asks for an explicit path.
+
+Use module names only for read-only preview when ambiguity is unlikely:
+
+```bash
+oduit agent technical-doc has_base
+```
+
+## Standard setup checks
+
+Before generating or writing documentation, run compact read-only discovery:
 
 ```bash
 oduit agent context
 oduit agent resolve-config
 oduit agent doctor
-```
-
-For one addon:
-
-```bash
-oduit agent inspect-addon <module>
+oduit agent resolve-addon-root @addons/<module>
 oduit agent addon-info <module>
-oduit agent resolve-addon-root <module>
-oduit agent manifest-show <module>
 ```
 
-For multiple addons:
+If `doctor` fails only because runtime/database access is unavailable, continue with `--source-only`.
+
+If addon resolution fails, stop and report the configured `addons_path` issue. Do not invent module paths.
+
+## Primary workflow: preview one addon
+
+Use this when the user asks to review, plan, or preview documentation.
 
 ```bash
-oduit agent list-addons --select-dir <addons_dir_name>
-oduit agent check-addons-installed --modules <module_a>,<module_b>
-oduit agent dependency-graph --modules <module_a>,<module_b>
-```
-
-If any command reports that the addon is not found, inspect the configured `addons_path` and stop. Do not invent module paths.
-
-## Documentation generation commands
-
-### Single addon Markdown
-
-Use this for a full technical documentation page for one addon.
-
-```bash
-mkdir -p docs/technical
-
-oduit docs addon <module> \
-  --format markdown \
-  --output docs/technical/<module>.md \
+oduit agent technical-doc @addons/<module> \
   --path "$(pwd)"
 ```
 
-Use runtime enrichment by default. Use source-only mode when there is no reliable database:
+For a source-only preview:
 
 ```bash
-oduit docs addon <module> \
+oduit agent technical-doc @addons/<module> \
   --source-only \
-  --format markdown \
-  --output docs/technical/<module>.md \
   --path "$(pwd)"
 ```
 
-Use limits for large addons:
+When you need the full Markdown in the JSON payload for editing or review:
 
 ```bash
-oduit docs addon <module> \
-  --format markdown \
-  --output docs/technical/<module>.md \
+oduit agent technical-doc @addons/<module> \
+  --include-markdown \
+  --path "$(pwd)"
+```
+
+Expected behavior:
+
+- operation: `technical_doc_preview`
+- read-only: `true`
+- safety level: `safe_read_only`
+- output hint: `<addon_root>/docs/architecture.md`
+
+## Primary workflow: write addon-local Arc42 documentation
+
+Use this when the user explicitly asks to create, write, update, or fix the addon documentation file.
+
+```bash
+oduit agent technical-doc @addons/<module> \
+  --allow-mutation \
+  --path "$(pwd)"
+```
+
+This writes:
+
+```text
+<addon_root>/docs/architecture.md
+```
+
+If the file already exists and the user asked to update/replace it:
+
+```bash
+oduit agent technical-doc @addons/<module> \
+  --allow-mutation \
+  --force \
+  --path "$(pwd)"
+```
+
+For source-only generation:
+
+```bash
+oduit agent technical-doc @addons/<module> \
+  --allow-mutation \
+  --source-only \
+  --path "$(pwd)"
+```
+
+After writing, always read the generated file before finalizing:
+
+```bash
+sed -n '1,220p' addons/<module>/docs/architecture.md
+```
+
+Then improve the file manually where oduit marks uncertainty or TODOs. Keep generated evidence accurate; add business context only when it is supported by source code, manifests, runtime metadata, or user-provided context.
+
+## Human CLI fallback
+
+Use this when the agent wrapper is unavailable or a person-readable CLI output is enough.
+
+Preview to stdout:
+
+```bash
+oduit docs technical @addons/<module> \
+  --template arc42 \
+  --path "$(pwd)"
+```
+
+Write to the addon:
+
+```bash
+oduit docs technical @addons/<module> \
+  --template arc42 \
+  --output-in-addon \
+  --path "$(pwd)"
+```
+
+Overwrite an existing addon-local doc:
+
+```bash
+oduit docs technical @addons/<module> \
+  --template arc42 \
+  --output-in-addon \
+  --force \
+  --path "$(pwd)"
+```
+
+Source-only fallback:
+
+```bash
+oduit docs technical @addons/<module> \
+  --template arc42 \
+  --source-only \
+  --output-in-addon \
+  --path "$(pwd)"
+```
+
+## Runtime enrichment
+
+Use runtime enrichment by default when a safe development database is available.
+
+Use `--source-only` when:
+
+- no configured database exists;
+- runtime inspection fails;
+- the user asks for source-only docs;
+- the environment is production-like or sensitive;
+- database access would expose personal, customer, employee, invoice, payment, or other sensitive data.
+
+Runtime-enriched commands may inspect models, fields, views, installed state, and database-backed metadata. They must remain read-only.
+
+Never include production sample data in documentation.
+
+## Controlling output size
+
+For large addons, constrain generated documentation:
+
+```bash
+oduit agent technical-doc @addons/<module> \
+  --max-models 40 \
+  --max-fields-per-model 120 \
+  --types form,tree,kanban,search \
+  --path "$(pwd)"
+```
+
+For the human CLI:
+
+```bash
+oduit docs technical @addons/<module> \
+  --output-in-addon \
   --max-models 40 \
   --max-fields-per-model 120 \
   --view-types form,tree,kanban,search \
   --path "$(pwd)"
 ```
 
-### Single model Markdown
+Keep raw XML architecture out by default. Only use `--include-arch` if the user explicitly needs raw view XML or a specific XML customization cannot be explained otherwise.
 
-Use this when the documentation is centered on a model such as `res.partner`.
+## Supplemental read-only inspection commands
 
-```bash
-mkdir -p docs/technical/models
+Use these only when the generated Arc42 draft is incomplete or needs verification.
 
-oduit docs model <model.name> \
-  --format markdown \
-  --output docs/technical/models/<model_name>.md \
-  --field-attributes string,type,required,readonly,store,relation \
-  --view-types form,tree,kanban,search \
-  --max-fields 150 \
-  --path "$(pwd)"
-```
-
-Example:
+Addon overview:
 
 ```bash
-oduit docs model res.partner \
-  --format markdown \
-  --output docs/technical/models/res_partner.md \
-  --field-attributes string,type,required,readonly,store,relation \
-  --view-types form,tree,search \
-  --max-fields 150 \
-  --path "$(pwd)"
-```
-
-### Dependency graph documentation
-
-Use this for architecture docs and install/dependency relationships.
-
-```bash
-oduit docs dependency-graph \
-  --modules <module_a>,<module_b>,<module_c> \
-  --format markdown \
-  --output docs/technical/dependency_graph.md \
-  --path "$(pwd)"
-```
-
-For direct dependencies only:
-
-```bash
-oduit docs dependency-graph \
-  --modules <module_a>,<module_b>,<module_c> \
-  --direct-only \
-  --format markdown \
-  --output docs/technical/dependency_graph_direct.md \
-  --path "$(pwd)"
-```
-
-For a raw Mermaid diagram:
-
-```bash
-oduit docs dependency-graph \
-  --modules <module_a>,<module_b>,<module_c> \
-  --format mermaid \
-  --output docs/technical/dependency_graph.mmd \
-  --path "$(pwd)"
-```
-
-### Multi-addon documentation bundle
-
-Use this when documenting a complete custom addons directory or several related modules. This is the preferred workflow for avoiding repeated `res.partner`, `res.users`, and other shared model sections in every addon page.
-
-```bash
-mkdir -p docs/technical/addon_bundle
-
-oduit docs addons \
-  --select-dir <addons_dir_name> \
-  --format markdown \
-  --output-dir docs/technical/addon_bundle \
-  --max-fields-per-model 120 \
-  --path "$(pwd)"
-```
-
-For an explicit module list:
-
-```bash
-oduit docs addons \
-  --modules <module_a>,<module_b>,<module_c> \
-  --format markdown \
-  --output-dir docs/technical/addon_bundle \
-  --max-fields-per-model 120 \
-  --path "$(pwd)"
-```
-
-Expected output structure:
-
-```text
-docs/technical/addon_bundle/
-├── index.md
-├── bundle.json
-├── addons/
-│   ├── <module_a>.md
-│   └── <module_b>.md
-└── models/
-    ├── res.partner.md
-    └── res.users.md
-```
-
-Use `index.md` as the entry point. Use files in `models/` for shared model details and files in `addons/` for addon-specific summaries and links.
-
-## Agent-first discovery commands
-
-Use these when you need structured facts before writing or revising documentation.
-
-### Addon overview
-
-```bash
+oduit agent inspect-addon <module>
 oduit agent addon-info <module>
-oduit agent list-addon-models <module>
-oduit agent get-addon-files <module> --globs "__manifest__.py,models/**/*.py,views/**/*.xml,security/**/*.csv,data/**/*.xml"
+oduit agent get-addon-files <module> --globs "__manifest__.py,models/**/*.py,views/**/*.xml,security/**/*.csv,data/**/*.xml,controllers/**/*.py"
 ```
 
-### Model and field facts
+Models and fields:
 
 ```bash
-oduit agent check-model-exists <model.name> --module <module>
+oduit agent list-addon-models <module>
 oduit agent find-model-extensions <model.name> --summary
 oduit agent get-model-fields <model.name> \
   --attributes string,type,required,readonly,store,relation \
@@ -246,131 +283,58 @@ oduit agent get-model-fields <model.name> \
 oduit agent get-model-views <model.name> --types form,tree,kanban,search --summary
 ```
 
-### Runtime metadata
+Dependencies:
 
 ```bash
+oduit agent dependency-graph --modules <module>
+oduit agent explain-install-order <module>
+```
+
+Runtime facts:
+
+```bash
+oduit agent list-installed-addons --module <module>
 oduit agent inspect-model <model.name>
 oduit agent inspect-field <model.name> <field_name> --with-db
-oduit agent list-installed-addons --module <module>
 ```
 
-### Read-only sample data
+Use low limits for any read-only record inspection. Do not place sensitive records into documentation.
 
-Use this only when sample records help explain the technical behavior. Keep record limits low.
+## Expected Arc42 document shape
 
-```bash
-oduit agent query-model <model.name> \
-  --fields id,display_name,create_date \
-  --limit 10
-
-oduit agent search-count <model.name> --domain-json '[["active","=",true]]'
-```
-
-Never expose personal, customer, financial, or production data in documentation. Replace sensitive values with sanitized examples.
-
-## Recommended workflow: one addon
-
-1. Run setup checks:
-
-   ```bash
-   oduit agent context
-   oduit agent doctor
-   oduit agent inspect-addon <module>
-   oduit agent addon-info <module>
-   ```
-
-2. Generate the first draft:
-
-   ```bash
-   oduit docs addon <module> \
-     --format markdown \
-     --output docs/technical/<module>.md \
-     --path "$(pwd)"
-   ```
-
-3. Inspect model-specific details if the generated draft is too shallow:
-
-   ```bash
-   oduit agent list-addon-models <module>
-   oduit agent find-model-extensions <model.name> --summary
-   oduit agent get-model-fields <model.name> --module <module>
-   oduit agent get-model-views <model.name> --summary
-   ```
-
-4. Rewrite the generated Markdown into final technical documentation. Keep generated facts, but improve the narrative.
-
-5. Final documentation should normally include:
-
-   - purpose and scope
-   - manifest metadata and dependencies
-   - installed/runtime state if available
-   - model declarations and inherited models
-   - key fields grouped by model
-   - views, menus, actions, security files, data files, and reports where relevant
-   - dependency graph or Mermaid diagram
-   - extension points for future development
-   - operational notes and known constraints
-
-## Recommended workflow: multiple related addons
-
-1. Identify the module set:
-
-   ```bash
-   oduit agent list-addons --select-dir <addons_dir_name>
-   ```
-
-2. Generate a deduplicated bundle:
-
-   ```bash
-   oduit docs addons \
-     --select-dir <addons_dir_name> \
-     --format markdown \
-     --output-dir docs/technical/<addons_dir_name> \
-     --max-fields-per-model 120 \
-     --path "$(pwd)"
-   ```
-
-3. Open `docs/technical/<addons_dir_name>/index.md`.
-
-4. Use `addons/*.md` for addon-specific docs.
-
-5. Use `models/*.md` for shared model docs. Do not duplicate shared model sections inside each addon page.
-
-6. Add a short manually written architecture overview at the top-level index when the generated output is too mechanical.
-
-## Recommended workflow: architecture or dependency docs
-
-Use dependency docs plus focused model extension inspection.
-
-```bash
-oduit docs dependency-graph \
-  --modules <module_a>,<module_b>,<module_c> \
-  --format markdown \
-  --output docs/technical/dependencies.md \
-  --path "$(pwd)"
-
-oduit agent dependency-graph --modules <module_a>,<module_b>,<module_c>
-oduit agent find-model-extensions <model.name> --summary
-```
-
-The final architecture document should explain:
-
-- selected modules and why they belong together
-- dependency edges and direct/transitive dependency meaning
-- central models and which addons own or extend them
-- integration points with core Odoo apps
-- cross-addon data flow
-- risks from missing dependencies or optional modules
-
-## Writing standards
-
-Produce documentation that a developer can use without reading every source file.
-
-Use this structure for addon docs unless the user requests another format:
+The generated document should follow this structure:
 
 ```markdown
-# <Module technical name> technical documentation
+# Architecture Documentation: <module>
 
+## 1. Introduction and Goals
+
+## 2. Architecture Constraints
+
+## 3. Context and Scope
+
+## 4. Solution Strategy
+
+## 5. Building Block View
+
+## 6. Runtime View
+
+## 7. Deployment View
+
+## 8. Cross-cutting Concepts
+
+## 9. Architecture Decisions
+
+## 10. Quality Requirements
+
+## 11. Risks and Technical Debt
+
+## Appendix A: oduit Evidence
+```
+
+Do not replace this with a generic custom structure such as:
+
+```markdown
 ## Purpose
 
 ## Installation and dependencies
@@ -379,140 +343,130 @@ Use this structure for addon docs unless the user requests another format:
 
 ## Models
 
-## Fields
-
-## Views and UI
-
-## Security and access control
-
-## Data, automation, and reports
-
-## External integrations
-
-## Extension points
-
-## Testing and validation notes
-
-## Known limitations
+...
 ```
 
-For model docs:
+Those topics can be addressed inside the Arc42 sections, not as a replacement for them.
 
-```markdown
-# <model.name> technical documentation
+## Writing standards
 
-## Purpose
+After generation, improve readability without breaking evidence fidelity.
 
-## Owning addon and extensions
+The final document should:
 
-## Field overview
+- explain the business purpose only when known from the manifest, code, or user context;
+- identify Odoo dependencies and why they matter;
+- describe owned models and extended models;
+- summarize important fields, constraints, computed fields, and model methods;
+- document XML records, views, menus, actions, security files, reports, controllers, and data files where detected;
+- explain runtime flows inferred from routes, XML records, model methods, cron jobs, mail templates, or server actions;
+- document security and access-control implications;
+- list risks, missing evidence, TODOs, and technical debt explicitly;
+- keep an evidence appendix so future maintainers can trace claims back to oduit-discovered facts.
 
-## Computed fields and constraints
+Use `TODO:` markers for business context that cannot be inferred safely.
 
-## Views
+## Existing file handling
 
-## Security
+If `<addon>/docs/architecture.md` already exists:
 
-## Usage patterns
+1. Preview the generated replacement first:
 
-## Extension notes
+   ```bash
+   oduit agent technical-doc @addons/<module> --include-markdown --path "$(pwd)"
+   ```
+
+2. Compare with the existing document.
+
+3. Preserve valuable human-written context.
+
+4. Use `--force` only when the user asked to update or replace the file.
+
+Do not overwrite existing architecture documentation silently.
+
+## Multi-addon documentation
+
+For several related addons, still generate one addon-local Arc42 file per addon:
+
+```bash
+oduit agent technical-doc @addons/<module_a> --allow-mutation --path "$(pwd)"
+oduit agent technical-doc @addons/<module_b> --allow-mutation --path "$(pwd)"
 ```
 
-For multi-addon docs:
+Then optionally generate supplemental bundle/dependency docs if useful:
 
-```markdown
-# <Feature or folder name> technical documentation
+```bash
+oduit docs dependency-graph \
+  --modules <module_a>,<module_b> \
+  --format markdown \
+  --output docs/technical/dependency_graph.md \
+  --path "$(pwd)"
 
-## Scope
-
-## Addons in this bundle
-
-## Dependency graph
-
-## Shared models
-
-## Addon-by-addon details
-
-## Cross-addon workflows
-
-## Operational notes
-
-## Known limitations
+oduit docs addons \
+  --modules <module_a>,<module_b> \
+  --format markdown \
+  --output-dir docs/technical/addon_bundle \
+  --path "$(pwd)"
 ```
 
-## Output handling
-
-When `oduit docs ...` writes Markdown, read the generated file before editing it.
-
-When `oduit agent ...` returns JSON, extract these parts first:
-
-- `success`
-- `warnings`
-- `errors`
-- `remediation`
-- `data`
-- nested `markdown` fields if present
-- `dependency_graph`
-- `models`
-- `addon_info`
-- `extension_inventory`
-- `field_metadata`
-- `view_inventory`
-
-If the payload is too large:
-
-- rerun with `--summary`
-- restrict `--types`
-- restrict field attributes
-- set `--max-fields`, `--max-models`, or `--max-fields-per-model`
-- avoid `--include-arch`
+These supplemental outputs do not replace addon-local `docs/architecture.md`.
 
 ## Error handling
 
-### Missing addon
+### Addon not found
 
 Run:
 
 ```bash
 oduit agent list-addons
-oduit agent resolve-addon-root <module>
+oduit agent resolve-addon-root @addons/<module>
 ```
 
-Then report the configured `addons_path` problem. Do not fabricate paths.
+Report the missing addon or incorrect `addons_path`. Do not fabricate a path.
 
-### Missing or unavailable database
+### Ambiguous module name
 
-Rerun documentation generation with `--source-only`.
+Use an explicit addon path:
 
 ```bash
-oduit docs addon <module> --source-only --format markdown --output docs/technical/<module>.md --path "$(pwd)"
+oduit agent technical-doc @addons/<module> --allow-mutation
 ```
 
-Clearly state in the document that runtime metadata was unavailable.
+Do not write by bare module name when multiple candidate roots exist.
 
-### Runtime metadata is incomplete
+### Runtime/database unavailable
 
-Use source discovery plus targeted runtime commands:
+Regenerate source-only:
 
 ```bash
-oduit agent find-model-extensions <model.name> --summary
-oduit agent get-model-fields <model.name> --attributes string,type,required,readonly,store,relation
-oduit agent get-model-views <model.name> --summary
+oduit agent technical-doc @addons/<module> \
+  --source-only \
+  --allow-mutation \
+  --path "$(pwd)"
 ```
 
-Document uncertainties explicitly.
+State in the document that runtime enrichment was unavailable.
 
-### Output is too verbose
+### Output too verbose
 
 Regenerate with limits:
 
 ```bash
-oduit docs addon <module> \
+oduit agent technical-doc @addons/<module> \
   --max-models 30 \
   --max-fields-per-model 80 \
-  --view-types form,tree,search \
-  --format markdown \
-  --output docs/technical/<module>.md \
+  --types form,tree,search \
+  --path "$(pwd)"
+```
+
+### Existing file
+
+Use `--force` only after confirming replacement/update is intended:
+
+```bash
+oduit agent technical-doc @addons/<module> \
+  --allow-mutation \
+  --force \
   --path "$(pwd)"
 ```
 
@@ -530,18 +484,21 @@ oduit agent uninstall-module ...
 oduit agent validate-addon-change ...
 ```
 
-Do not use `--allow-mutation`.
+Do not run Odoo tests unless the user explicitly requests validation outside this documentation skill.
 
-Do not run Odoo tests unless the user explicitly asks for validation outside this documentation skill.
+Do not use `--allow-mutation` except for the controlled source-file write to `<addon>/docs/architecture.md`.
 
 Do not expose secrets from config files, database credentials, access tokens, customer records, employee records, invoices, payments, or production data.
 
 ## Final response checklist
 
-When returning documentation work to the user, include:
+When reporting back to the user, include:
 
-- the generated or edited documentation file path
-- whether runtime enrichment was used or `--source-only`
-- any warnings or unresolved metadata gaps
-- the most important `oduit` commands used
-- the next best command only if follow-up inspection is needed
+- the addon documented;
+- the generated or edited file path, normally `<addon>/docs/architecture.md`;
+- whether runtime enrichment was used or `--source-only`;
+- whether the command was preview-only or wrote the file;
+- important warnings, TODOs, or unresolved metadata gaps;
+- the key oduit commands used.
+
+Do not paste the full documentation into chat unless the user asks for it.
