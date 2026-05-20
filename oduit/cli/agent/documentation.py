@@ -7,7 +7,21 @@ from typing import Any
 import typer
 from click.core import ParameterSource
 
-from ...technical_documentation import resolve_technical_doc_output_path
+from ...arc42_renderer import render_arc42_addon_markdown
+from ...documentation_tracking import (
+    TECHNICAL_DOC_FILENAME,
+    TECHNICAL_DOC_METADATA_FILENAME,
+    build_technical_documentation_metadata,
+    inspect_all_technical_documentation_statuses,
+    inspect_technical_documentation_status,
+    load_technical_documentation_metadata,
+    utc_now_iso,
+    write_technical_documentation_metadata,
+)
+from ...technical_documentation import (
+    resolve_addon_documentation_target,
+    resolve_technical_doc_output_path,
+)
 
 
 def _section_titles(bundle: Any) -> list[str]:
@@ -43,6 +57,27 @@ def _evidence_counts(bundle: Any) -> dict[str, int]:
         "routes": len(getattr(inventory, "http_routes", []) or []),
         "tests": test_count,
         "todo_markers": len(getattr(inventory, "todo_markers", []) or []),
+    }
+
+
+def _generation_options(
+    *,
+    source_only: bool,
+    include_arch: bool,
+    path_prefix: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    field_attributes: list[str],
+    view_types: list[str],
+) -> dict[str, Any]:
+    return {
+        "source_only": source_only,
+        "include_arch": include_arch,
+        "path_prefix": path_prefix,
+        "max_models": max_models,
+        "max_fields_per_model": max_fields_per_model,
+        "field_attributes": list(field_attributes),
+        "view_types": list(view_types),
     }
 
 
@@ -165,12 +200,14 @@ def agent_technical_doc_command(
         output_in_addon=True,
     )
     assert output_path is not None
+    metadata_path = output_path.with_name(TECHNICAL_DOC_METADATA_FILENAME)
 
     payload_data = {
         "module": bundle.module,
         "addon_root": bundle.addon_root,
         "template": bundle.template,
         "would_write": output_path.as_posix(),
+        "would_write_metadata": metadata_path.as_posix(),
         "section_count": len(_section_titles(bundle)),
         "sections": _section_titles(bundle),
         "preview": bundle.markdown[:500],
@@ -246,14 +283,52 @@ def agent_technical_doc_command(
         )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    previous_metadata, metadata_warnings = load_technical_documentation_metadata(
+        metadata_path
+    )
+    bundle.generated_at = utc_now_iso()
+    bundle.output_path = f"docs/{TECHNICAL_DOC_FILENAME}"
+    bundle.metadata_path = f"docs/{TECHNICAL_DOC_METADATA_FILENAME}"
+    bundle.markdown = render_arc42_addon_markdown(bundle)
     output_path.write_text(bundle.markdown, encoding="utf-8")
+    metadata = build_technical_documentation_metadata(
+        bundle=bundle,
+        doc_path=output_path,
+        metadata_path=metadata_path,
+        generation_options=_generation_options(
+            source_only=source_only,
+            include_arch=include_arch,
+            path_prefix=path_prefix,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            field_attributes=field_attributes,
+            view_types=view_types,
+        ),
+        previous_metadata=previous_metadata,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+    status = inspect_technical_documentation_status(
+        addon_root=bundle.addon_root,
+        module=bundle.module,
+    )
     write_payload = {
         "module": bundle.module,
         "addon_root": bundle.addon_root,
         "output_path": output_path.as_posix(),
+        "metadata_path": metadata_path.as_posix(),
         "template": bundle.template,
         "created": not existed_before,
         "overwritten": existed_before,
+        "created_at": metadata.created_at,
+        "last_generated_at": metadata.last_generated_at,
+        "generation_count": metadata.generation_count,
+        "status": status.status,
+        "document_edited_since_last_generation": (
+            status.document_edited_since_last_generation
+        ),
+        "source_changed_since_last_generation": (
+            status.source_changed_since_last_generation
+        ),
         "section_count": len(_section_titles(bundle)),
         "evidence_counts": _evidence_counts(bundle),
     }
@@ -263,9 +338,109 @@ def agent_technical_doc_command(
         write_operation,
         result_type,
         write_payload,
-        warnings=list(bundle.warnings),
-        remediation=list(bundle.remediation),
+        warnings=list(bundle.warnings) + metadata_warnings + list(status.warnings),
+        remediation=list(bundle.remediation) + list(status.remediation),
         read_only=False,
         safety_level=controlled_source_mutation,
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_technical_doc_status_command(
+    ctx: typer.Context,
+    *,
+    target: str | None,
+    only_stale: bool,
+    select_dir: str | None,
+    include_files: bool,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Return durable technical-documentation status for one addon or many."""
+
+    operation = "technical_doc_status"
+    result_type = "technical_documentation_status"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    if target is not None and select_dir is not None:
+        agent_fail_fn(
+            operation,
+            result_type,
+            "--select-dir cannot be used with TARGET",
+            error_type="ValidationError",
+            details={"target": target, "select_dir": select_dir},
+        )
+
+    if target is not None:
+        try:
+            resolved_target = resolve_addon_documentation_target(
+                global_config.env_config,
+                target,
+            )
+        except FileNotFoundError as exc:
+            agent_fail_fn(
+                operation,
+                result_type,
+                str(exc),
+                error_type="NotFoundError",
+                details={"target": target},
+                remediation=[
+                    "Use a valid addon name or a path that resolves to an addon root."
+                ],
+            )
+        if resolved_target.target_kind == "module" and resolved_target.ambiguous:
+            agent_fail_fn(
+                operation,
+                result_type,
+                "Refusing to inspect an ambiguous module-name resolution.",
+                error_type="AmbiguousTargetError",
+                details={
+                    "target": target,
+                    "candidate_addon_roots": resolved_target.candidate_addon_roots,
+                },
+                remediation=[
+                    "Use an explicit addon path such as `@addons/has_base`.",
+                ],
+            )
+        statuses = [
+            inspect_technical_documentation_status(
+                addon_root=resolved_target.addon_root,
+                module=resolved_target.module,
+            )
+        ]
+    else:
+        statuses = inspect_all_technical_documentation_statuses(
+            addons_path=str(global_config.env_config["addons_path"]),
+            select_dir=select_dir,
+        )
+        if select_dir is not None and not statuses:
+            agent_fail_fn(
+                operation,
+                result_type,
+                f"No addons found in directory '{select_dir}'",
+                error_type="NotFoundError",
+                details={"select_dir": select_dir},
+            )
+
+    if only_stale:
+        statuses = [status for status in statuses if status.status != "up_to_date"]
+
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        {
+            "statuses": [status.to_dict() for status in statuses],
+            "include_files": include_files,
+        },
+        warnings=[],
+        remediation=[],
+        read_only=True,
+        safety_level=safe_read_only,
     )
     agent_emit_payload_fn(payload)

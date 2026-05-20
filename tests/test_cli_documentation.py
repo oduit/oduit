@@ -122,6 +122,20 @@ def _technical_documentation_bundle(addon_root: Path) -> TechnicalDocumentation:
     )
 
 
+def _make_technical_addon_root(addon_root: Path) -> None:
+    addon_root.mkdir(parents=True, exist_ok=True)
+    (addon_root / "__manifest__.py").write_text(
+        "{'name': 'My Partner', 'version': '17.0.1.0.0', 'depends': ['base']}\n"
+    )
+    (addon_root / "models").mkdir(exist_ok=True)
+    (addon_root / "models" / "res_partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    email3 = fields.Char()\n"
+    )
+
+
 def test_docs_addon_command_emits_json_payload(tmp_path: Path) -> None:
     runner = CliRunner()
     config = {
@@ -502,7 +516,7 @@ def test_docs_technical_prints_markdown(tmp_path: Path) -> None:
 def test_docs_technical_writes_to_addon_docs(tmp_path: Path) -> None:
     runner = CliRunner()
     addon_root = tmp_path / "addons" / "my_partner"
-    addon_root.mkdir(parents=True)
+    _make_technical_addon_root(addon_root)
     config = {
         "db_name": "test_db",
         "addons_path": str(tmp_path / "addons"),
@@ -535,9 +549,13 @@ def test_docs_technical_writes_to_addon_docs(tmp_path: Path) -> None:
         )
 
     output_path = addon_root / "docs" / "architecture.md"
+    metadata_path = addon_root / "docs" / "architecture.oduit.json"
     assert result.exit_code == 0
-    assert output_path.read_text() == "# Architecture Documentation: my_partner\n"
+    assert output_path.exists()
+    assert "Metadata: docs/architecture.oduit.json" in output_path.read_text()
+    assert metadata_path.exists()
     assert str(output_path) in result.output
+    assert str(metadata_path) in result.output
 
 
 def test_docs_technical_refuses_overwrite_without_force(tmp_path: Path) -> None:
@@ -617,3 +635,262 @@ def test_docs_technical_accepts_at_path_target(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert ops.build_technical_documentation.call_args.args[0] == "@addons/my_partner"
+
+
+def test_docs_technical_writes_metadata_sidecar(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_technical_addon_root(addon_root)
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "my_partner",
+                "--output-in-addon",
+            ],
+        )
+
+    metadata_path = addon_root / "docs" / "architecture.oduit.json"
+    assert result.exit_code == 0
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["module"] == "my_partner"
+    assert metadata["created_at"]
+    assert metadata["last_generated_at"]
+    assert metadata["source_snapshot"]["fingerprint"].startswith("sha256:")
+    assert metadata["document_snapshot"]["fingerprint"].startswith("sha256:")
+
+
+def test_docs_technical_preserves_created_at_on_force_regeneration(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_technical_addon_root(addon_root)
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        first = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "my_partner",
+                "--output-in-addon",
+            ],
+        )
+        created_at = json.loads(
+            (addon_root / "docs" / "architecture.oduit.json").read_text()
+        )["created_at"]
+        second = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "my_partner",
+                "--output-in-addon",
+                "--force",
+            ],
+        )
+
+    metadata_path = addon_root / "docs" / "architecture.oduit.json"
+    assert first.exit_code == 0
+    assert second.exit_code == 0
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["created_at"] == created_at
+    assert metadata["generation_count"] == 2
+
+
+def test_docs_technical_status_reports_document_edit(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_technical_addon_root(addon_root)
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+        generate = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "my_partner",
+                "--output-in-addon",
+            ],
+        )
+
+    assert generate.exit_code == 0
+    doc_path = addon_root / "docs" / "architecture.md"
+    doc_path.write_text(doc_path.read_text() + "\nHuman edit\n")
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical-status",
+                "my_partner",
+                "--format",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    status = payload["statuses"][0]
+    assert status["document_edited_since_last_generation"] is True
+
+
+def test_docs_technical_status_reports_source_change(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_technical_addon_root(addon_root)
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+        generate = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "my_partner",
+                "--output-in-addon",
+            ],
+        )
+
+    assert generate.exit_code == 0
+    source_path = addon_root / "models" / "res_partner.py"
+    source_path.write_text(source_path.read_text() + "\n# source change\n")
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical-status",
+                "my_partner",
+                "--format",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    status = payload["statuses"][0]
+    assert status["source_changed_since_last_generation"] is True
+    assert "models/res_partner.py" in status["changed_files"]
+
+
+def test_docs_technical_status_reports_untracked_generated_doc(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_technical_addon_root(addon_root)
+    (addon_root / "docs").mkdir(exist_ok=True)
+    (addon_root / "docs" / "architecture.md").write_text(
+        "<!--\nGenerated by oduit.\n-->\n"
+    )
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical-status",
+                "my_partner",
+                "--format",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    status = payload["statuses"][0]
+    assert status["status"] == "untracked"

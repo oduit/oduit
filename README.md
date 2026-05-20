@@ -180,6 +180,25 @@ oduit --env dev create-addon my_custom_module --allow-mutation
 oduit --env dev export-lang sale --allow-mutation --language de_DE
 ```
 
+## Technical documentation tracking
+
+Addon-local Arc42 docs can now be tracked with a durable sidecar:
+
+```bash
+oduit --env dev docs technical @addons/has_base --output-in-addon
+oduit --env dev docs technical-status @addons/has_base
+oduit --env dev docs technical-status --only-stale
+```
+
+Writing addon-local technical docs creates both:
+
+```text
+<addon>/docs/architecture.md
+<addon>/docs/architecture.oduit.json
+```
+
+The sidecar records the first tracked generation time, the last generation time, and whether the document or addon source changed after generation.
+
 Runtime DB mutation policy is controlled by explicit config flags:
 
 - `write_protect_db`: block runtime DB mutation for every caller

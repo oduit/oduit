@@ -23,7 +23,13 @@
         "would_write": {
           "type": "string"
         },
+        "would_write_metadata": {
+          "type": "string"
+        },
         "output_path": {
+          "type": "string"
+        },
+        "metadata_path": {
           "type": "string"
         },
         "section_count": {
@@ -42,6 +48,24 @@
           "type": "boolean"
         },
         "overwritten": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "last_generated_at": {
+          "type": "string"
+        },
+        "generation_count": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        },
+        "document_edited_since_last_generation": {
+          "type": "boolean"
+        },
+        "source_changed_since_last_generation": {
           "type": "boolean"
         },
         "markdown": {

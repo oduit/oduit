@@ -71,8 +71,10 @@ SAFE_READ_ONLY_OPERATIONS = {
     "docs_model",
     "docs_dependency_graph",
     "docs_technical",
+    "docs_technical_status",
     "addon_doc",
     "technical_doc_preview",
+    "technical_doc_status",
 }
 
 CONTROLLED_RUNTIME_MUTATION_OPERATIONS = {
@@ -145,6 +147,7 @@ SAFE_READ_ONLY_TYPES = {
     "model_documentation",
     "dependency_graph_documentation",
     "technical_documentation",
+    "technical_documentation_status",
 }
 
 COMMON_ENVELOPE_KEYS = {

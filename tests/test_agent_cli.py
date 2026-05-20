@@ -61,6 +61,20 @@ def _make_addon(
     )
 
 
+def _make_technical_addon(addons_dir: Path, module_name: str = "my_partner") -> Path:
+    addons_dir.mkdir(parents=True, exist_ok=True)
+    addon_dir = addons_dir / module_name
+    _make_addon(addons_dir, module_name)
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "res_partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    email3 = fields.Char()\n"
+    )
+    return addon_dir
+
+
 def _agent_config(tmp_path: Path, addons_path: str) -> dict[str, str]:
     return {
         "python_bin": _make_executable(tmp_path / "python3"),
@@ -1677,8 +1691,7 @@ def _technical_documentation_bundle(addon_root: Path) -> TechnicalDocumentation:
 
 def test_agent_technical_doc_dry_run_is_read_only(tmp_path: Path) -> None:
     runner = CliRunner()
-    addon_root = tmp_path / "addons" / "my_partner"
-    addon_root.mkdir(parents=True)
+    addon_root = _make_technical_addon(tmp_path / "addons")
     config = _agent_config(tmp_path, str(tmp_path / "addons"))
     loader = _loader_with_config(config, tmp_path)
 
@@ -1704,13 +1717,13 @@ def test_agent_technical_doc_dry_run_is_read_only(tmp_path: Path) -> None:
     assert payload["read_only"] is True
     assert payload["safety_level"] == "safe_read_only"
     assert data["would_write"].endswith("docs/architecture.md")
+    assert data["would_write_metadata"].endswith("docs/architecture.oduit.json")
     assert "markdown" not in data
 
 
 def test_agent_technical_doc_requires_allow_mutation_for_write(tmp_path: Path) -> None:
     runner = CliRunner()
-    addon_root = tmp_path / "addons" / "my_partner"
-    addon_root.mkdir(parents=True)
+    addon_root = _make_technical_addon(tmp_path / "addons")
     config = _agent_config(tmp_path, str(tmp_path / "addons"))
     loader = _loader_with_config(config, tmp_path)
 
@@ -1740,8 +1753,7 @@ def test_agent_technical_doc_writes_addon_local_architecture_file(
     tmp_path: Path,
 ) -> None:
     runner = CliRunner()
-    addon_root = tmp_path / "addons" / "my_partner"
-    addon_root.mkdir(parents=True)
+    addon_root = _make_technical_addon(tmp_path / "addons")
     config = _agent_config(tmp_path, str(tmp_path / "addons"))
     loader = _loader_with_config(config, tmp_path)
 
@@ -1768,14 +1780,17 @@ def test_agent_technical_doc_writes_addon_local_architecture_file(
         )
 
     output_path = addon_root / "docs" / "architecture.md"
+    metadata_path = addon_root / "docs" / "architecture.oduit.json"
     assert result.exit_code == 0
-    assert output_path.read_text() == "# Architecture Documentation: my_partner\n"
+    assert "Metadata: docs/architecture.oduit.json" in output_path.read_text()
+    assert metadata_path.exists()
     payload = json.loads(result.output)
     data = _payload_data(payload)
     assert payload["operation"] == "write_technical_doc"
     assert payload["read_only"] is False
     assert payload["safety_level"] == "controlled_source_mutation"
     assert data["output_path"] == str(output_path)
+    assert data["metadata_path"] == str(metadata_path)
 
 
 def test_agent_technical_doc_refuses_overwrite_without_force(tmp_path: Path) -> None:
@@ -1816,8 +1831,7 @@ def test_agent_technical_doc_refuses_overwrite_without_force(tmp_path: Path) -> 
 
 def test_agent_technical_doc_include_markdown_is_opt_in(tmp_path: Path) -> None:
     runner = CliRunner()
-    addon_root = tmp_path / "addons" / "my_partner"
-    addon_root.mkdir(parents=True)
+    addon_root = _make_technical_addon(tmp_path / "addons")
     config = _agent_config(tmp_path, str(tmp_path / "addons"))
     loader = _loader_with_config(config, tmp_path)
 
@@ -1852,6 +1866,137 @@ def test_agent_technical_doc_include_markdown_is_opt_in(tmp_path: Path) -> None:
         _payload_data(json.loads(with_markdown.output))["markdown"]
         == "# Architecture Documentation: my_partner\n"
     )
+
+
+def test_agent_technical_doc_writes_metadata_sidecar(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc",
+                "my_partner",
+                "--allow-mutation",
+                "--source-only",
+            ],
+        )
+
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    metadata_path = addon_root / "docs" / "architecture.oduit.json"
+    assert result.exit_code == 0
+    assert data["metadata_path"] == str(metadata_path)
+    assert data["created_at"]
+    assert data["last_generated_at"]
+    assert data["status"] == "up_to_date"
+    assert metadata_path.exists()
+
+
+def test_agent_technical_doc_preview_reports_would_write_metadata(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc", "my_partner"],
+        )
+
+    assert result.exit_code == 0
+    data = _payload_data(json.loads(result.output))
+    assert data["would_write_metadata"].endswith("docs/architecture.oduit.json")
+
+
+def test_agent_technical_doc_status_is_read_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc-status", "my_partner"],
+        )
+
+    payload = json.loads(result.output)
+    assert result.exit_code == 0
+    assert payload["operation"] == "technical_doc_status"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+
+
+def test_agent_technical_doc_status_reports_source_change(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+        generate = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc",
+                "my_partner",
+                "--allow-mutation",
+                "--source-only",
+            ],
+        )
+
+    assert generate.exit_code == 0
+    source_path = addon_root / "models" / "res_partner.py"
+    source_path.write_text(source_path.read_text() + "\n# source change\n")
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc-status", "my_partner"],
+        )
+
+    payload = json.loads(result.output)
+    statuses = _payload_data(payload)["statuses"]
+    assert result.exit_code == 0
+    assert statuses[0]["status"] == "source_changed"
 
 
 def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:

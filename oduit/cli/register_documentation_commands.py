@@ -13,6 +13,7 @@ from .commands.documentation import (
     dependency_graph_documentation_command,
     model_documentation_command,
     technical_documentation_command,
+    technical_documentation_status_command,
 )
 from .runtime_context import AppRegistrationContext
 
@@ -429,4 +430,44 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             build_odoo_operations_fn=build_odoo_operations_fn,
             print_command_error_result_fn=print_command_error_result_fn,
             module_not_found_error_cls=module_not_found_error_cls,
+        )
+
+    @docs_app.command("technical-status")
+    def docs_technical_status_command(
+        ctx: typer.Context,
+        target: str | None = typer.Argument(
+            None,
+            help="Optional addon name or addon path, e.g. has_base or @addons/has_base",
+        ),
+        format_name: str | None = typer.Option(
+            None,
+            "--format",
+            help="Output format: text or json",
+        ),
+        select_dir: str | None = typer.Option(
+            None,
+            "--select-dir",
+            help="Select all addons under a named addon directory",
+        ),
+        only_stale: bool = typer.Option(
+            False,
+            "--only-stale",
+            help="Hide up-to-date rows from the status report",
+        ),
+        include_files: bool = typer.Option(
+            False,
+            "--include-files",
+            help="Include changed, added, and removed file lists in text output",
+        ),
+    ) -> None:
+        """Report tracking and freshness status for addon technical docs."""
+        technical_documentation_status_command(
+            ctx,
+            target=target,
+            format_name=format_name,
+            select_dir=select_dir,
+            only_stale=only_stale,
+            include_files=include_files,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
         )

@@ -70,6 +70,9 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     addon_info_command_impl = context.implementations.addon_info_command_impl
     addon_doc_command_impl = context.implementations.addon_doc_command_impl
     technical_doc_command_impl = context.implementations.technical_doc_command_impl
+    technical_doc_status_command_impl = (
+        context.implementations.technical_doc_status_command_impl
+    )
     inspect_addon_command_impl = context.implementations.inspect_addon_command_impl
     plan_update_command_impl = context.implementations.plan_update_command_impl
     prepare_addon_change_command_impl = (
@@ -360,6 +363,42 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             module_not_found_error_cls=module_not_found_error_cls,
             safe_read_only=safe_read_only,
             controlled_source_mutation=controlled_source_mutation,
+        )
+
+    @agent_app.command("technical-doc-status")
+    def agent_technical_doc_status(
+        ctx: typer.Context,
+        target: str | None = typer.Argument(
+            None, help="Optional addon name or addon path"
+        ),
+        only_stale: bool = typer.Option(
+            False,
+            "--only-stale",
+            help="Hide up-to-date rows from the result",
+        ),
+        select_dir: str | None = typer.Option(
+            None,
+            "--select-dir",
+            help="Select all addons under a named addon directory",
+        ),
+        include_files: bool = typer.Option(
+            False,
+            "--include-files",
+            help="Include changed, added, and removed file lists in the payload",
+        ),
+    ) -> None:
+        """Return tracking and freshness status for addon technical docs."""
+        technical_doc_status_command_impl(
+            ctx,
+            target=target,
+            only_stale=only_stale,
+            select_dir=select_dir,
+            include_files=include_files,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("plan-update")

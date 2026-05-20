@@ -560,6 +560,81 @@ class AddonTechnicalInventory(DictModel):
 
 
 @dataclass
+class DocumentationTrackedFile(DictModel):
+    """Tracked addon source file entry used for documentation freshness checks."""
+
+    path: str
+    category: str
+    size_bytes: int | None = None
+    sha256: str | None = None
+
+
+@dataclass
+class DocumentationSourceSnapshot(DictModel):
+    """Deterministic fingerprint of addon source inputs."""
+
+    algorithm: str = "sha256"
+    fingerprint: str = ""
+    file_count: int = 0
+    files: list[DocumentationTrackedFile] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class DocumentationDocumentSnapshot(DictModel):
+    """Fingerprint of the generated Markdown document."""
+
+    algorithm: str = "sha256"
+    fingerprint: str = ""
+    size_bytes: int | None = None
+    line_count: int | None = None
+
+
+@dataclass
+class TechnicalDocumentationMetadata(DictModel):
+    """Durable addon-local metadata persisted next to generated docs."""
+
+    schema_version: str = "oduit.technical_documentation.v1"
+    module: str = ""
+    addon_root: str = ""
+    doc_path: str = "docs/architecture.md"
+    metadata_path: str = "docs/architecture.oduit.json"
+    template: str = "arc42-addon-v1"
+    created_at: str | None = None
+    last_generated_at: str | None = None
+    generation_count: int = 0
+    generator: dict[str, str] = dataclass_field(default_factory=dict)
+    generation_options: dict[str, Any] = dataclass_field(default_factory=dict)
+    evidence_counts: dict[str, int] = dataclass_field(default_factory=dict)
+    source_snapshot: DocumentationSourceSnapshot | None = None
+    document_snapshot: DocumentationDocumentSnapshot | None = None
+    warnings: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class TechnicalDocumentationStatus(DictModel):
+    """Current tracking status for one addon-local technical document."""
+
+    module: str
+    addon_root: str
+    doc_path: str
+    metadata_path: str
+    status: str
+    has_document: bool = False
+    has_metadata: bool = False
+    generated_by_oduit: bool = False
+    up_to_date: bool = False
+    document_edited_since_last_generation: bool = False
+    source_changed_since_last_generation: bool = False
+    created_at: str | None = None
+    last_generated_at: str | None = None
+    changed_files: list[str] = dataclass_field(default_factory=list)
+    added_files: list[str] = dataclass_field(default_factory=list)
+    removed_files: list[str] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
 class TechnicalDocumentation(DictModel):
     """Typed architecture-documentation bundle for one addon."""
 
@@ -568,6 +643,8 @@ class TechnicalDocumentation(DictModel):
     template: str = "arc42"
     target: AddonDocTarget | None = None
     output_path: str | None = None
+    metadata_path: str | None = None
+    generated_at: str | None = None
     source_only: bool = False
     addon_documentation: AddonDocumentation | None = None
     technical_inventory: AddonTechnicalInventory | None = None

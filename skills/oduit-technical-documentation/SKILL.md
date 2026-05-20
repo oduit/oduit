@@ -150,6 +150,7 @@ This writes:
 
 ```text
 <addon_root>/docs/architecture.md
+<addon_root>/docs/architecture.oduit.json
 ```
 
 If the file already exists and the user asked to update/replace it:
@@ -177,6 +178,39 @@ sed -n '1,220p' addons/<module>/docs/architecture.md
 ```
 
 Then improve the file manually where oduit marks uncertainty or TODOs. Keep generated evidence accurate; add business context only when it is supported by source code, manifests, runtime metadata, or user-provided context.
+
+## Tracking and freshness
+
+When oduit writes `<addon>/docs/architecture.md`, it also writes:
+
+```text
+<addon>/docs/architecture.oduit.json
+```
+
+Use this sidecar to check when the document was first tracked, when it was last generated, whether the Markdown was manually edited after generation, and whether addon source files changed after generation.
+
+Check one addon:
+
+```bash
+oduit agent technical-doc-status @addons/<module>
+```
+
+Check all addons:
+
+```bash
+oduit agent technical-doc-status --only-stale
+```
+
+Human CLI equivalents:
+
+```bash
+oduit docs technical-status @addons/<module>
+oduit docs technical-status --only-stale
+```
+
+If status is `source_changed`, regenerate or manually review the architecture document. If status is `document_edited`, compare the human edits before overwriting with `--force`.
+
+`created_at` means the first tracked generation recorded by oduit. Older generated documents without a sidecar are reported as `untracked` until they are regenerated.
 
 ## Human CLI fallback
 
@@ -496,6 +530,9 @@ When reporting back to the user, include:
 
 - the addon documented;
 - the generated or edited file path, normally `<addon>/docs/architecture.md`;
+- the metadata path, normally `<addon>/docs/architecture.oduit.json`;
+- `created_at` and `last_generated_at` when the document is tracked;
+- whether the document or addon source changed after generation;
 - whether runtime enrichment was used or `--source-only`;
 - whether the command was preview-only or wrote the file;
 - important warnings, TODOs, or unresolved metadata gaps;

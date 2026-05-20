@@ -1021,6 +1021,7 @@ def render_arc42_addon_markdown(bundle: TechnicalDocumentation) -> str:
 
     sections = bundle.sections or build_arc42_addon_sections(bundle)
     output_path = bundle.output_path or "docs/architecture.md"
+    metadata_path = bundle.metadata_path or "docs/architecture.oduit.json"
     header_lines = [
         f"# Architecture Documentation: {bundle.module}",
         "",
@@ -1029,7 +1030,13 @@ def render_arc42_addon_markdown(bundle: TechnicalDocumentation) -> str:
         "Template: arc42-addon-v1",
         f"Addon: {bundle.module}",
         f"Output: {output_path}",
-        "Generated sections contain evidence from oduit. TODO markers require human"
+        f"Metadata: {metadata_path}",
+        *(
+            [f"Generated at: {bundle.generated_at}"]
+            if bundle.generated_at is not None
+            else []
+        ),
+        "Generated sections contain evidence from oduit. TODO markers require human "
         "review.",
         "-->",
         "",

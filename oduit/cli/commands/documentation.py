@@ -8,11 +8,25 @@ from typing import Any
 
 import typer
 
+from ...arc42_renderer import render_arc42_addon_markdown
 from ...documentation_renderer import (
     render_dependency_graph_mermaid,
     render_shared_model_markdown,
 )
-from ...technical_documentation import resolve_technical_doc_output_path
+from ...documentation_tracking import (
+    TECHNICAL_DOC_FILENAME,
+    TECHNICAL_DOC_METADATA_FILENAME,
+    build_technical_documentation_metadata,
+    inspect_all_technical_documentation_statuses,
+    inspect_technical_documentation_status,
+    load_technical_documentation_metadata,
+    utc_now_iso,
+    write_technical_documentation_metadata,
+)
+from ...technical_documentation import (
+    resolve_addon_documentation_target,
+    resolve_technical_doc_output_path,
+)
 from ...utils import output_result_to_json
 
 
@@ -27,6 +41,13 @@ def _resolve_docs_format(global_config: Any, requested_format: str | None) -> st
         return requested_format
     format_value = getattr(getattr(global_config, "format", None), "value", None)
     return "json" if format_value == "json" else "markdown"
+
+
+def _resolve_status_format(global_config: Any, requested_format: str | None) -> str:
+    if requested_format:
+        return requested_format
+    format_value = getattr(getattr(global_config, "format", None), "value", None)
+    return "json" if format_value == "json" else "text"
 
 
 def _write_output(content: str, output_path: Path | None) -> None:
@@ -100,6 +121,122 @@ def _emit_document_output(
         print(f"Wrote {format_name} documentation to {output_path}")
         return
     print(rendered_content)
+
+
+def _generation_options(
+    *,
+    source_only: bool,
+    include_arch: bool,
+    path_prefix: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    field_attributes: list[str],
+    view_types: list[str],
+) -> dict[str, Any]:
+    return {
+        "source_only": source_only,
+        "include_arch": include_arch,
+        "path_prefix": path_prefix,
+        "max_models": max_models,
+        "max_fields_per_model": max_fields_per_model,
+        "field_attributes": list(field_attributes),
+        "view_types": list(view_types),
+    }
+
+
+def _addon_local_metadata_output_path(
+    bundle: Any, output_path: Path | None
+) -> Path | None:
+    if output_path is None or getattr(bundle, "target", None) is None:
+        return None
+    addon_output_path = resolve_technical_doc_output_path(
+        bundle.target,
+        output=None,
+        output_in_addon=True,
+    )
+    if addon_output_path is None:
+        return None
+    if output_path.resolve(strict=False) != addon_output_path.resolve(strict=False):
+        return None
+    return output_path.with_name(TECHNICAL_DOC_METADATA_FILENAME)
+
+
+def _status_cell(value: str | None) -> str:
+    if value is None:
+        return "-"
+    text = str(value).strip()
+    return text or "-"
+
+
+def _status_flag(value: bool) -> str:
+    return "yes" if value else "no"
+
+
+def _render_pipe_table(headers: list[str], rows: list[list[str]]) -> str:
+    if not rows:
+        rows = [["-" for _ in headers]]
+    separator = "|" + "|".join("---" for _ in headers) + "|"
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        separator,
+        *("| " + " | ".join(row) + " |" for row in rows),
+    ]
+    return "\n".join(lines)
+
+
+def _summarize_paths(paths: list[str], *, limit: int = 10) -> str:
+    if not paths:
+        return "-"
+    visible = paths[:limit]
+    if len(paths) <= limit:
+        return ", ".join(visible)
+    return f"{', '.join(visible)} (+{len(paths) - limit} more)"
+
+
+def _render_status_text(statuses: list[Any], *, include_files: bool) -> str:
+    lines = [
+        "Technical documentation status",
+        "",
+        _render_pipe_table(
+            [
+                "Addon",
+                "Status",
+                "Created",
+                "Last generated",
+                "Doc edited",
+                "Source changed",
+                "Document",
+            ],
+            [
+                [
+                    status.module,
+                    status.status,
+                    _status_cell(status.created_at),
+                    _status_cell(status.last_generated_at),
+                    _status_flag(status.document_edited_since_last_generation),
+                    _status_flag(status.source_changed_since_last_generation),
+                    status.doc_path if status.has_document else "-",
+                ]
+                for status in statuses
+            ],
+        ),
+    ]
+    if include_files:
+        for status in statuses:
+            if not any(
+                [status.changed_files, status.added_files, status.removed_files]
+            ):
+                continue
+            lines.extend(
+                [
+                    "",
+                    f"{status.module} file changes",
+                    f"changed: {_summarize_paths(status.changed_files)}",
+                    f"added: {_summarize_paths(status.added_files)}",
+                    f"removed: {_summarize_paths(status.removed_files)}",
+                ]
+            )
+    return "\n".join(lines)
 
 
 def addon_documentation_command(
@@ -486,6 +623,8 @@ def technical_documentation_command(
     if output_in_addon and resolved_format != "markdown":
         raise typer.BadParameter("--output-in-addon requires markdown output")
 
+    field_attributes = _parse_csv_items(attributes)
+    view_types = _parse_csv_items(types)
     ops = build_odoo_operations_fn(global_config)
     try:
         bundle = ops.build_technical_documentation(
@@ -496,8 +635,8 @@ def technical_documentation_command(
             timeout=timeout,
             source_only=source_only,
             include_arch=include_arch,
-            field_attributes=_parse_csv_items(attributes),
-            view_types=_parse_csv_items(types),
+            field_attributes=field_attributes,
+            view_types=view_types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
             path_prefix=path_prefix,
@@ -597,7 +736,132 @@ def technical_documentation_command(
         return
 
     if resolved_output_path is not None:
+        metadata_output_path = _addon_local_metadata_output_path(
+            bundle, resolved_output_path
+        )
+        if metadata_output_path is not None:
+            previous_metadata, _ = load_technical_documentation_metadata(
+                metadata_output_path
+            )
+            bundle.generated_at = utc_now_iso()
+            bundle.output_path = f"docs/{TECHNICAL_DOC_FILENAME}"
+            bundle.metadata_path = f"docs/{TECHNICAL_DOC_METADATA_FILENAME}"
+            bundle.markdown = render_arc42_addon_markdown(bundle)
+            _write_output(bundle.markdown, resolved_output_path)
+            metadata = build_technical_documentation_metadata(
+                bundle=bundle,
+                doc_path=resolved_output_path,
+                metadata_path=metadata_output_path,
+                generation_options=_generation_options(
+                    source_only=source_only,
+                    include_arch=include_arch,
+                    path_prefix=path_prefix,
+                    max_models=max_models,
+                    max_fields_per_model=max_fields_per_model,
+                    field_attributes=field_attributes,
+                    view_types=view_types,
+                ),
+                previous_metadata=previous_metadata,
+            )
+            write_technical_documentation_metadata(metadata, metadata_output_path)
+            print(f"Wrote markdown documentation to {resolved_output_path}")
+            print(f"Wrote documentation metadata to {metadata_output_path}")
+            return
         _write_output(bundle.markdown, resolved_output_path)
         print(f"Wrote markdown documentation to {resolved_output_path}")
         return
     print(bundle.markdown)
+
+
+def technical_documentation_status_command(
+    ctx: typer.Context,
+    *,
+    target: str | None,
+    format_name: str | None,
+    select_dir: str | None,
+    only_stale: bool,
+    include_files: bool,
+    resolve_command_env_config_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Report durable technical-documentation status for one addon or many."""
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    if target is not None and select_dir is not None:
+        raise typer.BadParameter("--select-dir cannot be used with TARGET")
+
+    resolved_format = _resolve_status_format(global_config, format_name)
+    if resolved_format not in {"text", "json"}:
+        raise typer.BadParameter("format must be either 'text' or 'json'")
+
+    if target is not None:
+        try:
+            resolved_target = resolve_addon_documentation_target(env_config, target)
+        except FileNotFoundError as exc:
+            print_command_error_result_fn(
+                global_config,
+                "docs_technical_status",
+                str(exc),
+                error_type="NotFoundError",
+                details={"target": target},
+                remediation=[
+                    "Use a valid addon name or a path that resolves to an addon root."
+                ],
+            )
+            raise typer.Exit(1) from None
+        if resolved_target.target_kind == "module" and resolved_target.ambiguous:
+            print_command_error_result_fn(
+                global_config,
+                "docs_technical_status",
+                "Refusing to inspect an ambiguous module-name resolution.",
+                error_type="AmbiguousTargetError",
+                details={
+                    "target": target,
+                    "candidate_addon_roots": resolved_target.candidate_addon_roots,
+                },
+                remediation=[
+                    "Use an explicit addon path such as `@addons/has_base`.",
+                ],
+            )
+            raise typer.Exit(1) from None
+        statuses = [
+            inspect_technical_documentation_status(
+                addon_root=resolved_target.addon_root,
+                module=resolved_target.module,
+            )
+        ]
+    else:
+        statuses = inspect_all_technical_documentation_statuses(
+            addons_path=str(env_config["addons_path"]),
+            select_dir=select_dir,
+        )
+        if select_dir is not None and not statuses:
+            print_command_error_result_fn(
+                global_config,
+                "docs_technical_status",
+                f"No addons found in directory '{select_dir}'",
+                error_type="NotFoundError",
+                details={"select_dir": select_dir},
+            )
+            raise typer.Exit(1) from None
+
+    if only_stale:
+        statuses = [status for status in statuses if status.status != "up_to_date"]
+
+    if resolved_format == "json":
+        payload = output_result_to_json(
+            {
+                "success": True,
+                "operation": "docs_technical_status",
+                "type": "technical_documentation_status",
+                "statuses": [status.to_dict() for status in statuses],
+            },
+            result_type="technical_documentation_status",
+        )
+        print(json.dumps(payload))
+        return
+
+    if not statuses:
+        print("Technical documentation status\n\nNo matching addons.")
+        return
+    print(_render_status_text(statuses, include_files=include_files))

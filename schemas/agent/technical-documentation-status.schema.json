@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/technical-documentation-status.schema.json",
+  "type": "object",
+  "required": ["type", "data"],
+  "properties": {
+    "type": {
+      "const": "technical_documentation_status"
+    },
+    "data": {
+      "type": "object",
+      "required": ["statuses"],
+      "properties": {
+        "include_files": {
+          "type": "boolean"
+        },
+        "statuses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "module",
+              "addon_root",
+              "doc_path",
+              "metadata_path",
+              "status",
+              "has_document",
+              "has_metadata",
+              "generated_by_oduit",
+              "up_to_date",
+              "document_edited_since_last_generation",
+              "source_changed_since_last_generation"
+            ],
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "addon_root": {
+                "type": "string"
+              },
+              "doc_path": {
+                "type": "string"
+              },
+              "metadata_path": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "has_document": {
+                "type": "boolean"
+              },
+              "has_metadata": {
+                "type": "boolean"
+              },
+              "generated_by_oduit": {
+                "type": "boolean"
+              },
+              "up_to_date": {
+                "type": "boolean"
+              },
+              "document_edited_since_last_generation": {
+                "type": "boolean"
+              },
+              "source_changed_since_last_generation": {
+                "type": "boolean"
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "last_generated_at": {
+                "type": "string"
+              },
+              "changed_files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "added_files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "removed_files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "remediation": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
