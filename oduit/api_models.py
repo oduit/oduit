@@ -1,5 +1,7 @@
 """Typed public Python API models for high-level inspection workflows."""
 
+from __future__ import annotations
+
 from dataclasses import asdict, dataclass
 from dataclasses import field as dataclass_field
 from typing import Any
@@ -205,7 +207,7 @@ class QueryModelResult(DictModel):
     error_type: str | None = None
 
     @classmethod
-    def from_dict(cls, result: dict[str, Any]) -> "QueryModelResult":
+    def from_dict(cls, result: dict[str, Any]) -> QueryModelResult:
         """Create a typed result from a raw ``OdooQuery`` dictionary."""
         return cls(
             success=bool(result.get("success", False)),
@@ -239,7 +241,7 @@ class RecordReadResult(DictModel):
     error_type: str | None = None
 
     @classmethod
-    def from_dict(cls, result: dict[str, Any]) -> "RecordReadResult":
+    def from_dict(cls, result: dict[str, Any]) -> RecordReadResult:
         """Create a typed result from a raw ``OdooQuery`` dictionary."""
         return cls(
             success=bool(result.get("success", False)),
@@ -269,7 +271,7 @@ class SearchCountResult(DictModel):
     error_type: str | None = None
 
     @classmethod
-    def from_dict(cls, result: dict[str, Any]) -> "SearchCountResult":
+    def from_dict(cls, result: dict[str, Any]) -> SearchCountResult:
         """Create a typed result from a raw ``OdooQuery`` dictionary."""
         return cls(
             success=bool(result.get("success", False)),
@@ -299,7 +301,7 @@ class ModelFieldsResult(DictModel):
     error_type: str | None = None
 
     @classmethod
-    def from_dict(cls, result: dict[str, Any]) -> "ModelFieldsResult":
+    def from_dict(cls, result: dict[str, Any]) -> ModelFieldsResult:
         """Create a typed result from a raw ``OdooQuery`` dictionary."""
         return cls(
             success=bool(result.get("success", False)),
@@ -465,9 +467,14 @@ class AddonInfo(DictModel):
     module_path: str | None
     addon_type: str
     version_display: str
+    name: str = ""
     summary: str = ""
     description: str = ""
+    category: str = ""
+    author: str = ""
+    website: str = ""
     license: str = ""
+    external_dependencies: dict[str, list[str]] = dataclass_field(default_factory=dict)
     depends: list[str] = dataclass_field(default_factory=list)
     reverse_dependencies: list[str] = dataclass_field(default_factory=list)
     reverse_dependency_count: int = 0
@@ -481,6 +488,91 @@ class AddonInfo(DictModel):
     test_count: int = 0
     languages: list[str] = dataclass_field(default_factory=list)
     installed_state: AddonInstallState | None = None
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class AddonDocTarget(DictModel):
+    """Resolved addon target for technical documentation workflows."""
+
+    module: str
+    addon_root: str
+    target_kind: str
+    manifest_path: str
+    inside_configured_addons_path: bool = False
+    warnings: list[str] = dataclass_field(default_factory=list)
+    candidate_addon_roots: list[str] = dataclass_field(default_factory=list)
+    ambiguous: bool = False
+
+
+@dataclass
+class AddonTechnicalFile(DictModel):
+    """Compact file entry used for technical documentation inventories."""
+
+    path: str
+    category: str
+    size_bytes: int | None = None
+
+
+@dataclass
+class AddonXmlRecord(DictModel):
+    """Compact XML inventory record for addon-local architecture evidence."""
+
+    path: str
+    record_id: str | None = None
+    model: str | None = None
+    name: str | None = None
+    xml_tag: str = "record"
+    attributes: dict[str, str] = dataclass_field(default_factory=dict)
+
+
+@dataclass
+class AddonHttpRoute(DictModel):
+    """Static controller route discovered from addon Python sources."""
+
+    path: str
+    class_name: str
+    method_name: str
+    route: str | list[str]
+    auth: str | None = None
+    route_type: str | None = None
+    methods: list[str] = dataclass_field(default_factory=list)
+    csrf: bool | None = None
+    website: bool | None = None
+    line_hint: int | None = None
+
+
+@dataclass
+class AddonTechnicalInventory(DictModel):
+    """Read-only technical inventory for addon-local architecture docs."""
+
+    module: str
+    addon_root: str
+    files: list[AddonTechnicalFile] = dataclass_field(default_factory=list)
+    xml_records: list[AddonXmlRecord] = dataclass_field(default_factory=list)
+    http_routes: list[AddonHttpRoute] = dataclass_field(default_factory=list)
+    security_files: list[str] = dataclass_field(default_factory=list)
+    migration_files: list[str] = dataclass_field(default_factory=list)
+    todo_markers: list[SourceEvidence] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class TechnicalDocumentation(DictModel):
+    """Typed architecture-documentation bundle for one addon."""
+
+    module: str
+    addon_root: str
+    template: str = "arc42"
+    target: AddonDocTarget | None = None
+    output_path: str | None = None
+    source_only: bool = False
+    addon_documentation: AddonDocumentation | None = None
+    technical_inventory: AddonTechnicalInventory | None = None
+    sections: list[DocumentSection] = dataclass_field(default_factory=list)
+    markdown: str = ""
     warnings: list[str] = dataclass_field(default_factory=list)
     remediation: list[str] = dataclass_field(default_factory=list)
 

@@ -10,9 +10,12 @@ from typer.testing import CliRunner
 
 from oduit import ConfigError
 from oduit.api_models import (
+    AddonDocTarget,
     AddonDocumentation,
     AddonDocumentationModel,
     AddonInstallState,
+    AddonTechnicalInventory,
+    DocumentSection,
     InstalledAddonInventory,
     InstalledAddonRecord,
     ModelDocumentation,
@@ -20,6 +23,7 @@ from oduit.api_models import (
     ModelViewInventory,
     ModelViewRecord,
     QueryModelResult,
+    TechnicalDocumentation,
 )
 from oduit.cli.app import app
 from oduit.config_provider import ConfigProvider
@@ -1646,6 +1650,208 @@ def test_agent_addon_doc_returns_structured_bundle(tmp_path: Path) -> None:
     assert payload["safety_level"] == "safe_read_only"
     assert data["markdown"] == "# Addon documentation: my_partner\n"
     assert ops.build_addon_documentation.call_args.kwargs["path_prefix"] == "/workspace"
+
+
+def _technical_documentation_bundle(addon_root: Path) -> TechnicalDocumentation:
+    return TechnicalDocumentation(
+        module="my_partner",
+        addon_root=str(addon_root),
+        target=AddonDocTarget(
+            module="my_partner",
+            addon_root=str(addon_root),
+            target_kind="module",
+            manifest_path=str(addon_root / "__manifest__.py"),
+        ),
+        technical_inventory=AddonTechnicalInventory(
+            module="my_partner",
+            addon_root=str(addon_root),
+        ),
+        sections=[
+            DocumentSection(title="1. Introduction and Goals", markdown="", order=1),
+            DocumentSection(title="2. Architecture Constraints", markdown="", order=2),
+            DocumentSection(title="Appendix A: oduit Evidence", markdown="", order=13),
+        ],
+        markdown="# Architecture Documentation: my_partner\n",
+    )
+
+
+def test_agent_technical_doc_dry_run_is_read_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    addon_root.mkdir(parents=True)
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app, ["--env", "dev", "agent", "technical-doc", "my_partner"]
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["type"] == "technical_documentation"
+    assert payload["operation"] == "technical_doc_preview"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    assert data["would_write"].endswith("docs/architecture.md")
+    assert "markdown" not in data
+
+
+def test_agent_technical_doc_requires_allow_mutation_for_write(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    addon_root.mkdir(parents=True)
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc", "my_partner", "--no-dry-run"],
+        )
+
+    assert result.exit_code == 0
+    assert not (addon_root / "docs" / "architecture.md").exists()
+    payload = json.loads(result.output)
+    assert payload["operation"] == "technical_doc_preview"
+    assert payload["read_only"] is True
+
+
+def test_agent_technical_doc_writes_addon_local_architecture_file(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    addon_root.mkdir(parents=True)
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc",
+                "my_partner",
+                "--allow-mutation",
+            ],
+        )
+
+    output_path = addon_root / "docs" / "architecture.md"
+    assert result.exit_code == 0
+    assert output_path.read_text() == "# Architecture Documentation: my_partner\n"
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["operation"] == "write_technical_doc"
+    assert payload["read_only"] is False
+    assert payload["safety_level"] == "controlled_source_mutation"
+    assert data["output_path"] == str(output_path)
+
+
+def test_agent_technical_doc_refuses_overwrite_without_force(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    output_path = addon_root / "docs" / "architecture.md"
+    output_path.parent.mkdir(parents=True)
+    output_path.write_text("existing\n")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc",
+                "my_partner",
+                "--allow-mutation",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error_type"] == "FileExistsError"
+
+
+def test_agent_technical_doc_include_markdown_is_opt_in(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    addon_root.mkdir(parents=True)
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        without_markdown = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc", "my_partner"],
+        )
+        with_markdown = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc",
+                "my_partner",
+                "--include-markdown",
+            ],
+        )
+
+    assert "markdown" not in _payload_data(json.loads(without_markdown.output))
+    assert (
+        _payload_data(json.loads(with_markdown.output))["markdown"]
+        == "# Architecture Documentation: my_partner\n"
+    )
 
 
 def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:

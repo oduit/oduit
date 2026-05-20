@@ -1,15 +1,24 @@
 from oduit.api_models import (
     AddonContributionSummary,
+    AddonDocTarget,
     AddonDocumentation,
     AddonDocumentationModel,
+    AddonHttpRoute,
     AddonInfo,
     AddonModelEntry,
+    AddonModelInventory,
+    AddonTechnicalFile,
+    AddonTechnicalInventory,
+    AddonXmlRecord,
     DocumentationDiagram,
     ModelDocumentation,
     ModelExtensionInventory,
     MultiAddonDocumentation,
     SharedModelDocumentation,
+    SourceEvidence,
+    TechnicalDocumentation,
 )
+from oduit.arc42_renderer import render_arc42_addon_markdown
 from oduit.documentation_renderer import (
     render_addon_markdown,
     render_addon_markdown_deduplicated,
@@ -211,3 +220,166 @@ def test_render_multi_addon_index_markdown_links_bundle_pages() -> None:
     assert "# Multi-addon documentation bundle" in markdown
     assert "[my_partner](addons/my_partner.md)" in markdown
     assert "[res.partner](models/res.partner.md)" in markdown
+
+
+def _technical_bundle(*, include_routes: bool = True) -> TechnicalDocumentation:
+    addon_info = AddonInfo(
+        module="has_base",
+        module_path="addons/has_base",
+        addon_type="custom",
+        version_display="17.0.1.0.0",
+        name="Has Base",
+        summary="Demo addon",
+        category="Tools",
+        license="LGPL-3",
+        depends=["base"],
+        languages=["de"],
+    )
+    addon_doc = AddonDocumentation(
+        module="has_base",
+        source_only=True,
+        addon_info=addon_info,
+        dependency_graph={
+            "nodes": ["base", "has_base"],
+            "edges": [{"source": "has_base", "target": "base"}],
+            "missing_dependencies": {},
+        },
+        model_inventory=AddonModelInventory(
+            module="has_base",
+            addon_root="addons/has_base",
+            models=[
+                AddonModelEntry(
+                    model="res.partner",
+                    relation_kind="extends",
+                    class_name="ResPartner",
+                    path="addons/has_base/models/res_partner.py",
+                    added_methods=["action_sync"],
+                )
+            ],
+            model_count=1,
+        ),
+        recommended_tests={
+            "tests": [
+                {
+                    "path": "addons/has_base/tests/test_has_base.py",
+                    "test_type": "python",
+                    "references_model": True,
+                    "confidence": 0.91,
+                }
+            ]
+        },
+        warnings=["Missing runtime inspection details."],
+        remediation=["Use runtime tracing for confirmed business flows."],
+    )
+    inventory = AddonTechnicalInventory(
+        module="has_base",
+        addon_root="addons/has_base",
+        files=[
+            AddonTechnicalFile(
+                path="addons/has_base/models/res_partner.py",
+                category="model",
+                size_bytes=128,
+            ),
+            AddonTechnicalFile(
+                path="addons/has_base/views/res_partner.xml",
+                category="view",
+                size_bytes=256,
+            ),
+        ],
+        xml_records=[
+            AddonXmlRecord(
+                path="addons/has_base/views/res_partner.xml",
+                record_id="view_partner_form",
+                model="ir.ui.view",
+                name="res.partner.form",
+            ),
+            AddonXmlRecord(
+                path="addons/has_base/data/cron.xml",
+                record_id="ir_cron_sync",
+                model="ir.cron",
+                name="Sync cron",
+            ),
+        ],
+        http_routes=[
+            AddonHttpRoute(
+                path="addons/has_base/controllers/main.py",
+                class_name="HasBaseController",
+                method_name="portal_page",
+                route="/has_base",
+                auth="public",
+                route_type="http",
+                methods=["GET"],
+            )
+        ]
+        if include_routes
+        else [],
+        todo_markers=[
+            SourceEvidence(
+                kind="TODO",
+                message="TODO: tighten portal security",
+                path="addons/has_base/models/res_partner.py",
+                line_hint=42,
+            )
+        ],
+        warnings=[
+            "Failed to parse XML file addons/has_base/views/broken.xml: parse error"
+        ],
+        remediation=[
+            (
+                "Controllers or routes were detected without matching"
+                " security files; review access control manually."
+            )
+        ],
+    )
+    return TechnicalDocumentation(
+        module="has_base",
+        addon_root="addons/has_base",
+        target=AddonDocTarget(
+            module="has_base",
+            addon_root="addons/has_base",
+            target_kind="module",
+            manifest_path="addons/has_base/__manifest__.py",
+        ),
+        source_only=True,
+        addon_documentation=addon_doc,
+        technical_inventory=inventory,
+        sections=[],
+        warnings=[
+            (
+                "Public or unauthenticated HTTP routes were detected"
+                " and require manual security review."
+            )
+        ],
+        remediation=list(inventory.remediation),
+    )
+
+
+def test_render_arc42_addon_markdown_contains_arc42_sections() -> None:
+    markdown = render_arc42_addon_markdown(_technical_bundle())
+
+    assert "# Architecture Documentation: has_base" in markdown
+    assert "## 1. Introduction and Goals" in markdown
+    assert "## 5. Building Block View" in markdown
+    assert "## 11. Risks and Technical Debt" in markdown
+    assert "## Appendix A: oduit Evidence" in markdown
+
+
+def test_render_arc42_addon_markdown_marks_unknown_business_context_as_todo() -> None:
+    markdown = render_arc42_addon_markdown(_technical_bundle(include_routes=False))
+
+    assert (
+        "No HTTP controllers or explicit external integration"
+        " files were detected by oduit."
+    ) in markdown
+    assert "TODO: Confirm whether integrations are implemented indirectly" in markdown
+
+
+def test_render_arc42_addon_markdown_includes_security_and_route_warnings() -> None:
+    markdown = render_arc42_addon_markdown(_technical_bundle())
+
+    assert "Public or unauthenticated HTTP routes were detected" in markdown
+    assert (
+        "Controllers or routes were detected without matching security files"
+        in markdown
+    )
+    assert "`/has_base`" in markdown

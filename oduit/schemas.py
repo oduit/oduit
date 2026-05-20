@@ -70,7 +70,9 @@ SAFE_READ_ONLY_OPERATIONS = {
     "docs_addon",
     "docs_model",
     "docs_dependency_graph",
+    "docs_technical",
     "addon_doc",
+    "technical_doc_preview",
 }
 
 CONTROLLED_RUNTIME_MUTATION_OPERATIONS = {
@@ -92,6 +94,7 @@ CONTROLLED_SOURCE_MUTATION_OPERATIONS = {
     "create_agent_addon",
     "export_lang_module",
     "export_module_language",
+    "write_technical_doc",
 }
 
 UNSAFE_OPERATIONS = {
@@ -141,6 +144,7 @@ SAFE_READ_ONLY_TYPES = {
     "addon_documentation",
     "model_documentation",
     "dependency_graph_documentation",
+    "technical_documentation",
 }
 
 COMMON_ENVELOPE_KEYS = {
@@ -163,14 +167,14 @@ COMMON_ENVELOPE_KEYS = {
 
 def infer_read_only(operation: str | None, payload_type: str) -> bool:
     """Infer whether a JSON payload represents a read-only action."""
-    if operation in SAFE_READ_ONLY_OPERATIONS or payload_type in SAFE_READ_ONLY_TYPES:
-        return True
     if (
         operation in CONTROLLED_RUNTIME_MUTATION_OPERATIONS
         or operation in CONTROLLED_SOURCE_MUTATION_OPERATIONS
         or operation in UNSAFE_OPERATIONS
     ):
         return False
+    if operation in SAFE_READ_ONLY_OPERATIONS or payload_type in SAFE_READ_ONLY_TYPES:
+        return True
     return payload_type in {"log", "error", "result"}
 
 

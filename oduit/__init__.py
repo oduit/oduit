@@ -29,12 +29,17 @@ from .manifest import (
 from .manifest_collection import ManifestCollection
 from .addons_path_manager import AddonsPathManager
 from .api_models import (
+    AddonDocTarget,
     AddonContributionSummary,
     AddonDocumentation,
     AddonDocumentationModel,
+    AddonHttpRoute,
     AddonInfo,
     AddonInstallState,
     AddonInspection,
+    AddonTechnicalFile,
+    AddonTechnicalInventory,
+    AddonXmlRecord,
     AddonTestFile,
     AddonTestInventory,
     AddonsPathStatus,
@@ -59,6 +64,7 @@ from .api_models import (
     RecordReadResult,
     SearchCountResult,
     SharedModelDocumentation,
+    TechnicalDocumentation,
     UpdatePlan,
 )
 from .module_manager import ModuleManager
@@ -98,7 +104,12 @@ __all__ = [
     "EnvironmentContext",
     "DocumentationDiagram",
     "DocumentSection",
+    "AddonDocTarget",
     "AddonContributionSummary",
+    "AddonTechnicalFile",
+    "AddonXmlRecord",
+    "AddonHttpRoute",
+    "AddonTechnicalInventory",
     "AddonInfo",
     "AddonInstallState",
     "AddonInspection",
@@ -108,6 +119,7 @@ __all__ = [
     "SharedModelDocumentation",
     "MultiAddonDocumentation",
     "DependencyGraphDocumentation",
+    "TechnicalDocumentation",
     "InstalledAddonRecord",
     "InstalledAddonInventory",
     "UpdatePlan",

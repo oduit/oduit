@@ -34,6 +34,10 @@ Command tiers:
      - ``stable_for_agents``
      - ``safe_read_only``
      - Return a structured addon documentation bundle.
+   * - ``technical-doc``
+     - ``beta_for_agents``
+     - ``controlled_source_mutation``
+     - Create or preview addon-local arc42 technical documentation.
    * - ``plan-update``
      - ``stable_for_agents``
      - ``safe_read_only``

@@ -42,6 +42,7 @@ from .api_models import (
     QueryModelResult,
     RecordReadResult,
     SearchCountResult,
+    TechnicalDocumentation,
     UpdatePlan,
 )
 from .builders import ConfigProvider
@@ -582,6 +583,38 @@ class OdooOperations:
         """Build one documentation bundle spanning multiple addons."""
         return self._documentation_service.build_addons_documentation(
             module_names,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+        )
+
+    def build_technical_documentation(
+        self,
+        target: str,
+        *,
+        template: str = "arc42",
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
+    ) -> TechnicalDocumentation:
+        """Build one technical-documentation bundle for an addon target."""
+        return self._documentation_service.build_technical_documentation(
+            target,
+            template=template,
             odoo_series=odoo_series,
             database=database,
             timeout=timeout,

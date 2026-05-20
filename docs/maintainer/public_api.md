@@ -17,6 +17,8 @@ contract changes such as new stable fields or failure codes.
 - `AddonsPathManager`
 - `EnvironmentSource`, `BinaryProbe`, `AddonsPathStatus`, `OdooVersionInfo`
 - `DatabaseSummary`, `EnvironmentContext`, `DocumentationDiagram`, `DocumentSection`
+- `AddonDocTarget`, `AddonTechnicalFile`, `AddonXmlRecord`, `AddonHttpRoute`
+- `AddonTechnicalInventory`, `TechnicalDocumentation`
 - `AddonInfo`, `AddonInstallState`, `AddonInspection`
 - `AddonDocumentationModel`, `AddonDocumentation`, `ModelDocumentation`
 - `DependencyGraphDocumentation`
@@ -93,6 +95,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `inspect-addon`            | `stable_for_agents` | `safe_read_only`              | Return a one-shot addon inspection payload.                            |
 | `addon-info`               | `stable_for_agents` | `safe_read_only`              | Return a combined manifest, source, and runtime addon summary.         |
 | `addon-doc`                | `stable_for_agents` | `safe_read_only`              | Return a structured addon documentation bundle.                        |
+| `technical-doc`            | `beta_for_agents`   | `controlled_source_mutation`  | Create or preview addon-local arc42 technical documentation.           |
 | `plan-update`              | `stable_for_agents` | `safe_read_only`              | Return a structured, read-only update plan for a module.               |
 | `prepare-addon-change`     | `beta_for_agents`   | `safe_read_only`              | Bundle the common read-only planning steps for one addon change.       |
 | `locate-model`             | `beta_for_agents`   | `safe_read_only`              | Locate likely source files for a model extension inside one addon.     |
@@ -177,6 +180,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 - `list_installed_addons()`
 - `dependency_graph()`
 - `build_addon_documentation()`
+- `build_technical_documentation()`
 - `build_model_documentation()`
 - `build_dependency_graph_documentation()`
 - `query_model()`

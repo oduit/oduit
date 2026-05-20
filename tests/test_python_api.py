@@ -20,6 +20,7 @@ from oduit import (
     QueryModelResult,
     RecordReadResult,
     SearchCountResult,
+    TechnicalDocumentation,
     UpdatePlan,
 )
 
@@ -265,6 +266,68 @@ def test_build_addon_documentation_relativizes_paths_under_prefix(
     )
     assert "addons/my_partner/models/partner.py" in bundle.markdown
     assert str(tmp_path / "addons" / "my_partner") not in bundle.markdown
+
+
+def test_build_technical_documentation_returns_typed_bundle(tmp_path: Path) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+    (addon_dir / "views").mkdir()
+    (addon_dir / "views" / "partner.xml").write_text(
+        "<odoo><record id='view_partner_form' model='ir.ui.view'>"
+        "<field name='name'>res.partner.form</field>"
+        "<field name='model'>res.partner</field>"
+        "</record></odoo>"
+    )
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    bundle = ops.build_technical_documentation("my_partner", source_only=True)
+
+    assert isinstance(bundle, TechnicalDocumentation)
+    assert bundle.module == "my_partner"
+    assert bundle.addon_documentation is not None
+    assert bundle.technical_inventory is not None
+    assert bundle.target is not None
+    assert "## 1. Introduction and Goals" in bundle.markdown
+
+
+def test_build_technical_documentation_relativizes_paths_under_prefix(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    bundle = ops.build_technical_documentation(
+        "my_partner",
+        source_only=True,
+        path_prefix=str(tmp_path),
+    )
+
+    assert bundle.target is not None
+    assert bundle.addon_root == "addons/my_partner"
+    assert bundle.target.manifest_path == "addons/my_partner/__manifest__.py"
+    assert bundle.technical_inventory is not None
+    assert bundle.technical_inventory.files[0].path.startswith("addons/my_partner/")
 
 
 def test_build_model_documentation_returns_typed_bundle(tmp_path: Path) -> None:

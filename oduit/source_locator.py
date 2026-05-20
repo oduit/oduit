@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import ast
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .addons_path_manager import AddonsPathManager
 from .api_models import (
+    AddonHttpRoute,
     AddonModelEntry,
     AddonModelInventory,
+    AddonTechnicalFile,
+    AddonTechnicalInventory,
     AddonTestFile,
     AddonTestInventory,
+    AddonXmlRecord,
     FieldSourceCandidate,
     FieldSourceLocation,
     ModelDeclarationSource,
@@ -24,6 +29,18 @@ from .api_models import (
     SourceEvidence,
     ViewExtensionSource,
 )
+
+_TEXT_MARKER_EXTENSIONS = {
+    ".py",
+    ".xml",
+    ".csv",
+    ".js",
+    ".ts",
+    ".scss",
+    ".md",
+    ".rst",
+}
+_TODO_MARKER_PATTERN = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b")
 
 
 def _path_str(path: str | Path) -> str:
@@ -178,6 +195,257 @@ def _extract_view_model(record: ET.Element) -> str | None:
     return None
 
 
+def _xml_tag_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _bool_literal(node: ast.AST | None) -> bool | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+        return node.value
+    return None
+
+
+def _classify_addon_file(relative_path: str) -> str:
+    path = Path(relative_path)
+    parts = path.parts
+    if path.name in {"__manifest__.py", "__openerp__.py"}:
+        return "manifest"
+    if not parts:
+        return "other"
+
+    head = parts[0]
+    suffix = path.suffix.lower()
+    if head == "models" and suffix == ".py":
+        return "model"
+    if head == "wizards" and suffix == ".py":
+        return "wizard"
+    if head == "controllers" and suffix == ".py":
+        return "controller"
+    if head == "views" and suffix == ".xml":
+        return "view"
+    if head == "security":
+        return "security"
+    if head == "data":
+        return "data"
+    if head == "demo":
+        return "demo"
+    if head in {"report", "reports"}:
+        return "report"
+    if head == "static":
+        return "test" if "tests" in parts else "static"
+    if head == "tests":
+        return "test"
+    if head in {"i18n", "i18n_extra"} and suffix == ".po":
+        return "i18n"
+    if head == "migrations":
+        return "migration"
+    return "other"
+
+
+def _scan_xml_records(addon_root: str) -> tuple[list[AddonXmlRecord], list[str]]:
+    records: list[AddonXmlRecord] = []
+    warnings: list[str] = []
+    root = Path(addon_root)
+    for path in sorted(root.rglob("*.xml")):
+        if not path.is_file():
+            continue
+        path_str = _path_str(path)
+        try:
+            xml_tree = ET.parse(path)
+        except (OSError, ET.ParseError) as exc:
+            warnings.append(f"Failed to parse XML file {path_str}: {exc}")
+            continue
+
+        xml_root = xml_tree.getroot()
+        for element in xml_root.iter():
+            tag_name = _xml_tag_name(element.tag)
+            if tag_name == "record":
+                name = None
+                for field in element.findall("field"):
+                    if field.get("name") == "name" and field.text:
+                        name = field.text.strip()
+                        break
+                records.append(
+                    AddonXmlRecord(
+                        path=path_str,
+                        record_id=element.get("id"),
+                        model=element.get("model"),
+                        name=name,
+                        xml_tag=tag_name,
+                    )
+                )
+                continue
+
+            if tag_name == "menuitem":
+                records.append(
+                    AddonXmlRecord(
+                        path=path_str,
+                        record_id=element.get("id"),
+                        name=element.get("name"),
+                        xml_tag=tag_name,
+                        attributes={
+                            key: value
+                            for key, value in (
+                                ("action", element.get("action")),
+                                ("parent", element.get("parent")),
+                            )
+                            if value
+                        },
+                    )
+                )
+                continue
+
+            if tag_name == "report":
+                records.append(
+                    AddonXmlRecord(
+                        path=path_str,
+                        record_id=element.get("id"),
+                        model=element.get("model"),
+                        name=element.get("name"),
+                        xml_tag=tag_name,
+                        attributes={
+                            key: value
+                            for key, value in (
+                                ("report_type", element.get("report_type")),
+                                ("string", element.get("string")),
+                            )
+                            if value
+                        },
+                    )
+                )
+    return records, warnings
+
+
+def _iter_route_functions(
+    tree: ast.AST,
+) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
+    discovered: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]] = []
+    for node in getattr(tree, "body", []):
+        if isinstance(node, ast.ClassDef):
+            for statement in node.body:
+                if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+                    discovered.append((node.name, statement))
+            continue
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            discovered.append(("<module>", node))
+    return discovered
+
+
+def _scan_http_routes(addon_root: str) -> tuple[list[AddonHttpRoute], list[str]]:
+    routes: list[AddonHttpRoute] = []
+    warnings: list[str] = []
+    controllers_root = Path(addon_root) / "controllers"
+    if not controllers_root.is_dir():
+        return routes, warnings
+
+    for path in sorted(controllers_root.rglob("*.py")):
+        if not path.is_file():
+            continue
+        path_str = _path_str(path)
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=path_str)
+        except (OSError, SyntaxError, UnicodeDecodeError) as exc:
+            warnings.append(f"Failed to parse controller source {path_str}: {exc}")
+            continue
+
+        for class_name, function_node in _iter_route_functions(tree):
+            for decorator in function_node.decorator_list:
+                if not isinstance(decorator, ast.Call):
+                    continue
+                func = decorator.func
+                if isinstance(func, ast.Attribute):
+                    is_route = func.attr == "route"
+                else:
+                    is_route = isinstance(func, ast.Name) and func.id == "route"
+                if not is_route:
+                    continue
+
+                route_values = _string_literals(
+                    decorator.args[0] if decorator.args else None
+                )
+                if not route_values:
+                    for keyword in decorator.keywords:
+                        if keyword.arg == "route":
+                            route_values = _string_literals(keyword.value)
+                            break
+                if not route_values:
+                    warnings.append(
+                        f"Skipped controller route with non-literal route in {path_str}"
+                    )
+                    continue
+
+                auth = None
+                route_type = None
+                methods: list[str] = []
+                csrf = None
+                website = None
+                for keyword in decorator.keywords:
+                    if keyword.arg == "auth":
+                        auth = _string_literal(keyword.value)
+                    elif keyword.arg == "type":
+                        route_type = _string_literal(keyword.value)
+                    elif keyword.arg == "methods":
+                        methods = _string_literals(keyword.value)
+                    elif keyword.arg == "csrf":
+                        csrf = _bool_literal(keyword.value)
+                    elif keyword.arg == "website":
+                        website = _bool_literal(keyword.value)
+
+                routes.append(
+                    AddonHttpRoute(
+                        path=path_str,
+                        class_name=class_name,
+                        method_name=function_node.name,
+                        route=route_values[0]
+                        if len(route_values) == 1
+                        else route_values,
+                        auth=auth,
+                        route_type=route_type,
+                        methods=methods,
+                        csrf=csrf,
+                        website=website,
+                        line_hint=getattr(function_node, "lineno", None),
+                    )
+                )
+    return routes, warnings
+
+
+def _scan_todo_markers(
+    addon_root: str, *, limit: int = 100
+) -> tuple[list[SourceEvidence], list[str]]:
+    markers: list[SourceEvidence] = []
+    warnings: list[str] = []
+    root = Path(addon_root)
+
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in _TEXT_MARKER_EXTENSIONS:
+            continue
+        path_str = _path_str(path)
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as exc:
+            warnings.append(f"Failed to read {path_str}: {exc}")
+            continue
+
+        for line_number, line in enumerate(lines, start=1):
+            match = _TODO_MARKER_PATTERN.search(line)
+            if match is None:
+                continue
+            markers.append(
+                SourceEvidence(
+                    kind=match.group(1),
+                    message=line.strip(),
+                    path=path_str,
+                    line_hint=line_number,
+                )
+            )
+            if len(markers) >= limit:
+                warnings.append(f"Truncated TODO marker inventory at {limit} entries.")
+                return markers, warnings
+
+    return markers, warnings
+
+
 def _scan_view_extensions(
     addon_root: str, module: str, model: str
 ) -> list[ViewExtensionSource]:
@@ -222,6 +490,79 @@ def _scan_view_extensions(
                 )
             )
     return view_extensions
+
+
+def list_addon_technical_inventory(
+    addon_root: str, module: str
+) -> AddonTechnicalInventory:
+    """Return a read-only technical inventory for one addon."""
+
+    root = Path(addon_root)
+    normalized_addon_root = _path_str(addon_root)
+    files: list[AddonTechnicalFile] = []
+    warnings: list[str] = []
+    remediation: list[str] = []
+
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        path_str = _path_str(path)
+        relative_path = path.relative_to(root).as_posix()
+        try:
+            size_bytes = path.stat().st_size
+        except OSError as exc:
+            warnings.append(f"Failed to stat {path_str}: {exc}")
+            size_bytes = None
+        files.append(
+            AddonTechnicalFile(
+                path=path_str,
+                category=_classify_addon_file(relative_path),
+                size_bytes=size_bytes,
+            )
+        )
+
+    xml_records, xml_warnings = _scan_xml_records(addon_root)
+    http_routes, route_warnings = _scan_http_routes(addon_root)
+    todo_markers, todo_warnings = _scan_todo_markers(addon_root)
+    warnings.extend(xml_warnings)
+    warnings.extend(route_warnings)
+    warnings.extend(todo_warnings)
+
+    security_files = sorted(
+        file_entry.path for file_entry in files if file_entry.category == "security"
+    )
+    migration_files = sorted(
+        file_entry.path for file_entry in files if file_entry.category == "migration"
+    )
+
+    if http_routes and not security_files:
+        remediation.append(
+            "Controllers or routes were detected without matching security files; "
+            "review access control manually."
+        )
+    if todo_markers:
+        remediation.append(
+            "Review TODO/FIXME/HACK markers before treating the generated "
+            "architecture document as complete."
+        )
+    if warnings:
+        remediation.append(
+            "Inspect files with parse or read warnings to confirm the inventory is "
+            "complete."
+        )
+
+    return AddonTechnicalInventory(
+        module=module,
+        addon_root=normalized_addon_root,
+        files=files,
+        xml_records=xml_records,
+        http_routes=http_routes,
+        security_files=security_files,
+        migration_files=migration_files,
+        todo_markers=todo_markers,
+        warnings=warnings,
+        remediation=sorted(dict.fromkeys(remediation)),
+    )
 
 
 def list_model_extensions(addons_path: str, model: str) -> ModelExtensionInventory:

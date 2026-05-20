@@ -1,0 +1,1040 @@
+"""Arc42 renderer for addon-local technical documentation."""
+
+from __future__ import annotations
+
+from collections import Counter
+from typing import Any
+
+from .api_models import DocumentSection, TechnicalDocumentation
+
+
+def _value_or_dash(value: Any) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    text = str(value).strip()
+    return text or "-"
+
+
+def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
+    if not rows:
+        rows = [["-" for _ in headers]]
+    separator = "|" + "|".join("---" for _ in headers) + "|"
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        separator,
+        *("| " + " | ".join(row) + " |" for row in rows),
+    ]
+    return "\n".join(lines)
+
+
+def _bullet_lines(items: list[str]) -> str:
+    if not items:
+        return "- -"
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _join_code_list(values: list[str]) -> str:
+    normalized = [value for value in values if value]
+    if not normalized:
+        return "-"
+    return ", ".join(f"`{value}`" for value in normalized)
+
+
+def _route_text(route: str | list[str]) -> str:
+    if isinstance(route, list):
+        return ", ".join(f"`{item}`" for item in route) if route else "-"
+    return f"`{route}`"
+
+
+def _recommended_tests(bundle: TechnicalDocumentation) -> list[dict[str, Any]]:
+    addon_doc = bundle.addon_documentation
+    if addon_doc is None or not isinstance(addon_doc.recommended_tests, dict):
+        return []
+    tests = addon_doc.recommended_tests.get("tests")
+    return tests if isinstance(tests, list) else []
+
+
+def _file_counts(bundle: TechnicalDocumentation) -> Counter[str]:
+    inventory = bundle.technical_inventory
+    if inventory is None:
+        return Counter()
+    return Counter(file_entry.category for file_entry in inventory.files)
+
+
+def _warning_lines(bundle: TechnicalDocumentation) -> list[str]:
+    inventory = bundle.technical_inventory
+    warnings = list(bundle.warnings)
+    if inventory is not None:
+        public_routes = [
+            route for route in inventory.http_routes if route.auth in {"public", "none"}
+        ]
+        if public_routes:
+            warnings.append(
+                "Public or unauthenticated HTTP routes were detected and require "
+                "manual security review."
+            )
+    return sorted(dict.fromkeys(warnings))
+
+
+def _remediation_lines(bundle: TechnicalDocumentation) -> list[str]:
+    return sorted(dict.fromkeys(bundle.remediation))
+
+
+def _runtime_candidates(bundle: TechnicalDocumentation) -> tuple[list[str], list[str]]:
+    addon_doc = bundle.addon_documentation
+    inventory = bundle.technical_inventory
+    main_scenarios: list[str] = []
+    async_scenarios: list[str] = []
+
+    if inventory is not None:
+        for route in inventory.http_routes:
+            main_scenarios.append(
+                f"HTTP request to {_route_text(route.route)} handled by "
+                f"`{route.class_name}.{route.method_name}` "
+                f"(auth={_value_or_dash(route.auth)}, "
+                f"type={_value_or_dash(route.route_type)})."
+            )
+
+        for record in inventory.xml_records:
+            if record.model == "ir.cron":
+                async_scenarios.append(
+                    f"Scheduled job candidate from `{record.path}` "
+                    f"(`{record.record_id or record.name or 'ir.cron record'}`)."
+                )
+            elif record.model == "mail.template":
+                async_scenarios.append(
+                    f"Notification candidate from `{record.path}` "
+                    f"(`{record.record_id or record.name or 'mail template'}`)."
+                )
+            elif record.model == "ir.actions.server":
+                async_scenarios.append(
+                    f"Server action candidate from `{record.path}` "
+                    f"(`{record.record_id or record.name or 'server action'}`)."
+                )
+
+    if addon_doc is not None and addon_doc.model_inventory is not None:
+        for entry in addon_doc.model_inventory.models:
+            for method_name in entry.added_methods:
+                if method_name.startswith(("action_", "_compute_", "_onchange_")):
+                    main_scenarios.append(
+                        f"Model method candidate `{entry.model}.{method_name}` "
+                        f"from `{entry.path}`."
+                    )
+                elif method_name.startswith("cron_"):
+                    async_scenarios.append(
+                        f"Scheduled method candidate `{entry.model}.{method_name}` "
+                        f"from `{entry.path}`."
+                    )
+
+    return (
+        sorted(dict.fromkeys(main_scenarios)),
+        sorted(dict.fromkeys(async_scenarios)),
+    )
+
+
+def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentSection]:
+    """Build arc42 sections for one technical-documentation bundle."""
+
+    addon_doc = bundle.addon_documentation
+    inventory = bundle.technical_inventory
+    info = addon_doc.addon_info if addon_doc is not None else None
+    file_counts = _file_counts(bundle)
+    tests = _recommended_tests(bundle)
+    warning_lines = _warning_lines(bundle)
+    remediation_lines = _remediation_lines(bundle)
+    model_entries = (
+        addon_doc.model_inventory.models
+        if addon_doc is not None and addon_doc.model_inventory is not None
+        else []
+    )
+    xml_records = inventory.xml_records if inventory is not None else []
+    http_routes = inventory.http_routes if inventory is not None else []
+    todo_markers = inventory.todo_markers if inventory is not None else []
+    main_scenarios, async_scenarios = _runtime_candidates(bundle)
+
+    security_files_text = _join_code_list(
+        inventory.security_files if inventory is not None else []
+    )
+    migration_files_text = _join_code_list(
+        inventory.migration_files if inventory is not None else []
+    )
+    model_list_text = _join_code_list(sorted({entry.model for entry in model_entries}))
+
+    external_dependencies = (
+        info.external_dependencies
+        if info is not None and isinstance(info.external_dependencies, dict)
+        else {}
+    )
+    external_dependency_text = ", ".join(
+        f"{kind}: {', '.join(values)}"
+        for kind, values in sorted(external_dependencies.items())
+        if values
+    )
+    if not external_dependency_text:
+        external_dependency_text = "-"
+
+    quality_rows = [
+        [
+            "Maintainability",
+            "Future developers need quick onboarding and safe changes.",
+            "Model inventory, categorized file inventory, generated arc42 structure.",
+        ],
+        [
+            "Upgradeability",
+            "Odoo upgrades are dependency- and API-sensitive.",
+            "Manifest dependencies, extension points, migration files, warnings.",
+        ],
+        [
+            "Data integrity",
+            "Model and security changes affect persisted business data.",
+            "Model layer, XML records, security files, remediation list.",
+        ],
+        [
+            "Security",
+            "Controllers and record rules can expose business data.",
+            "Security files, HTTP route auth values, route warnings.",
+        ],
+        [
+            "Testability",
+            "Addon updates need targeted verification.",
+            "Recommended tests and explicit validation commands.",
+        ],
+    ]
+
+    overview_rows = [
+        ["Addon root", f"`{bundle.addon_root}`"],
+        ["Model entries", str(len(model_entries))],
+        ["File inventory", str(sum(file_counts.values()))],
+        ["XML records", str(len(xml_records))],
+        ["HTTP routes", str(len(http_routes))],
+        ["Recommended tests", str(len(tests))],
+        ["TODO markers", str(len(todo_markers))],
+    ]
+
+    manifest_rows = [
+        ["Module", f"`{bundle.module}`"],
+        ["Manifest name", _value_or_dash(info.name if info else None)],
+        ["Summary", _value_or_dash(info.summary if info else None)],
+        ["Category", _value_or_dash(info.category if info else None)],
+        ["Author", _value_or_dash(info.author if info else None)],
+        ["Website", _value_or_dash(info.website if info else None)],
+        ["License", _value_or_dash(info.license if info else None)],
+        ["Version", _value_or_dash(info.version_display if info else None)],
+        ["Dependencies", _join_code_list(info.depends if info else [])],
+        [
+            "Reverse dependencies",
+            _join_code_list(info.reverse_dependencies if info else []),
+        ],
+        ["External dependencies", external_dependency_text],
+        ["Installable", _value_or_dash(info.installable if info else None)],
+        ["Auto install", _value_or_dash(info.auto_install if info else None)],
+    ]
+
+    model_rows = [
+        [
+            f"`{entry.model}`",
+            entry.relation_kind,
+            f"`{entry.class_name}`",
+            f"`{entry.path}`",
+        ]
+        for entry in model_entries
+    ]
+
+    xml_rows = [
+        [
+            record.xml_tag,
+            f"`{record.model}`" if record.model else "-",
+            f"`{record.record_id}`" if record.record_id else "-",
+            _value_or_dash(record.name),
+            f"`{record.path}`",
+        ]
+        for record in xml_records[:25]
+    ]
+    route_rows = [
+        [
+            _route_text(route.route),
+            f"`{route.class_name}.{route.method_name}`",
+            _value_or_dash(route.auth),
+            _value_or_dash(route.route_type),
+            ", ".join(route.methods) if route.methods else "-",
+            f"`{route.path}`",
+        ]
+        for route in http_routes
+    ]
+    security_rows = [
+        [f"`{path}`", "Security file detected by static inventory"]
+        for path in (inventory.security_files if inventory is not None else [])
+    ]
+    data_rows = [
+        [category, str(count)]
+        for category, count in sorted(file_counts.items())
+        if category
+        in {"data", "demo", "i18n", "migration", "report", "static", "test", "view"}
+    ]
+    test_rows = [
+        [
+            f"`{test.get('path', '-')}`",
+            _value_or_dash(test.get("test_type")),
+            "yes" if test.get("references_model") else "no",
+            _value_or_dash(test.get("confidence")),
+        ]
+        for test in tests[:20]
+        if isinstance(test, dict)
+    ]
+
+    risks_rows = [[warning, "warning"] for warning in warning_lines]
+    risks_rows.extend(
+        [
+            [f"TODO marker in `{marker.path}` line {marker.line_hint}", marker.kind]
+            for marker in todo_markers[:20]
+        ]
+    )
+
+    glossary_rows = [
+        [f"`{bundle.module}`", "Addon module under documentation."],
+        *[
+            [f"`{entry.model}`", "Model declared or extended by the addon."]
+            for entry in model_entries[:10]
+        ],
+        *[
+            [_route_text(route.route), "HTTP route exposed by the addon."]
+            for route in http_routes[:10]
+        ],
+    ]
+
+    file_count_rows = [
+        [category, str(count)] for category, count in sorted(file_counts.items())
+    ]
+
+    appendix_rows = [
+        ["Manifest dependencies", str(len(info.depends if info else []))],
+        ["Model entries", str(len(model_entries))],
+        ["XML records", str(len(xml_records))],
+        ["HTTP routes", str(len(http_routes))],
+        ["Security files", str(len(inventory.security_files if inventory else []))],
+        ["Migration files", str(len(inventory.migration_files if inventory else []))],
+        ["Recommended tests", str(len(tests))],
+        ["Warnings", str(len(warning_lines))],
+        ["Remediation items", str(len(remediation_lines))],
+        ["TODO markers", str(len(todo_markers))],
+    ]
+
+    business_context_lines = [
+        "### 3.1 Business Context",
+        "",
+    ]
+    if http_routes or external_dependency_text != "-":
+        business_context_lines.extend(
+            [
+                "Derived from oduit evidence:",
+                "",
+                f"- Detected {len(http_routes)} HTTP route(s).",
+                f"- External dependencies: {external_dependency_text}.",
+                "",
+                "TODO: Confirm which business actors use these interfaces and "
+                "which flows are user-facing versus purely technical.",
+            ]
+        )
+    else:
+        business_context_lines.extend(
+            [
+                "No HTTP controllers or explicit external integration files were "
+                "detected by oduit.",
+                "TODO: Confirm whether integrations are implemented indirectly "
+                "through inherited Odoo models, server actions, scheduled jobs, "
+                "or external infrastructure.",
+            ]
+        )
+
+    sections = [
+        DocumentSection(
+            title="1. Introduction and Goals",
+            order=1,
+            summary="Manifest-backed introduction, quality goals, and stakeholders.",
+            markdown="\n".join(
+                [
+                    "## 1. Introduction and Goals",
+                    "",
+                    "### 1.1 Requirements Overview",
+                    "",
+                    f"The addon `{bundle.module}` is an Odoo addon "
+                    f"located at `{bundle.addon_root}`.",
+                    "",
+                    "Derived from manifest:",
+                    f"- Name: `{_value_or_dash(info.name if info else None)}`",
+                    f"- Summary: `{_value_or_dash(info.summary if info else None)}`",
+                    f"- Category: `{_value_or_dash(info.category if info else None)}`",
+                    f"- License: `{_value_or_dash(info.license if info else None)}`",
+                    "",
+                    "TODO: Confirm the business goal and user-visible scope of this"
+                    "addon.",
+                    "",
+                    "### 1.2 Quality Goals",
+                    "",
+                    _markdown_table(["Goal", "Rationale", "Evidence"], quality_rows),
+                    "",
+                    "TODO: Validate and rank these quality goals with the project"
+                    "owner.",
+                    "",
+                    "### 1.3 Stakeholders",
+                    "",
+                    "Derived from oduit evidence and standard Odoo addon maintenance"
+                    "roles.",
+                    "",
+                    _bullet_lines(
+                        [
+                            "Functional owner - TODO: identify the product or process"
+                            "owner.",
+                            "Odoo developer - maintains Python, XML, and manifest"
+                            "changes.",
+                            "System administrator - installs, updates, and monitors"
+                            "the addon.",
+                            "Support or QA - validates regression risk and"
+                            "user-visible behavior.",
+                            "Upgrade maintainer - confirms compatibility during Odoo"
+                            "upgrades.",
+                        ]
+                    ),
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="2. Architecture Constraints",
+            order=2,
+            summary="Manifest, dependency, and runtime-mode constraints.",
+            markdown="\n".join(
+                [
+                    "## 2. Architecture Constraints",
+                    "",
+                    "Derived from oduit evidence:",
+                    "",
+                    _markdown_table(
+                        ["Constraint", "Value", "Evidence"],
+                        [
+                            [
+                                "Odoo series",
+                                _value_or_dash(
+                                    info.version_display.split(".")[0]
+                                    if info and info.version_display
+                                    else None
+                                ),
+                                "manifest version",
+                            ],
+                            [
+                                "Declared dependencies",
+                                _join_code_list(info.depends if info else []),
+                                "manifest depends",
+                            ],
+                            [
+                                "External dependencies",
+                                external_dependency_text,
+                                "manifest external_dependencies",
+                            ],
+                            [
+                                "Installable",
+                                _value_or_dash(info.installable if info else None),
+                                "manifest installable",
+                            ],
+                            [
+                                "Auto install",
+                                _value_or_dash(info.auto_install if info else None),
+                                "manifest auto_install",
+                            ],
+                            [
+                                "License",
+                                _value_or_dash(info.license if info else None),
+                                "manifest license",
+                            ],
+                            [
+                                "Source-only generation",
+                                _value_or_dash(bundle.source_only),
+                                "CLI/agent request",
+                            ],
+                        ],
+                    ),
+                    "",
+                    "TODO: Confirm whether any deployment or compliance constraints"
+                    "exist outside the manifest metadata.",
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="3. Context and Scope",
+            order=3,
+            summary=(
+                "Business and technical context derived "
+                "from dependencies and routes."
+            ),
+            markdown="\n".join(
+                [
+                    "## 3. Context and Scope",
+                    "",
+                    *business_context_lines,
+                    "",
+                    "### 3.2 Technical Context",
+                    "",
+                    _markdown_table(
+                        ["Aspect", "Observed evidence"],
+                        [
+                            ["Addon root", f"`{bundle.addon_root}`"],
+                            [
+                                "Dependencies",
+                                _join_code_list(info.depends if info else []),
+                            ],
+                            [
+                                "Reverse dependencies",
+                                _join_code_list(
+                                    info.reverse_dependencies if info else []
+                                ),
+                            ],
+                            ["HTTP routes", str(len(http_routes))],
+                            [
+                                "Security files",
+                                str(len(inventory.security_files if inventory else [])),
+                            ],
+                            ["XML records", str(len(xml_records))],
+                        ],
+                    ),
+                    "",
+                    "TODO: Confirm upstream and downstream systems that are not"
+                    "visible from static addon source inspection.",
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="4. Solution Strategy",
+            order=4,
+            summary="High-level implementation strategy inferred from source evidence.",
+            markdown="\n".join(
+                [
+                    "## 4. Solution Strategy",
+                    "",
+                    "Derived from oduit evidence:",
+                    "",
+                    _bullet_lines(
+                        [
+                            (
+                                f"Extend or depend on "
+                                f"{_join_code_list(info.depends if info else [])} "
+                                "to integrate with the existing Odoo module graph."
+                            ),
+                            (
+                                f"Implement business data changes through "
+                                f"{len(model_entries)} "
+                                "declared or extended model entries."
+                            ),
+                            (
+                                f"Configure UI, reports, and data through "
+                                f"{len(xml_records)} "
+                                "XML records discovered in the addon tree."
+                            ),
+                            (
+                                f"Expose {len(http_routes)} HTTP route(s) "
+                                f"and {len(tests)} "
+                                "recommended test file(s) for verification."
+                            ),
+                        ]
+                    ),
+                    "",
+                    "TODO: Confirm which of these technical strategies are deliberate"
+                    "architectural decisions versus framework defaults.",
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="5. Building Block View",
+            order=5,
+            summary=(
+                "Static inventory of models, XML records, "
+                "controllers, security, and tests."
+            ),
+            markdown="\n".join(
+                [
+                    "## 5. Building Block View",
+                    "",
+                    "### 5.1 Addon Overview",
+                    "",
+                    _markdown_table(["Item", "Count"], overview_rows),
+                    "",
+                    "### 5.2 Manifest and Dependencies",
+                    "",
+                    _markdown_table(["Field", "Value"], manifest_rows),
+                    "",
+                    "### 5.3 Python Model Layer",
+                    "",
+                    "Derived from oduit source scanning.",
+                    "",
+                    _markdown_table(["Model", "Relation", "Class", "Path"], model_rows),
+                    "",
+                    "TODO: Confirm whether these model extensions affect only backend"
+                    "workflows or also portal-visible data.",
+                    "",
+                    "### 5.4 Views, Menus, Actions, Reports",
+                    "",
+                    _markdown_table(["Tag", "Model", "ID", "Name", "Path"], xml_rows),
+                    (
+                        ""
+                        if len(xml_records) <= 25
+                        else (
+                            f"\nDerived from oduit evidence: only the first 25 "
+                            f"of {len(xml_records)} XML records are shown here."
+                        )
+                    ),
+                    "",
+                    "### 5.5 Security and Access Control",
+                    "",
+                    _markdown_table(["Security file", "Notes"], security_rows),
+                    "",
+                    _bullet_lines(
+                        [
+                            (
+                                "No dedicated security files were detected."
+                                if not security_rows
+                                else (
+                                    "Security files were detected and should be "
+                                    "reviewed together with controller auth settings."
+                                )
+                            ),
+                            (
+                                "Public or unauthenticated routes require explicit"
+                                "review."
+                                if any(
+                                    route.auth in {"public", "none"}
+                                    for route in http_routes
+                                )
+                                else (
+                                    "No public or unauthenticated "
+                                    "routes were detected by static inspection."
+                                )
+                            ),
+                        ]
+                    ),
+                    "",
+                    "### 5.6 Controllers and External Interfaces",
+                    "",
+                    _markdown_table(
+                        ["Route", "Handler", "Auth", "Type", "Methods", "Path"],
+                        route_rows,
+                    ),
+                    "",
+                    (
+                        "TODO: Confirm whether additional integrations exist through"
+                        "RPC, mail gateways, or external infrastructure."
+                        if not http_routes
+                        else (
+                            "TODO: Confirm request/response semantics "
+                            "and external consumers for the detected routes."
+                        )
+                    ),
+                    "",
+                    "### 5.7 Data, Demo Data, and Configuration Records",
+                    "",
+                    _markdown_table(["Category", "Count"], data_rows),
+                    "",
+                    "### 5.8 Tests and Quality Gates",
+                    "",
+                    _markdown_table(
+                        ["Path", "Type", "References model", "Confidence"], test_rows
+                    ),
+                    "",
+                    (
+                        "TODO: Add targeted tests or confirm manual validation if no"
+                        "relevant tests were detected."
+                        if not test_rows
+                        else (
+                            "Derived from oduit evidence: recommended tests "
+                            "are a starting point, not proof of complete coverage."
+                        )
+                    ),
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="6. Runtime View",
+            order=6,
+            summary=(
+                "Candidate runtime flows inferred from routes, "
+                "XML records, and model methods."
+            ),
+            markdown="\n".join(
+                [
+                    "## 6. Runtime View",
+                    "",
+                    "### 6.1 Main Runtime Scenarios",
+                    "",
+                    _bullet_lines(
+                        main_scenarios
+                        or [
+                            "No definitive runtime scenarios were inferred from static"
+                            "evidence alone.",
+                            "TODO: Confirm the primary user and backend flows with"
+                            "runtime tracing or domain experts.",
+                        ]
+                    ),
+                    "",
+                    "### 6.2 Scheduled or Asynchronous Processes",
+                    "",
+                    _bullet_lines(
+                        async_scenarios
+                        or [
+                            "No cron jobs, mail templates, or server actions were"
+                            "detected as runtime candidates.",
+                            "TODO: Confirm whether asynchronous behavior is"
+                            "implemented indirectly through Odoo infrastructure.",
+                        ]
+                    ),
+                    "",
+                    "### 6.3 Error Handling and User Feedback",
+                    "",
+                    _bullet_lines(
+                        [
+                            "Static inspection does not expose all exception paths or"
+                            "user-facing error messages.",
+                            (
+                                "Controller auth settings provide one visible boundary"
+                                "for access failures."
+                                if http_routes
+                                else (
+                                    "No controller routes were detected, so runtime "
+                                    "error behavior is mostly hidden "
+                                    "behind model and XML execution."
+                                )
+                            ),
+                            "TODO: Confirm observable error messages, retries, and"
+                            "rollback expectations from runtime tests or"
+                            "production knowledge.",
+                        ]
+                    ),
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="7. Deployment View",
+            order=7,
+            summary="Install/update constraints and deployment-facing evidence.",
+            markdown="\n".join(
+                [
+                    "## 7. Deployment View",
+                    "",
+                    _markdown_table(
+                        ["Deployment aspect", "Observed evidence"],
+                        [
+                            ["Addon root", f"`{bundle.addon_root}`"],
+                            [
+                                "Dependencies",
+                                _join_code_list(info.depends if info else []),
+                            ],
+                            ["External dependencies", external_dependency_text],
+                            [
+                                "Migration files",
+                                str(
+                                    len(inventory.migration_files if inventory else [])
+                                ),
+                            ],
+                            [
+                                "Data/demo files",
+                                str(
+                                    file_counts.get("data", 0)
+                                    + file_counts.get("demo", 0)
+                                ),
+                            ],
+                            ["Documentation output", "`docs/architecture.md`"],
+                        ],
+                    ),
+                    "",
+                    "TODO: Confirm deployment prerequisites outside the manifest, such"
+                    "as infrastructure, secrets, or reverse proxies.",
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="8. Cross-cutting Concepts",
+            order=8,
+            summary=(
+                "Security, persistence, extensibility, "
+                "i18n, and operations concerns."
+            ),
+            markdown="\n".join(
+                [
+                    "## 8. Cross-cutting Concepts",
+                    "",
+                    "### 8.1 Security",
+                    "",
+                    _bullet_lines(
+                        [
+                            f"Security files detected: {security_files_text}.",
+                            (
+                                "Public or unauthenticated routes require review."
+                                if any(
+                                    route.auth in {"public", "none"}
+                                    for route in http_routes
+                                )
+                                else (
+                                    "No public or unauthenticated "
+                                    "routes were detected by static inspection."
+                                )
+                            ),
+                            "TODO: Confirm record rules, portal exposure, and"
+                            "privileged execution paths in runtime behavior.",
+                        ]
+                    ),
+                    "",
+                    "### 8.2 Persistence and Data Ownership",
+                    "",
+                    _bullet_lines(
+                        [
+                            f"Model evidence covers {model_list_text}.",
+                            "XML records suggest additional persisted configuration in"
+                            "views, actions, reports, or data files.",
+                            "TODO: Confirm data ownership boundaries and migration"
+                            "expectations for persistent business records.",
+                        ]
+                    ),
+                    "",
+                    "### 8.3 Extensibility and Upgradeability",
+                    "",
+                    _bullet_lines(
+                        [
+                            f"Declared dependencies: "
+                            f"{_join_code_list(info.depends if info else [])}.",
+                            f"Migration files detected: {migration_files_text}.",
+                            "TODO: Confirm upgrade strategy for inherited models, data"
+                            "migrations, and forward-compatible view changes.",
+                        ]
+                    ),
+                    "",
+                    "### 8.4 Internationalization",
+                    "",
+                    _bullet_lines(
+                        [
+                            f"Detected translation languages: "
+                            f"{_join_code_list(info.languages if info else [])}.",
+                            "TODO: Confirm whether untranslated user-facing strings"
+                            "remain in XML, Python, or JavaScript files.",
+                        ]
+                    ),
+                    "",
+                    "### 8.5 Observability and Operations",
+                    "",
+                    _bullet_lines(
+                        [
+                            f"Recommended test files: {len(tests)}.",
+                            f"Warnings surfaced during generation: "
+                            f"{len(warning_lines)}.",
+                            "TODO: Confirm logging, metrics, tracing, and operator"
+                            "runbooks outside static source evidence.",
+                        ]
+                    ),
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="9. Architecture Decisions",
+            order=9,
+            summary=(
+                "Starter decision log seeded from " "observable implementation choices."
+            ),
+            markdown="\n".join(
+                [
+                    "## 9. Architecture Decisions",
+                    "",
+                    _markdown_table(
+                        ["ID", "Decision", "Status", "Evidence"],
+                        [
+                            [
+                                "ADR-001",
+                                f"Implement as Odoo addon `{bundle.module}` "
+                                f"extending declared dependencies.",
+                                "accepted",
+                                "manifest",
+                            ],
+                            [
+                                "ADR-002",
+                                "Store architecture documentation in addon-local"
+                                "`docs/architecture.md`.",
+                                "proposed",
+                                "oduit convention",
+                            ],
+                            [
+                                "ADR-003",
+                                "Generate architecture content from structured oduit"
+                                "evidence and explicit TODO markers.",
+                                "accepted",
+                                "technical-documentation workflow",
+                            ],
+                        ],
+                    ),
+                    "",
+                    "TODO: Replace or extend these starter entries with"
+                    "project-specific ADRs when historical context is available.",
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="10. Quality Requirements",
+            order=10,
+            summary="Quality tree and scenarios grounded in tests and warnings.",
+            markdown="\n".join(
+                [
+                    "## 10. Quality Requirements",
+                    "",
+                    "### 10.1 Quality Tree",
+                    "",
+                    _markdown_table(
+                        ["Quality attribute", "Reason"],
+                        [
+                            [
+                                "Maintainability",
+                                "Developers need quick onboarding and traceable"
+                                "evidence.",
+                            ],
+                            [
+                                "Upgradeability",
+                                "Dependencies and inherited models are sensitive to"
+                                "Odoo upgrades.",
+                            ],
+                            [
+                                "Security",
+                                "Routes and ACL files can expose business data.",
+                            ],
+                            [
+                                "Testability",
+                                "Targeted tests are needed for safe addon evolution.",
+                            ],
+                            [
+                                "Operational clarity",
+                                "Warnings and remediation should be actionable during"
+                                "maintenance.",
+                            ],
+                        ],
+                    ),
+                    "",
+                    "### 10.2 Quality Scenarios",
+                    "",
+                    _markdown_table(
+                        ["Scenario", "Stimulus", "Expected response"],
+                        [
+                            [
+                                "Documentation refresh",
+                                "A maintainer regenerates `docs/architecture.md` after"
+                                "a code change.",
+                                "The document updates deterministically and keeps"
+                                "unknown intent marked with TODO.",
+                            ],
+                            [
+                                "Security review",
+                                "A reviewer inspects public routes or missing ACL"
+                                "coverage.",
+                                "Route auth values and missing security evidence"
+                                "remain visible in the generated document.",
+                            ],
+                            [
+                                "Regression check",
+                                "A developer changes models, views, or data files.",
+                                "Recommended tests and remediation hints highlight the"
+                                "affected addon areas.",
+                            ],
+                        ],
+                    ),
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="11. Risks and Technical Debt",
+            order=11,
+            summary=(
+                "Warnings, TODO markers, and missing evidence "
+                "that need human follow-up."
+            ),
+            markdown="\n".join(
+                [
+                    "## 11. Risks and Technical Debt",
+                    "",
+                    _markdown_table(["Risk or debt", "Source"], risks_rows),
+                    "",
+                    _bullet_lines(
+                        remediation_lines
+                        or [
+                            "No explicit remediation items were generated.",
+                            "TODO: Confirm whether additional technical debt exists"
+                            "outside static source evidence.",
+                        ]
+                    ),
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="12. Glossary",
+            order=12,
+            summary="Compact glossary for addon-specific technical terms.",
+            markdown="\n".join(
+                [
+                    "## 12. Glossary",
+                    "",
+                    _markdown_table(["Term", "Meaning"], glossary_rows),
+                ]
+            ),
+        ),
+        DocumentSection(
+            title="Appendix A: oduit Evidence",
+            order=13,
+            summary="Compact raw evidence appendix.",
+            markdown="\n".join(
+                [
+                    "## Appendix A: oduit Evidence",
+                    "",
+                    _markdown_table(["Evidence item", "Count"], appendix_rows),
+                    "",
+                    "### File category counts",
+                    "",
+                    _markdown_table(["Category", "Count"], file_count_rows),
+                    "",
+                    "### Route inventory",
+                    "",
+                    _markdown_table(
+                        ["Route", "Handler", "Auth", "Type", "Methods", "Path"],
+                        route_rows,
+                    ),
+                    "",
+                    "### Generation warnings",
+                    "",
+                    _bullet_lines(
+                        warning_lines or ["No generation warnings were emitted."]
+                    ),
+                    "",
+                    "### Remediation hints",
+                    "",
+                    _bullet_lines(
+                        remediation_lines or ["No remediation hints were emitted."]
+                    ),
+                ]
+            ),
+        ),
+    ]
+    return sections
+
+
+def render_arc42_addon_markdown(bundle: TechnicalDocumentation) -> str:
+    """Render one technical-documentation bundle as arc42 Markdown."""
+
+    sections = bundle.sections or build_arc42_addon_sections(bundle)
+    output_path = bundle.output_path or "docs/architecture.md"
+    header_lines = [
+        f"# Architecture Documentation: {bundle.module}",
+        "",
+        "<!--",
+        "Generated by oduit.",
+        "Template: arc42-addon-v1",
+        f"Addon: {bundle.module}",
+        f"Output: {output_path}",
+        "Generated sections contain evidence from oduit. TODO markers require human"
+        "review.",
+        "-->",
+        "",
+    ]
+    rendered_sections = "\n\n".join(
+        section.markdown for section in sorted(sections, key=lambda item: item.order)
+    )
+    return "\n".join(header_lines) + rendered_sections + "\n"

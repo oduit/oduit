@@ -20,7 +20,9 @@ from ..api_models import (
     ModelFieldsResult,
     MultiAddonDocumentation,
     SharedModelDocumentation,
+    TechnicalDocumentation,
 )
+from ..arc42_renderer import build_arc42_addon_sections, render_arc42_addon_markdown
 from ..documentation_renderer import (
     build_addon_sections,
     build_dependency_graph_sections,
@@ -35,7 +37,12 @@ from ..documentation_renderer import (
     render_multi_addon_index_markdown,
     render_shared_model_markdown,
 )
-from ..source_locator import list_addon_languages, list_model_extensions
+from ..source_locator import (
+    list_addon_languages,
+    list_addon_technical_inventory,
+    list_model_extensions,
+)
+from ..technical_documentation import resolve_addon_documentation_target
 from .base import OperationsService
 
 
@@ -43,8 +50,22 @@ def _unique_strings(values: list[str]) -> list[str]:
     return sorted({value for value in values if value})
 
 
-PATH_STRING_FIELDS = {"addon_root", "module_path", "path"}
-PATH_LIST_FIELDS = {"paths", "related_files", "related_paths", "scanned_python_files"}
+PATH_STRING_FIELDS = {
+    "addon_root",
+    "module_path",
+    "path",
+    "manifest_path",
+    "output_path",
+}
+PATH_LIST_FIELDS = {
+    "paths",
+    "related_files",
+    "related_paths",
+    "scanned_python_files",
+    "security_files",
+    "migration_files",
+    "candidate_addon_roots",
+}
 
 
 def _normalize_path_prefix(path_prefix: str | None) -> Path | None:
@@ -329,6 +350,73 @@ class DocumentationOperationsService(OperationsService):
         )
         bundle.sections = build_addon_sections(bundle)
         bundle.markdown = render_addon_markdown(bundle)
+        return bundle
+
+    def build_technical_documentation(
+        self,
+        target: str,
+        *,
+        template: str = "arc42",
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
+    ) -> TechnicalDocumentation:
+        """Build one arc42 technical-documentation bundle for an addon target."""
+
+        if template != "arc42":
+            raise ValueError(
+                "Only the 'arc42' technical documentation template is supported."
+            )
+
+        resolved_target = resolve_addon_documentation_target(
+            self.operations.env_config, target
+        )
+        addon_documentation = self.build_addon_documentation(
+            resolved_target.module,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=None,
+        )
+        technical_inventory = list_addon_technical_inventory(
+            resolved_target.addon_root, resolved_target.module
+        )
+        warnings = _unique_strings(
+            list(resolved_target.warnings)
+            + list(addon_documentation.warnings)
+            + list(technical_inventory.warnings)
+        )
+        remediation = _unique_strings(
+            list(addon_documentation.remediation)
+            + list(technical_inventory.remediation)
+        )
+        bundle = TechnicalDocumentation(
+            module=resolved_target.module,
+            addon_root=resolved_target.addon_root,
+            template=template,
+            target=resolved_target,
+            source_only=source_only,
+            addon_documentation=addon_documentation,
+            technical_inventory=technical_inventory,
+            warnings=warnings,
+            remediation=remediation,
+        )
+        _apply_path_prefix(bundle, path_prefix=_normalize_path_prefix(path_prefix))
+        bundle.sections = build_arc42_addon_sections(bundle)
+        bundle.markdown = render_arc42_addon_markdown(bundle)
         return bundle
 
     def build_model_documentation(
@@ -794,9 +882,14 @@ class DocumentationOperationsService(OperationsService):
             module_path=inspection.module_path,
             addon_type=inspection.addon_type,
             version_display=inspection.version_display,
+            name=str(manifest.get("name") or ""),
             summary=str(manifest.get("summary") or ""),
             description=str(manifest.get("description") or ""),
+            category=str(manifest.get("category") or ""),
+            author=str(manifest.get("author") or ""),
+            website=str(manifest.get("website") or ""),
             license=str(manifest.get("license") or ""),
+            external_dependencies=dict(manifest.get("external_dependencies") or {}),
             depends=list(inspection.direct_dependencies),
             reverse_dependencies=list(inspection.reverse_dependencies),
             reverse_dependency_count=inspection.reverse_dependency_count,

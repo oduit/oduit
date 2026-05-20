@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/technical-documentation.schema.json",
+  "type": "object",
+  "required": ["type", "data"],
+  "properties": {
+    "type": {
+      "const": "technical_documentation"
+    },
+    "data": {
+      "type": "object",
+      "required": ["module", "addon_root", "template"],
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "addon_root": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        },
+        "would_write": {
+          "type": "string"
+        },
+        "output_path": {
+          "type": "string"
+        },
+        "section_count": {
+          "type": "integer"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preview": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "overwritten": {
+          "type": "boolean"
+        },
+        "markdown": {
+          "type": "string"
+        },
+        "evidence_counts": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

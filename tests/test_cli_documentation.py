@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from oduit.api_models import (
     AddonContributionSummary,
+    AddonDocTarget,
     AddonDocumentation,
     AddonDocumentationModel,
     AddonInfo,
@@ -15,6 +16,7 @@ from oduit.api_models import (
     ModelExtensionInventory,
     MultiAddonDocumentation,
     SharedModelDocumentation,
+    TechnicalDocumentation,
 )
 from oduit.cli.app import app
 
@@ -103,6 +105,20 @@ def _multi_addon_documentation_bundle() -> MultiAddonDocumentation:
         addon_docs=[addon_doc],
         shared_models=[shared_doc],
         index_markdown="# Multi-addon documentation bundle\n",
+    )
+
+
+def _technical_documentation_bundle(addon_root: Path) -> TechnicalDocumentation:
+    return TechnicalDocumentation(
+        module="my_partner",
+        addon_root=str(addon_root),
+        target=AddonDocTarget(
+            module="my_partner",
+            addon_root=str(addon_root),
+            target_kind="module",
+            manifest_path=str(addon_root / "__manifest__.py"),
+        ),
+        markdown="# Architecture Documentation: my_partner\n",
     )
 
 
@@ -442,3 +458,162 @@ def test_docs_addons_command_requires_output_dir_for_markdown(tmp_path: Path) ->
 
     assert result.exit_code == 1
     assert "--output-dir is required for markdown output" in result.output
+
+
+def test_docs_technical_prints_markdown(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(tmp_path / "addons" / "my_partner")
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "my_partner",
+                "--template",
+                "arc42",
+                "--source-only",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert "# Architecture Documentation: my_partner" in result.output
+
+
+def test_docs_technical_writes_to_addon_docs(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    addon_root.mkdir(parents=True)
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "my_partner",
+                "--output-in-addon",
+            ],
+        )
+
+    output_path = addon_root / "docs" / "architecture.md"
+    assert result.exit_code == 0
+    assert output_path.read_text() == "# Architecture Documentation: my_partner\n"
+    assert str(output_path) in result.output
+
+
+def test_docs_technical_refuses_overwrite_without_force(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    output_path = addon_root / "docs" / "architecture.md"
+    output_path.parent.mkdir(parents=True)
+    output_path.write_text("existing\n")
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "my_partner",
+                "--output-in-addon",
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert "Output file already exists" in result.output
+
+
+def test_docs_technical_accepts_at_path_target(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    addon_root.mkdir(parents=True)
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/python3",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical",
+                "@addons/my_partner",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert ops.build_technical_documentation.call_args.args[0] == "@addons/my_partner"

@@ -12,6 +12,7 @@ from ...documentation_renderer import (
     render_dependency_graph_mermaid,
     render_shared_model_markdown,
 )
+from ...technical_documentation import resolve_technical_doc_output_path
 from ...utils import output_result_to_json
 
 
@@ -32,7 +33,16 @@ def _write_output(content: str, output_path: Path | None) -> None:
     if output_path is None:
         return
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(content)
+    output_path.write_text(content, encoding="utf-8")
+
+
+def _check_output_overwrite(
+    output_path: Path,
+    *,
+    force: bool,
+) -> None:
+    if output_path.exists() and not force:
+        raise FileExistsError(str(output_path))
 
 
 def _write_multi_addon_output(
@@ -442,3 +452,152 @@ def addons_documentation_command(
     )
     if bundle_json_path is not None:
         print(f"Bundle metadata: {bundle_json_path}")
+
+
+def technical_documentation_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    template: str,
+    database: str | None,
+    timeout: float,
+    source_only: bool,
+    include_arch: bool,
+    attributes: str | None,
+    types: str | None,
+    output_path: Path | None,
+    output_in_addon: bool,
+    force: bool,
+    format_name: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    path_prefix: str | None,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+    print_command_error_result_fn: Any,
+    module_not_found_error_cls: Any,
+) -> None:
+    """Generate arc42 technical documentation for one addon target."""
+
+    global_config, _ = resolve_command_env_config_fn(ctx)
+    resolved_format = _resolve_docs_format(global_config, format_name)
+    if resolved_format not in {"markdown", "json"}:
+        raise typer.BadParameter("format must be either 'markdown' or 'json'")
+    if output_in_addon and resolved_format != "markdown":
+        raise typer.BadParameter("--output-in-addon requires markdown output")
+
+    ops = build_odoo_operations_fn(global_config)
+    try:
+        bundle = ops.build_technical_documentation(
+            target,
+            template=template,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=_parse_csv_items(attributes),
+            view_types=_parse_csv_items(types),
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+        )
+    except module_not_found_error_cls as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical",
+            str(exc),
+            error_type="ModuleNotFoundError",
+            details={"target": target},
+            remediation=[
+                "Verify that the addon exists in the configured addons paths.",
+            ],
+        )
+        raise typer.Exit(1) from None
+    except FileNotFoundError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical",
+            str(exc),
+            error_type="NotFoundError",
+            details={"target": target},
+            remediation=[
+                (
+                    "Use either a valid addon name or a path that"
+                    " resolves to an addon root."
+                ),
+            ],
+        )
+        raise typer.Exit(1) from None
+    except ValueError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical",
+            str(exc),
+            error_type="ValidationError",
+            details={"target": target, "template": template},
+        )
+        raise typer.Exit(1) from None
+
+    resolved_output_path = (
+        resolve_technical_doc_output_path(
+            bundle.target,
+            output=output_path,
+            output_in_addon=output_in_addon,
+        )
+        if bundle.target is not None
+        else output_path
+    )
+
+    if resolved_output_path is not None and bundle.target is not None:
+        if bundle.target.target_kind == "module" and bundle.target.ambiguous:
+            print_command_error_result_fn(
+                global_config,
+                "docs_technical",
+                "Refusing to write from an ambiguous module-name resolution.",
+                error_type="AmbiguousTargetError",
+                details={
+                    "target": target,
+                    "candidate_addon_roots": bundle.target.candidate_addon_roots,
+                },
+                remediation=[
+                    (
+                        "Use an explicit addon path such as `@addons/has_base`"
+                        " when writing documentation."
+                    ),
+                ],
+            )
+            raise typer.Exit(1) from None
+        try:
+            _check_output_overwrite(resolved_output_path, force=force)
+        except FileExistsError:
+            print_command_error_result_fn(
+                global_config,
+                "docs_technical",
+                f"Output file already exists: {resolved_output_path}",
+                error_type="FileExistsError",
+                details={"output_path": str(resolved_output_path)},
+                remediation=[
+                    "Retry with `--force` to overwrite the existing file.",
+                ],
+            )
+            raise typer.Exit(1) from None
+
+    if resolved_format == "json":
+        rendered_content = json.dumps(bundle.to_dict(), indent=2, sort_keys=True)
+        _emit_document_output(
+            global_config=global_config,
+            operation="docs_technical",
+            result_type="technical_documentation",
+            format_name=resolved_format,
+            data=bundle.to_dict(),
+            rendered_content=rendered_content,
+            output_path=resolved_output_path,
+        )
+        return
+
+    if resolved_output_path is not None:
+        _write_output(bundle.markdown, resolved_output_path)
+        print(f"Wrote markdown documentation to {resolved_output_path}")
+        return
+    print(bundle.markdown)

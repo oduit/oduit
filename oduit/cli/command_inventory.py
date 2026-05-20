@@ -78,6 +78,7 @@ AGENT_COMMAND_METADATA: dict[str, tuple[CommandTier, str]] = {
     "inspect-addon": (STABLE_FOR_AGENTS, "safe_read_only"),
     "addon-info": (STABLE_FOR_AGENTS, "safe_read_only"),
     "addon-doc": (STABLE_FOR_AGENTS, "safe_read_only"),
+    "technical-doc": (BETA_FOR_AGENTS, "controlled_source_mutation"),
     "plan-update": (STABLE_FOR_AGENTS, "safe_read_only"),
     "prepare-addon-change": (BETA_FOR_AGENTS, "safe_read_only"),
     "locate-model": (BETA_FOR_AGENTS, "safe_read_only"),

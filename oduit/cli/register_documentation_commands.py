@@ -12,6 +12,7 @@ from .commands.documentation import (
     addons_documentation_command,
     dependency_graph_documentation_command,
     model_documentation_command,
+    technical_documentation_command,
 )
 from .runtime_context import AppRegistrationContext
 
@@ -329,6 +330,103 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             module_manager_cls=module_manager_cls,
+            print_command_error_result_fn=print_command_error_result_fn,
+            module_not_found_error_cls=module_not_found_error_cls,
+        )
+
+    @docs_app.command("technical")
+    def docs_technical_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(
+            help="Addon name or addon path, e.g. has_base or @addons/has_base"
+        ),
+        template: str = typer.Option(
+            "arc42", "--template", help="Documentation template"
+        ),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(
+            30.0,
+            "--timeout",
+            help="Runtime query timeout in seconds",
+        ),
+        source_only: bool = typer.Option(
+            False,
+            "--source-only",
+            help="Skip all runtime/database enrichment",
+        ),
+        include_arch: bool = typer.Option(
+            False,
+            "--include-arch",
+            help="Include raw view XML in runtime view payloads",
+        ),
+        attributes: str | None = typer.Option(
+            "string,type,required,readonly,store,relation",
+            "--field-attributes",
+            help="Comma-separated field metadata attributes",
+        ),
+        types: str | None = typer.Option(
+            None,
+            "--view-types",
+            help="Comma-separated view types such as form,tree,kanban,search",
+        ),
+        max_models: int | None = typer.Option(
+            None,
+            "--max-models",
+            help="Limit the number of per-model sections",
+        ),
+        max_fields_per_model: int | None = typer.Option(
+            None,
+            "--max-fields-per-model",
+            help="Limit the number of runtime fields shown per model",
+        ),
+        path_prefix: str | None = typer.Option(
+            None,
+            "--path",
+            help="Trim this absolute prefix from documented file paths",
+        ),
+        output_path: Annotated[
+            Path | None,
+            typer.Option(
+                "--output",
+                help="Write rendered output to a file instead of stdout",
+            ),
+        ] = None,
+        output_in_addon: bool = typer.Option(
+            False,
+            "--output-in-addon",
+            help="Write to <addon>/docs/architecture.md",
+        ),
+        force: bool = typer.Option(
+            False,
+            "--force",
+            help="Overwrite an existing documentation file",
+        ),
+        format_name: str | None = typer.Option(
+            None,
+            "--format",
+            help="Output format: markdown or json",
+        ),
+    ) -> None:
+        """Generate arc42 technical documentation for one addon."""
+        technical_documentation_command(
+            ctx,
+            target=target,
+            template=template,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            attributes=attributes,
+            types=types,
+            output_path=output_path,
+            output_in_addon=output_in_addon,
+            force=force,
+            format_name=format_name,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
             print_command_error_result_fn=print_command_error_result_fn,
             module_not_found_error_cls=module_not_found_error_cls,
         )
