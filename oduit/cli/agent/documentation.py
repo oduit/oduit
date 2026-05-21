@@ -8,10 +8,14 @@ from typing import Any
 import typer
 from click.core import ParameterSource
 
-from ...arc42_renderer import render_arc42_addon_markdown
+from ...arc42_renderer import (
+    inspect_generated_markdown_quality,
+    render_arc42_addon_markdown,
+)
 from ...documentation_tracking import (
     TECHNICAL_DOC_FILENAME,
     TECHNICAL_DOC_METADATA_FILENAME,
+    accept_reviewed_technical_documentation,
     build_technical_documentation_metadata,
     inspect_all_technical_documentation_statuses,
     inspect_technical_documentation_status,
@@ -89,44 +93,121 @@ def _generation_options(
     return options
 
 
-def _agent_technical_doc_progress(enabled: bool) -> Any:
+def _normalize_progress_level(progress_level: str) -> str:
+    value = (progress_level or "compact").strip().lower()
+    if value not in {"compact", "model", "debug"}:
+        raise typer.BadParameter(
+            "--progress-level must be one of: compact, model, debug"
+        )
+    return value
+
+
+def _metadata_summary(status: Any) -> dict[str, Any]:
+    options = getattr(status, "generation_options", None) or {}
+    return {
+        "template": getattr(status, "template", None),
+        "generation_count": getattr(status, "generation_count", None),
+        "source_only": options.get("source_only"),
+        "include_arch": options.get("include_arch"),
+        "max_models": options.get("max_models"),
+        "max_fields_per_model": options.get("max_fields_per_model"),
+        "evidence_counts": getattr(status, "evidence_counts", {}) or {},
+    }
+
+
+def _status_to_payload_dict(status: Any, *, include_files: bool) -> dict[str, Any]:
+    data = status.to_dict()
+    if not include_files:
+        data.pop("changed_files", None)
+        data.pop("added_files", None)
+        data.pop("removed_files", None)
+    data["metadata_summary"] = _metadata_summary(status)
+    return data
+
+
+def _progress_stage_visible(stage: str, *, progress_level: str) -> bool:
+    if progress_level == "compact":
+        return stage in {
+            "resolve_target",
+            "technical_inventory",
+            "model_inventory",
+            "runtime_metadata_batch",
+            "render",
+            "writing",
+            "writing_metadata",
+        }
+    if progress_level == "model":
+        return stage not in {
+            "inspect_addon",
+            "dependency_graph",
+            "model_source",
+            "model_runtime_fields",
+            "model_runtime_views",
+            "model_runtime_fields_cached",
+            "model_runtime_views_cached",
+            "recommended_tests",
+        }
+    return True
+
+
+def _agent_progress_message(
+    stage: str, data: dict[str, Any], *, progress_level: str
+) -> str | None:
+    module = data.get("module")
+    model = data.get("model")
+    index = data.get("index")
+    total = data.get("total")
+
+    if stage == "resolve_target":
+        return f"resolving addon target: {data.get('target', '')}".rstrip()
+    if stage == "technical_inventory" and module:
+        return f"collecting source inventory: {module}"
+    if stage == "inspect_addon" and module:
+        return f"inspecting addon: {module}"
+    if stage == "model_inventory" and module:
+        return f"collecting model inventory: {module}"
+    if stage == "runtime_metadata_batch":
+        model_count = data.get("model_count")
+        model_count_text = str(model_count) if model_count is not None else "unknown"
+        return f"querying runtime metadata: {model_count_text} models"
+    if stage == "dependency_graph" and module:
+        return f"collecting dependency graph: {module}"
+    if stage == "model_documentation" and module and model:
+        suffix = f" ({index}/{total})" if index and total else ""
+        return f"documenting model: {module}:{model}{suffix}"
+    if stage == "model_source" and model:
+        return f"collecting source evidence: {model}"
+    if stage == "model_runtime_fields" and model:
+        return f"querying runtime fields: {model}"
+    if stage == "model_runtime_views" and model:
+        return f"querying runtime views: {model}"
+    if stage == "model_runtime_fields_cached" and model and progress_level == "debug":
+        return f"using cached runtime fields: {model}"
+    if stage == "model_runtime_views_cached" and model and progress_level == "debug":
+        return f"using cached runtime views: {model}"
+    if stage == "recommended_tests" and module:
+        return f"collecting test recommendations: {module}"
+    if stage == "render" and module:
+        return f"rendering arc42 markdown: {module}"
+    if stage == "writing":
+        return f"writing: {data.get('path', '')}".rstrip()
+    if stage == "writing_metadata":
+        return f"writing metadata: {data.get('path', '')}".rstrip()
+    return None
+
+
+def _agent_technical_doc_progress(enabled: bool, *, progress_level: str) -> Any:
     if not enabled:
         return None
 
     def progress(stage: str, data: dict[str, Any]) -> None:
-        module = data.get("module")
-        model = data.get("model")
-        index = data.get("index")
-        total = data.get("total")
-
-        message: str | None = None
-        if stage == "resolve_target":
-            message = f"resolving addon target: {data.get('target', '')}".rstrip()
-        elif stage == "technical_inventory" and module:
-            message = f"collecting source inventory: {module}"
-        elif stage == "inspect_addon" and module:
-            message = f"inspecting addon: {module}"
-        elif stage == "model_inventory" and module:
-            message = f"collecting model inventory: {module}"
-        elif stage == "dependency_graph" and module:
-            message = f"collecting dependency graph: {module}"
-        elif stage == "model_documentation" and module and model:
-            suffix = f" ({index}/{total})" if index and total else ""
-            message = f"documenting model: {module}:{model}{suffix}"
-        elif stage == "model_source" and model:
-            message = f"collecting source evidence: {model}"
-        elif stage == "model_runtime_fields" and model:
-            message = f"querying runtime fields: {model}"
-        elif stage == "model_runtime_views" and model:
-            message = f"querying runtime views: {model}"
-        elif stage == "recommended_tests" and module:
-            message = f"collecting test recommendations: {module}"
-        elif stage == "render" and module:
-            message = f"rendering arc42 markdown: {module}"
-        elif stage == "writing":
-            message = f"writing: {data.get('path', '')}".rstrip()
-        elif stage == "writing_metadata":
-            message = f"writing metadata: {data.get('path', '')}".rstrip()
+        if not _progress_stage_visible(stage, progress_level=progress_level):
+            return
+        message = _agent_progress_message(
+            stage,
+            data,
+            progress_level=progress_level,
+        )
 
         if message:
             typer.echo(f"[oduit agent technical-doc] {message}", err=True)
@@ -147,6 +228,7 @@ def agent_technical_doc_command(
     timeout: float,
     source_only: bool,
     progress: bool,
+    progress_level: str,
     include_arch: bool,
     attributes: str | None,
     types: str | None,
@@ -201,7 +283,10 @@ def agent_technical_doc_command(
         explicit_base=path_prefix,
     )
     effective_path_prefix = path_context.base_dir.as_posix()
-    progress_cb = _agent_technical_doc_progress(progress)
+    normalized_progress_level = _normalize_progress_level(progress_level)
+    progress_cb = _agent_technical_doc_progress(
+        progress, progress_level=normalized_progress_level
+    )
 
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
     try:
@@ -220,6 +305,8 @@ def agent_technical_doc_command(
             path_prefix=effective_path_prefix,
             path_base_dir=effective_path_prefix,
             progress=progress_cb,
+            progress_level=normalized_progress_level,
+            render_markdown=effective_dry_run,
         )
     except module_not_found_error_cls as exc:
         agent_fail_fn(
@@ -275,7 +362,9 @@ def agent_technical_doc_command(
         "sections": _section_titles(bundle),
         "preview": bundle.markdown[:500],
         "evidence_counts": _evidence_counts(bundle),
+        "quality": inspect_generated_markdown_quality(bundle.markdown),
     }
+    preview_quality = payload_data["quality"]
     if include_markdown:
         payload_data["markdown"] = bundle.markdown
 
@@ -284,15 +373,19 @@ def agent_technical_doc_command(
             preview_operation,
             result_type,
             payload_data,
-            warnings=list(bundle.warnings),
+            warnings=list(bundle.warnings) + list(preview_quality.get("warnings", [])),
             remediation=sorted(
                 dict.fromkeys(
                     list(bundle.remediation)
                     + [
                         (
+                            "Address reported markdown quality warnings before "
+                            "considering the document final."
+                        ),
+                        (
                             "Retry with `--allow-mutation` to write"
                             " the generated documentation."
-                        )
+                        ),
                     ]
                 )
             ),
@@ -353,6 +446,7 @@ def agent_technical_doc_command(
     bundle.output_path = f"docs/{TECHNICAL_DOC_FILENAME}"
     bundle.metadata_path = f"docs/{TECHNICAL_DOC_METADATA_FILENAME}"
     bundle.markdown = render_arc42_addon_markdown(bundle)
+    quality = inspect_generated_markdown_quality(bundle.markdown)
     if progress_cb is not None:
         progress_cb("writing", {"path": path_context.relative(output_path)})
     output_path.write_text(bundle.markdown, encoding="utf-8")
@@ -375,6 +469,9 @@ def agent_technical_doc_command(
         source_addon_root=Path(bundle.source_addon_root or bundle.addon_root).resolve(
             strict=False
         ),
+    )
+    metadata.warnings = sorted(
+        dict.fromkeys(list(metadata.warnings) + list(quality.get("warnings", [])))
     )
     if progress_cb is not None:
         progress_cb("writing_metadata", {"path": path_context.relative(metadata_path)})
@@ -404,6 +501,8 @@ def agent_technical_doc_command(
         ),
         "section_count": len(_section_titles(bundle)),
         "evidence_counts": _evidence_counts(bundle),
+        "quality": quality,
+        "metadata_summary": _metadata_summary(status),
     }
     if include_markdown:
         write_payload["markdown"] = bundle.markdown
@@ -411,7 +510,10 @@ def agent_technical_doc_command(
         write_operation,
         result_type,
         write_payload,
-        warnings=list(bundle.warnings) + metadata_warnings + list(status.warnings),
+        warnings=list(bundle.warnings)
+        + metadata_warnings
+        + list(status.warnings)
+        + list(quality.get("warnings", [])),
         remediation=list(bundle.remediation) + list(status.remediation),
         read_only=False,
         safety_level=controlled_source_mutation,
@@ -514,7 +616,10 @@ def agent_technical_doc_status_command(
         operation,
         result_type,
         {
-            "statuses": [status.to_dict() for status in statuses],
+            "statuses": [
+                _status_to_payload_dict(status, include_files=include_files)
+                for status in statuses
+            ],
             "include_files": include_files,
         },
         warnings=[],
@@ -585,7 +690,7 @@ def agent_technical_doc_check_command(
         operation,
         result_type,
         {
-            "status": status.to_dict(),
+            "status": _status_to_payload_dict(status, include_files=include_files),
             "include_files": include_files,
         },
         warnings=list(status.warnings),
@@ -638,7 +743,11 @@ def agent_technical_doc_next_command(
         result_type,
         {
             "next_module": next_status.module if next_status is not None else None,
-            "status": next_status.to_dict() if next_status is not None else None,
+            "status": (
+                _status_to_payload_dict(next_status, include_files=include_files)
+                if next_status is not None
+                else None
+            ),
             "scanned_count": len(statuses),
             "stale_count": stale_count,
             "include_files": include_files,
@@ -647,5 +756,99 @@ def agent_technical_doc_next_command(
         remediation=[],
         read_only=True,
         safety_level=safe_read_only,
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_technical_doc_accept_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    allow_mutation: bool,
+    force: bool,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    agent_require_mutation_fn: Any,
+    controlled_source_mutation: str,
+) -> None:
+    """Accept a manually reviewed technical document snapshot."""
+
+    operation = "technical_doc_accept"
+    result_type = "technical_documentation"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    agent_require_mutation_fn(
+        allow_mutation,
+        operation,
+        result_type,
+        "technical documentation acceptance",
+        controlled_source_mutation,
+    )
+    path_context = resolve_project_path_context(config_path=global_config.config_path)
+    try:
+        resolved_target = resolve_addon_documentation_target(
+            global_config.env_config,
+            target,
+            path_base_dir=path_context.base_dir,
+        )
+    except FileNotFoundError as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="NotFoundError",
+            details={"target": target},
+        )
+
+    doc_path = Path(resolved_target.addon_root) / "docs" / TECHNICAL_DOC_FILENAME
+    metadata_path = doc_path.with_name(TECHNICAL_DOC_METADATA_FILENAME)
+    try:
+        metadata = accept_reviewed_technical_documentation(
+            addon_root=resolved_target.addon_root,
+            module=resolved_target.module,
+            metadata_path=metadata_path,
+            reviewed_by="manual",
+            review_note="Accepted manually polished generated architecture document",
+            force=force,
+            path_base_dir=path_context.base_dir,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="ValidationError",
+            details={"target": target, "force": force},
+            read_only=False,
+            safety_level=controlled_source_mutation,
+        )
+    write_technical_documentation_metadata(metadata, metadata_path)
+    status = inspect_technical_documentation_status(
+        addon_root=resolved_target.addon_root,
+        module=resolved_target.module,
+        path_base_dir=path_context.base_dir,
+    )
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        {
+            "module": resolved_target.module,
+            "doc_path": path_context.relative(doc_path),
+            "metadata_path": path_context.relative(metadata_path),
+            "reviewed_at": metadata.reviewed_at,
+            "reviewed_by": metadata.reviewed_by,
+            "review_note": metadata.review_note,
+            "generation_count": metadata.generation_count,
+            "status": _status_to_payload_dict(status, include_files=False),
+        },
+        warnings=list(status.warnings),
+        remediation=list(status.remediation),
+        read_only=False,
+        safety_level=controlled_source_mutation,
     )
     agent_emit_payload_fn(payload)

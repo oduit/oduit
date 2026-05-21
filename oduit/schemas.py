@@ -74,11 +74,13 @@ SAFE_READ_ONLY_OPERATIONS = {
     "docs_technical_check",
     "docs_technical_next",
     "docs_technical_status",
+    "docs_technical_accept",
     "addon_doc",
     "technical_doc_preview",
     "technical_doc_check",
     "technical_doc_next",
     "technical_doc_status",
+    "technical_doc_accept",
 }
 
 CONTROLLED_RUNTIME_MUTATION_OPERATIONS = {
@@ -101,6 +103,8 @@ CONTROLLED_SOURCE_MUTATION_OPERATIONS = {
     "export_lang_module",
     "export_module_language",
     "write_technical_doc",
+    "technical_doc_accept",
+    "docs_technical_accept",
 }
 
 UNSAFE_OPERATIONS = {

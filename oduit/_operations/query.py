@@ -177,6 +177,7 @@ class QueryOperationsService(OperationsService):
         domain: list[Any] | tuple[Any, ...] | None = None,
         fields: list[str] | tuple[str, ...] | None = None,
         limit: int = 80,
+        include_total_count: bool = False,
         database: str | None = None,
         timeout: float = 30.0,
     ) -> QueryModelResult:
@@ -187,6 +188,7 @@ class QueryOperationsService(OperationsService):
                 domain=domain,
                 fields=fields,
                 limit=limit,
+                include_total_count=include_total_count,
                 database=database,
                 timeout=timeout,
             )
@@ -388,9 +390,11 @@ class QueryOperationsService(OperationsService):
         self,
         models: list[str],
         *,
+        module_name: str | None = None,
         attributes: list[str] | tuple[str, ...] | None = None,
         view_types: list[str] | tuple[str, ...] | None = None,
         include_arch: bool = False,
+        progress: Any | None = None,
         database: str | None = None,
         timeout: float = 60.0,
     ) -> DocumentationRuntimeInventory:
@@ -427,6 +431,11 @@ class QueryOperationsService(OperationsService):
         }
         warnings: list[str] = []
         remediation: list[str] = []
+        if progress is not None:
+            progress(
+                "runtime_metadata_batch",
+                {"module": module_name, "model_count": len(selected_models)},
+            )
         if not selected_models:
             return DocumentationRuntimeInventory(
                 models=fields_by_model,
@@ -446,6 +455,7 @@ class QueryOperationsService(OperationsService):
             domain=[["model", "in", selected_models]],
             fields=field_query_fields,
             limit=10000,
+            include_total_count=True,
             database=database,
             timeout=timeout,
         )
@@ -459,6 +469,15 @@ class QueryOperationsService(OperationsService):
                 "Verify database access if runtime field metadata is required."
             )
         else:
+            if field_result.limited:
+                warnings.append(
+                    "Runtime field metadata reached the batch limit; generated docs "
+                    "may omit some fields."
+                )
+                remediation.append(
+                    "Increase the metadata query limit or narrow the model selection "
+                    "if full field inventory is required."
+                )
             grouped_field_names: dict[str, list[str]] = {
                 model: [] for model in selected_models
             }
@@ -511,6 +530,7 @@ class QueryOperationsService(OperationsService):
             domain=[["model", "in", selected_models]],
             fields=view_fields,
             limit=10000,
+            include_total_count=True,
             database=database,
             timeout=timeout,
         )
@@ -521,6 +541,15 @@ class QueryOperationsService(OperationsService):
                 )
             remediation.append("Verify database access and retry runtime view queries.")
         else:
+            if views_result.limited:
+                warnings.append(
+                    "Runtime view metadata reached the batch limit; generated docs may "
+                    "omit some views."
+                )
+                remediation.append(
+                    "Increase the metadata query limit or narrow the model selection "
+                    "if complete runtime views are required."
+                )
             grouped_views: dict[str, list[ModelViewRecord]] = {
                 model: [] for model in selected_models
             }

@@ -200,6 +200,8 @@ class QueryModelResult(DictModel):
     fields: list[str] | None = None
     limit: int = 0
     count: int = 0
+    total_count: int | None = None
+    limited: bool = False
     ids: list[int] = dataclass_field(default_factory=list)
     records: list[dict[str, Any]] = dataclass_field(default_factory=list)
     database: str | None = None
@@ -217,6 +219,12 @@ class QueryModelResult(DictModel):
             fields=result.get("fields"),
             limit=int(result.get("limit", 0) or 0),
             count=int(result.get("count", 0) or 0),
+            total_count=(
+                int(result.get("total_count", 0))
+                if result.get("total_count") is not None
+                else None
+            ),
+            limited=bool(result.get("limited", False)),
             ids=list(result.get("ids", [])),
             records=list(result.get("records", [])),
             database=result.get("database"),
@@ -617,6 +625,9 @@ class TechnicalDocumentationMetadata(DictModel):
     evidence_counts: dict[str, int] = dataclass_field(default_factory=dict)
     source_snapshot: DocumentationSourceSnapshot | None = None
     document_snapshot: DocumentationDocumentSnapshot | None = None
+    reviewed_at: str | None = None
+    reviewed_by: str | None = None
+    review_note: str | None = None
     warnings: list[str] = dataclass_field(default_factory=list)
 
 
@@ -637,6 +648,10 @@ class TechnicalDocumentationStatus(DictModel):
     source_changed_since_last_generation: bool = False
     created_at: str | None = None
     last_generated_at: str | None = None
+    generation_count: int | None = None
+    generation_options: dict[str, Any] = dataclass_field(default_factory=dict)
+    evidence_counts: dict[str, int] = dataclass_field(default_factory=dict)
+    template: str | None = None
     changed_files: list[str] = dataclass_field(default_factory=list)
     added_files: list[str] = dataclass_field(default_factory=list)
     removed_files: list[str] = dataclass_field(default_factory=list)

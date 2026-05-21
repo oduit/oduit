@@ -47,6 +47,8 @@ Do not use this skill for:
 
 For a single addon, prefer the Arc42 technical documentation command.
 
+Never emit internal reasoning markers such as `Thought:` or `Thinking:` in user-visible output. Report only actions, outcomes, and concise decisions.
+
 Do this:
 
 ```bash
@@ -173,6 +175,19 @@ sed -n '1,220p' addons/<module>/docs/architecture.md
 
 Then improve the file manually where oduit marks uncertainty or TODOs. Keep generated evidence accurate; add business context only when it is supported by source code, manifests, runtime metadata, or user-provided context.
 
+After writing, always run a quality pass:
+
+```bash
+oduit agent technical-doc-check @addons/<module> --include-files
+grep -nE 'thisaddon|projectowner|maintenanceroles|processowner|manifestchanges' addons/<module>/docs/architecture.md || true
+grep -n 'TODO:' addons/<module>/docs/architecture.md || true
+```
+
+If manual edits were made after generation, either:
+
+- report `document_edited` as expected, or
+- run `oduit agent technical-doc-accept @addons/<module> --allow-mutation` to accept the reviewed document snapshot.
+
 ## Tracking and freshness
 
 When oduit writes `<addon>/docs/architecture.md`, it also writes:
@@ -271,6 +286,12 @@ Use `--source-only` when:
 - database access would expose personal, customer, employee, invoice, payment, or other sensitive data.
 
 Runtime-enriched commands may inspect models, fields, views, installed state, and database-backed metadata. They must remain read-only.
+
+Decide generation mode before the first write and keep it stable for that run:
+
+- use `--runtime` only when the configured database is a safe dev/test database;
+- use `--source-only` otherwise;
+- do not write source-only first and then overwrite with runtime unless runtime access became available after the first attempt.
 
 Never include production sample data in documentation.
 
@@ -518,6 +539,7 @@ oduit agent validate-addon-change ...
 ```
 
 Do not run Odoo tests unless the user explicitly requests validation outside this documentation skill.
+Do not run full `pytest` for this workflow unless the user explicitly asks.
 
 Do not use `--allow-mutation` except for the controlled source-file write to `<addon>/docs/architecture.md`.
 
@@ -527,14 +549,15 @@ Do not expose secrets from config files, database credentials, access tokens, cu
 
 When reporting back to the user, include:
 
-- the addon documented;
-- the generated or edited file path, normally `<addon>/docs/architecture.md`;
-- the metadata path, normally `<addon>/docs/architecture.oduit.json`;
-- `created_at` and `last_generated_at` when the document is tracked;
-- whether the document or addon source changed after generation;
-- whether runtime enrichment was used or `--source-only`;
-- whether the command was preview-only or wrote the file;
-- important warnings, TODOs, or unresolved metadata gaps;
-- the key oduit commands used.
+- `Addon:`
+- `Document:`
+- `Metadata:`
+- `Generation mode:`
+- `Final status:`
+- `Manual edits:`
+- `Remaining TODO count:`
+- `Warnings:`
+- `Commands used:`
+- `Tests/validation:`
 
 Do not paste the full documentation into chat unless the user asks for it.

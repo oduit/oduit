@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 from oduit.api_models import (
     AddonContributionSummary,
     AddonDocTarget,
@@ -18,7 +21,10 @@ from oduit.api_models import (
     SourceEvidence,
     TechnicalDocumentation,
 )
-from oduit.arc42_renderer import render_arc42_addon_markdown
+from oduit.arc42_renderer import (
+    inspect_generated_markdown_quality,
+    render_arc42_addon_markdown,
+)
 from oduit.documentation_renderer import (
     render_addon_markdown,
     render_addon_markdown_deduplicated,
@@ -383,3 +389,57 @@ def test_render_arc42_addon_markdown_includes_security_and_route_warnings() -> N
         in markdown
     )
     assert "`/has_base`" in markdown
+
+
+def test_render_arc42_markdown_has_no_joined_wrapped_words() -> None:
+    markdown = render_arc42_addon_markdown(_technical_bundle(include_routes=False))
+    normalized = markdown.replace("\n", " ")
+    forbidden_fragments = [
+        "thisaddon",
+        "projectowner",
+        "maintenanceroles",
+        "processowner",
+        "manifestchanges",
+        "monitorsthe",
+        "deliberatearchitectural",
+        "backendworkflows",
+        "norelevant",
+        "staticevidence",
+        "boundaryfor",
+        "androllback",
+        "suchas",
+        "andprivileged",
+        "inviews",
+        "migrationexpectations",
+        "datamigrations",
+        "stringsremain",
+        "operatorrunbooks",
+        "oduitevidence",
+        "duringmaintenance",
+        "aftera",
+        "keepsunknown",
+        "ACLcoverage",
+        "evidenceremain",
+        "theaffected",
+        "existsoutside",
+    ]
+    for fragment in forbidden_fragments:
+        assert fragment not in normalized
+
+
+def test_arc42_renderer_wrapped_literals_keep_word_spacing() -> None:
+    source = Path("oduit/arc42_renderer.py").read_text(encoding="utf-8")
+    pattern = re.compile(
+        r'(["\'])([^"\']*?[A-Za-z0-9`.,):])\1\s*\n\s*(["\'])([a-z][^"\']*)\3'
+    )
+    matches = list(pattern.finditer(source))
+    assert not matches, [source[: match.start()].count("\n") + 1 for match in matches]
+
+
+def test_generated_markdown_quality_reports_expected_counts() -> None:
+    markdown = render_arc42_addon_markdown(_technical_bundle(include_routes=False))
+    quality = inspect_generated_markdown_quality(markdown)
+
+    assert quality["todo_count"] > 0
+    assert "formatting_issue_count" in quality
+    assert "warnings" in quality

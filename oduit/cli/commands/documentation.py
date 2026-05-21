@@ -9,7 +9,10 @@ from typing import Any
 
 import typer
 
-from ...arc42_renderer import render_arc42_addon_markdown
+from ...arc42_renderer import (
+    inspect_generated_markdown_quality,
+    render_arc42_addon_markdown,
+)
 from ...documentation_renderer import (
     render_dependency_graph_mermaid,
     render_shared_model_markdown,
@@ -17,6 +20,7 @@ from ...documentation_renderer import (
 from ...documentation_tracking import (
     TECHNICAL_DOC_FILENAME,
     TECHNICAL_DOC_METADATA_FILENAME,
+    accept_reviewed_technical_documentation,
     build_technical_documentation_metadata,
     inspect_all_technical_documentation_statuses,
     inspect_technical_documentation_status,
@@ -139,7 +143,41 @@ def _progress_source_label(source: str) -> str:
     }.get(source, source)
 
 
-def _format_progress_message(stage: str, data: dict[str, Any]) -> str | None:
+def _normalize_progress_level(progress_level: str) -> str:
+    value = (progress_level or "compact").strip().lower()
+    if value not in {"compact", "model", "debug"}:
+        raise typer.BadParameter(
+            "--progress-level must be one of: compact, model, debug"
+        )
+    return value
+
+
+def _format_progress_message(
+    stage: str, data: dict[str, Any], *, progress_level: str
+) -> str | None:
+    if progress_level == "compact" and stage not in {
+        "path_base",
+        "resolve_target",
+        "technical_inventory",
+        "model_inventory",
+        "runtime_metadata_batch",
+        "render",
+        "writing",
+        "writing_metadata",
+    }:
+        return None
+    if progress_level == "model" and stage in {
+        "inspect_addon",
+        "dependency_graph",
+        "model_source",
+        "model_runtime_fields",
+        "model_runtime_views",
+        "model_runtime_fields_cached",
+        "model_runtime_views_cached",
+        "recommended_tests",
+    }:
+        return None
+
     module = data.get("module")
     model = data.get("model")
     index = data.get("index")
@@ -158,6 +196,10 @@ def _format_progress_message(stage: str, data: dict[str, Any]) -> str | None:
         return f"inspecting addon: {module}"
     if stage == "model_inventory" and module:
         return f"collecting model inventory: {module}"
+    if stage == "runtime_metadata_batch":
+        model_count = data.get("model_count")
+        model_count_text = str(model_count) if model_count is not None else "unknown"
+        return f"querying runtime metadata: {model_count_text} models"
     if stage == "dependency_graph" and module:
         return f"collecting dependency graph: {module}"
     if stage == "model_documentation" and module and model:
@@ -169,6 +211,10 @@ def _format_progress_message(stage: str, data: dict[str, Any]) -> str | None:
         return f"querying runtime fields: {model}"
     if stage == "model_runtime_views" and model:
         return f"querying runtime views: {model}"
+    if stage == "model_runtime_fields_cached" and model and progress_level == "debug":
+        return f"using cached runtime fields: {model}"
+    if stage == "model_runtime_views_cached" and model and progress_level == "debug":
+        return f"using cached runtime views: {model}"
     if stage == "recommended_tests" and module:
         return f"collecting test recommendations: {module}"
     if stage == "render" and module:
@@ -180,7 +226,9 @@ def _format_progress_message(stage: str, data: dict[str, Any]) -> str | None:
     return None
 
 
-def _make_docs_progress(global_config: Any, *, enabled: bool | None) -> Any:
+def _make_docs_progress(
+    global_config: Any, *, enabled: bool | None, progress_level: str
+) -> Any:
     if enabled is False:
         return None
     if enabled is None:
@@ -190,7 +238,7 @@ def _make_docs_progress(global_config: Any, *, enabled: bool | None) -> Any:
             return None
 
     def progress(stage: str, data: dict[str, Any]) -> None:
-        message = _format_progress_message(stage, data)
+        message = _format_progress_message(stage, data, progress_level=progress_level)
         if message:
             typer.echo(f"[oduit docs] {message}", err=True)
 
@@ -329,6 +377,29 @@ def _render_single_status_text(status: Any, *, include_files: bool) -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def _metadata_summary(status: Any) -> dict[str, Any]:
+    options = getattr(status, "generation_options", None) or {}
+    return {
+        "template": getattr(status, "template", None),
+        "generation_count": getattr(status, "generation_count", None),
+        "source_only": options.get("source_only"),
+        "include_arch": options.get("include_arch"),
+        "max_models": options.get("max_models"),
+        "max_fields_per_model": options.get("max_fields_per_model"),
+        "evidence_counts": getattr(status, "evidence_counts", {}) or {},
+    }
+
+
+def _status_to_payload_dict(status: Any, *, include_files: bool) -> dict[str, Any]:
+    data = status.to_dict()
+    if not include_files:
+        data.pop("changed_files", None)
+        data.pop("added_files", None)
+        data.pop("removed_files", None)
+    data["metadata_summary"] = _metadata_summary(status)
+    return data
 
 
 def addon_documentation_command(
@@ -699,6 +770,7 @@ def technical_documentation_command(
     force: bool,
     format_name: str | None,
     progress: bool | None,
+    progress_level: str,
     max_models: int | None,
     max_fields_per_model: int | None,
     path_prefix: str | None,
@@ -723,7 +795,13 @@ def technical_documentation_command(
         explicit_base=path_prefix,
     )
     effective_path_prefix = path_context.base_dir.as_posix()
-    progress_cb = _make_docs_progress(global_config, enabled=progress)
+    normalized_progress_level = _normalize_progress_level(progress_level)
+    progress_cb = _make_docs_progress(
+        global_config, enabled=progress, progress_level=normalized_progress_level
+    )
+    render_markdown = not (
+        resolved_format == "markdown" and (output_path is not None or output_in_addon)
+    )
     if progress_cb is not None:
         progress_cb(
             "path_base",
@@ -749,6 +827,8 @@ def technical_documentation_command(
             path_prefix=effective_path_prefix,
             path_base_dir=effective_path_prefix,
             progress=progress_cb,
+            progress_level=normalized_progress_level,
+            render_markdown=render_markdown,
         )
     except module_not_found_error_cls as exc:
         print_command_error_result_fn(
@@ -886,6 +966,12 @@ def technical_documentation_command(
                     bundle.source_addon_root or bundle.addon_root
                 ).resolve(strict=False),
             )
+            quality = inspect_generated_markdown_quality(bundle.markdown)
+            metadata.warnings = sorted(
+                dict.fromkeys(
+                    list(metadata.warnings) + list(quality.get("warnings", []))
+                )
+            )
             if progress_cb is not None:
                 progress_cb(
                     "writing_metadata",
@@ -927,9 +1013,6 @@ def technical_documentation_status_command(
     if resolved_format not in {"text", "json"}:
         raise typer.BadParameter("format must be either 'text' or 'json'")
 
-    path_context = resolve_project_path_context(
-        config_path=global_config.config_path,
-    )
     path_context = resolve_project_path_context(
         config_path=global_config.config_path,
     )
@@ -999,7 +1082,10 @@ def technical_documentation_status_command(
                 "success": True,
                 "operation": "docs_technical_status",
                 "type": "technical_documentation_status",
-                "statuses": [status.to_dict() for status in statuses],
+                "statuses": [
+                    _status_to_payload_dict(status, include_files=include_files)
+                    for status in statuses
+                ],
             },
             result_type="technical_documentation_status",
         )
@@ -1075,7 +1161,7 @@ def technical_documentation_check_command(
                 "success": success,
                 "operation": "docs_technical_check",
                 "type": "technical_documentation_status",
-                "status": status.to_dict(),
+                "status": _status_to_payload_dict(status, include_files=include_files),
                 "include_files": include_files,
             },
             result_type="technical_documentation_status",
@@ -1130,7 +1216,11 @@ def technical_documentation_next_command(
                 "operation": "docs_technical_next",
                 "type": "technical_documentation_next",
                 "next_module": next_status.module if next_status is not None else None,
-                "status": next_status.to_dict() if next_status is not None else None,
+                "status": (
+                    _status_to_payload_dict(next_status, include_files=include_files)
+                    if next_status is not None
+                    else None
+                ),
                 "scanned_count": len(statuses),
                 "stale_count": stale_count,
                 "include_files": include_files,
@@ -1144,3 +1234,77 @@ def technical_documentation_next_command(
         typer.echo("No addon needs technical documentation.", err=True)
         return
     print(next_status.module)
+
+
+def technical_documentation_accept_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    force: bool,
+    resolve_command_env_config_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Accept a manually polished technical document without regenerating."""
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    path_context = resolve_project_path_context(config_path=global_config.config_path)
+    try:
+        resolved_target = resolve_addon_documentation_target(
+            env_config,
+            target,
+            path_base_dir=path_context.base_dir,
+        )
+    except FileNotFoundError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_accept",
+            str(exc),
+            error_type="NotFoundError",
+            details={"target": target},
+        )
+        raise typer.Exit(1) from None
+    doc_path = Path(resolved_target.addon_root) / "docs" / TECHNICAL_DOC_FILENAME
+    metadata_path = doc_path.with_name(TECHNICAL_DOC_METADATA_FILENAME)
+    try:
+        metadata = accept_reviewed_technical_documentation(
+            addon_root=resolved_target.addon_root,
+            module=resolved_target.module,
+            metadata_path=metadata_path,
+            reviewed_by="manual",
+            review_note="Accepted manually polished generated architecture document",
+            force=force,
+            path_base_dir=path_context.base_dir,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_accept",
+            str(exc),
+            error_type="ValidationError",
+            details={"target": target, "force": force},
+        )
+        raise typer.Exit(1) from None
+
+    write_technical_documentation_metadata(metadata, metadata_path)
+    status = inspect_technical_documentation_status(
+        addon_root=resolved_target.addon_root,
+        module=resolved_target.module,
+        path_base_dir=path_context.base_dir,
+    )
+    payload = output_result_to_json(
+        {
+            "success": True,
+            "operation": "docs_technical_accept",
+            "type": "technical_documentation",
+            "module": resolved_target.module,
+            "doc_path": path_context.relative(doc_path),
+            "metadata_path": path_context.relative(metadata_path),
+            "reviewed_at": metadata.reviewed_at,
+            "reviewed_by": metadata.reviewed_by,
+            "review_note": metadata.review_note,
+            "generation_count": metadata.generation_count,
+            "status": _status_to_payload_dict(status, include_files=False),
+        },
+        result_type="technical_documentation",
+    )
+    print(json.dumps(payload))

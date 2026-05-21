@@ -531,6 +531,7 @@ class OdooOperations:
         max_fields_per_model: int | None = None,
         path_prefix: str | None = None,
         progress: Callable[[str, dict[str, Any]], None] | None = None,
+        progress_level: str = "compact",
     ) -> AddonDocumentation:
         """Build one addon documentation bundle."""
         return self._documentation_service.build_addon_documentation(
@@ -546,6 +547,7 @@ class OdooOperations:
             max_fields_per_model=max_fields_per_model,
             path_prefix=path_prefix,
             progress=progress,
+            progress_level=progress_level,
         )
 
     def build_model_documentation(
@@ -623,6 +625,8 @@ class OdooOperations:
         path_prefix: str | None = None,
         path_base_dir: str | None = None,
         progress: Callable[[str, dict[str, Any]], None] | None = None,
+        progress_level: str = "compact",
+        render_markdown: bool = True,
     ) -> TechnicalDocumentation:
         """Build one technical-documentation bundle for an addon target."""
         return self._documentation_service.build_technical_documentation(
@@ -640,6 +644,8 @@ class OdooOperations:
             path_prefix=path_prefix,
             path_base_dir=path_base_dir,
             progress=progress,
+            progress_level=progress_level,
+            render_markdown=render_markdown,
         )
 
     def build_dependency_graph_documentation(
@@ -670,6 +676,7 @@ class OdooOperations:
         domain: list[Any] | tuple[Any, ...] | None = None,
         fields: list[str] | tuple[str, ...] | None = None,
         limit: int = 80,
+        include_total_count: bool = False,
         database: str | None = None,
         timeout: float = 30.0,
     ) -> QueryModelResult:
@@ -679,6 +686,7 @@ class OdooOperations:
             domain=domain,
             fields=fields,
             limit=limit,
+            include_total_count=include_total_count,
             database=database,
             timeout=timeout,
         )
@@ -750,18 +758,22 @@ class OdooOperations:
         self,
         models: list[str],
         *,
+        module_name: str | None = None,
         attributes: list[str] | tuple[str, ...] | None = None,
         view_types: list[str] | tuple[str, ...] | None = None,
         include_arch: bool = False,
+        progress: Callable[[str, dict[str, Any]], None] | None = None,
         database: str | None = None,
         timeout: float = 60.0,
     ) -> DocumentationRuntimeInventory:
         """Return batched runtime metadata for documentation generation."""
         return self._query_service.get_models_documentation_runtime(
             models=models,
+            module_name=module_name,
             attributes=attributes,
             view_types=view_types,
             include_arch=include_arch,
+            progress=progress,
             database=database,
             timeout=timeout,
         )

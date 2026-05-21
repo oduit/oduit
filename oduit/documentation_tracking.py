@@ -217,8 +217,64 @@ def build_technical_documentation_metadata(
         evidence_counts=_evidence_counts(bundle),
         source_snapshot=source_snapshot,
         document_snapshot=document_snapshot,
+        reviewed_at=None,
+        reviewed_by=None,
+        review_note=None,
         warnings=[],
     )
+
+
+def accept_reviewed_technical_documentation(
+    *,
+    addon_root: str | Path,
+    module: str,
+    metadata_path: str | Path,
+    reviewed_by: str,
+    review_note: str,
+    force: bool = False,
+    path_base_dir: Path | None = None,
+) -> TechnicalDocumentationMetadata:
+    """Accept a manually polished technical document without creating a generation."""
+
+    root = Path(addon_root).resolve(strict=False)
+    doc_path, _ = technical_doc_paths(root)
+    metadata, warnings = load_technical_documentation_metadata(metadata_path)
+    if metadata is None:
+        details = "; ".join(warnings) if warnings else "metadata is missing"
+        raise ValueError(f"Cannot accept reviewed documentation: {details}")
+    if not doc_path.exists():
+        raise FileNotFoundError(f"Technical documentation file is missing: {doc_path}")
+    if metadata.source_snapshot is None:
+        raise ValueError(
+            "Cannot accept reviewed documentation: missing source snapshot."
+        )
+    if metadata.document_snapshot is None:
+        raise ValueError(
+            "Cannot accept reviewed documentation: missing document snapshot."
+        )
+
+    storage_base = (
+        path_base_dir.resolve(strict=False)
+        if path_base_dir is not None
+        else Path.cwd().resolve(strict=False)
+    )
+    current_source = compute_source_snapshot(root, module=module)
+    if not force and current_source.fingerprint != metadata.source_snapshot.fingerprint:
+        raise ValueError(
+            "Source files changed since the last generation; "
+            "regenerate first or retry with --force."
+        )
+
+    metadata.document_snapshot = compute_document_snapshot(doc_path)
+    metadata.reviewed_at = utc_now_iso()
+    metadata.reviewed_by = reviewed_by
+    metadata.review_note = review_note
+    metadata.addon_root = _portable_path(root, base_dir=storage_base)
+    metadata.doc_path = _portable_path(doc_path, base_dir=storage_base)
+    metadata.metadata_path = _portable_path(
+        Path(metadata_path).resolve(strict=False), base_dir=storage_base
+    )
+    return metadata
 
 
 def write_technical_documentation_metadata(
@@ -322,6 +378,10 @@ def inspect_technical_documentation_status(
         generated_by_oduit=generated_by_oduit or True,
         created_at=metadata.created_at,
         last_generated_at=metadata.last_generated_at,
+        generation_count=metadata.generation_count,
+        generation_options=dict(metadata.generation_options or {}),
+        evidence_counts=dict(metadata.evidence_counts or {}),
+        template=metadata.template,
         warnings=warnings,
     )
 
@@ -515,6 +575,9 @@ def _metadata_from_dict(data: dict[str, Any]) -> TechnicalDocumentationMetadata 
         ),
         source_snapshot=source_snapshot,
         document_snapshot=document_snapshot,
+        reviewed_at=_optional_str(data.get("reviewed_at")),
+        reviewed_by=_optional_str(data.get("reviewed_by")),
+        review_note=_optional_str(data.get("review_note")),
         warnings=list(data.get("warnings", []))
         if isinstance(data.get("warnings"), list)
         else [],

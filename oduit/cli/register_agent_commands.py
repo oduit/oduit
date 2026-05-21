@@ -70,6 +70,9 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     addon_info_command_impl = context.implementations.addon_info_command_impl
     addon_doc_command_impl = context.implementations.addon_doc_command_impl
     technical_doc_command_impl = context.implementations.technical_doc_command_impl
+    technical_doc_accept_command_impl = (
+        context.implementations.technical_doc_accept_command_impl
+    )
     technical_doc_check_command_impl = (
         context.implementations.technical_doc_check_command_impl
     )
@@ -323,6 +326,11 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             "--progress/--no-progress",
             help="Print technical documentation generation progress to stderr.",
         ),
+        progress_level: str = typer.Option(
+            "compact",
+            "--progress-level",
+            help="Progress verbosity: compact, model, or debug.",
+        ),
         include_arch: bool = typer.Option(
             False, "--include-arch", help="Include raw view XML in payloads"
         ),
@@ -365,6 +373,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             timeout=timeout,
             source_only=source_only,
             progress=progress,
+            progress_level=progress_level,
             include_arch=include_arch,
             attributes=attributes,
             types=types,
@@ -379,6 +388,35 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             odoo_operations_cls=get_odoo_operations_cls(),
             module_not_found_error_cls=module_not_found_error_cls,
             safe_read_only=safe_read_only,
+            controlled_source_mutation=controlled_source_mutation,
+        )
+
+    @agent_app.command("technical-doc-accept")
+    def agent_technical_doc_accept(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Allow writing review acceptance metadata",
+        ),
+        force: bool = typer.Option(
+            False,
+            "--force",
+            help="Allow acceptance even when source changed since generation",
+        ),
+    ) -> None:
+        """Accept a manually reviewed architecture document snapshot."""
+        technical_doc_accept_command_impl(
+            ctx,
+            target=target,
+            allow_mutation=allow_mutation,
+            force=force,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_mutation_fn=agent_require_mutation_fn,
             controlled_source_mutation=controlled_source_mutation,
         )
 

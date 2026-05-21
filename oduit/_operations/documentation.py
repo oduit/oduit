@@ -242,6 +242,7 @@ class DocumentationOperationsService(OperationsService):
         scan_cache: SourceScanCache | None = None,
         render_markdown: bool = True,
         progress: ProgressCallback | None = None,
+        progress_level: str = "compact",
     ) -> AddonDocumentation:
         """Build one addon documentation bundle."""
         progress = progress or (lambda _stage, _data: None)
@@ -311,9 +312,11 @@ class DocumentationOperationsService(OperationsService):
         if not source_only:
             runtime_inventory = self.operations.get_models_documentation_runtime(
                 model_names,
+                module_name=module_name,
                 attributes=requested_field_attributes,
                 view_types=requested_view_types,
                 include_arch=include_arch,
+                progress=progress,
                 database=database,
                 timeout=timeout,
             )
@@ -349,6 +352,7 @@ class DocumentationOperationsService(OperationsService):
                 source_roots=source_roots,
                 scan_cache=scan_cache,
                 progress=progress,
+                progress_level=progress_level,
                 runtime_fields=(
                     runtime_inventory.models.get(model_name)
                     if runtime_inventory is not None
@@ -428,6 +432,8 @@ class DocumentationOperationsService(OperationsService):
         path_prefix: str | None = None,
         path_base_dir: str | None = None,
         progress: ProgressCallback | None = None,
+        progress_level: str = "compact",
+        render_markdown: bool = True,
     ) -> TechnicalDocumentation:
         """Build one arc42 technical-documentation bundle for an addon target."""
         progress = progress or (lambda _stage, _data: None)
@@ -464,6 +470,7 @@ class DocumentationOperationsService(OperationsService):
             render_markdown=False,
             path_prefix=None,
             progress=progress,
+            progress_level=progress_level,
         )
         warnings = _unique_strings(
             list(resolved_target.warnings)
@@ -486,6 +493,12 @@ class DocumentationOperationsService(OperationsService):
             warnings=warnings,
             remediation=remediation,
         )
+        if not render_markdown:
+            _apply_path_prefix(
+                bundle,
+                path_prefix=_normalize_path_prefix(path_prefix),
+            )
+            return bundle
         render_bundle = copy.deepcopy(bundle)
         _apply_path_prefix(
             render_bundle,
@@ -512,6 +525,7 @@ class DocumentationOperationsService(OperationsService):
         source_roots: list[tuple[str, str]] | None = None,
         scan_cache: SourceScanCache | None = None,
         progress: ProgressCallback | None = None,
+        progress_level: str = "compact",
         runtime_fields: ModelFieldsResult | None = None,
         runtime_views: Any | None = None,
     ) -> ModelDocumentation:
@@ -565,7 +579,10 @@ class DocumentationOperationsService(OperationsService):
             )
 
         if not source_only:
-            progress("model_runtime_fields", {"model": model})
+            if field_metadata is None:
+                progress("model_runtime_fields", {"model": model})
+            elif progress_level == "debug":
+                progress("model_runtime_fields_cached", {"model": model})
             if field_metadata is None:
                 field_metadata = self.operations.get_model_fields(
                     model,
@@ -583,7 +600,10 @@ class DocumentationOperationsService(OperationsService):
                     "Verify database access if runtime field metadata is required."
                 )
 
-            progress("model_runtime_views", {"model": model})
+            if view_inventory is None:
+                progress("model_runtime_views", {"model": model})
+            elif progress_level == "debug":
+                progress("model_runtime_views_cached", {"model": model})
             if view_inventory is None:
                 view_inventory = self.operations.get_model_views(
                     model,

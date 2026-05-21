@@ -4,6 +4,7 @@ from pathlib import Path
 from oduit.api_models import AddonDocTarget, TechnicalDocumentation
 from oduit.documentation_tracking import (
     TECHNICAL_DOC_METADATA_FILENAME,
+    accept_reviewed_technical_documentation,
     build_technical_documentation_metadata,
     compute_document_snapshot,
     compute_source_snapshot,
@@ -181,6 +182,51 @@ def test_absolute_metadata_remains_valid_when_status_uses_project_base(
 
     assert status.status == "up_to_date"
     assert status.warnings == []
+    assert status.generation_count == metadata.generation_count
+    assert status.template == metadata.template
+    assert status.generation_options == metadata.generation_options
+    assert status.evidence_counts == metadata.evidence_counts
+
+
+def test_accept_reviewed_documentation_updates_snapshot_without_generation_increment(
+    tmp_path: Path,
+) -> None:
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "architecture.md"
+    metadata_path = docs_dir / TECHNICAL_DOC_METADATA_FILENAME
+    doc_path.write_text("# Architecture Documentation: my_partner\n")
+
+    metadata = build_technical_documentation_metadata(
+        bundle=_technical_bundle(addon_root),
+        doc_path=doc_path,
+        metadata_path=metadata_path,
+        generation_options={},
+        source_addon_root=addon_root,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+    baseline_generation_count = metadata.generation_count
+    doc_path.write_text(doc_path.read_text() + "\nManual polish.\n")
+
+    accepted = accept_reviewed_technical_documentation(
+        addon_root=addon_root,
+        module="my_partner",
+        metadata_path=metadata_path,
+        reviewed_by="manual",
+        review_note="Accepted manually polished generated architecture document",
+    )
+    write_technical_documentation_metadata(accepted, metadata_path)
+    status = inspect_technical_documentation_status(
+        addon_root=addon_root,
+        module="my_partner",
+    )
+
+    assert accepted.generation_count == baseline_generation_count
+    assert accepted.reviewed_at is not None
+    assert accepted.reviewed_by == "manual"
+    assert status.status == "up_to_date"
 
 
 def test_status_selection_prefers_project_relative_directory_over_same_basename(

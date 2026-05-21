@@ -41,6 +41,7 @@ class OdooQuery:
         domain: list[Any] | tuple[Any, ...] | None = None,
         fields: list[str] | tuple[str, ...] | None = None,
         limit: int = 80,
+        include_total_count: bool = False,
         database: str | None = None,
         timeout: float = 30.0,
     ) -> dict[str, Any]:
@@ -67,6 +68,7 @@ class OdooQuery:
             domain=list(domain or []),
             fields=validated_fields,
             limit=validated_limit,
+            include_total_count=include_total_count,
         )
         result = self._executor._execute_generated_code(
             query_code,
@@ -81,6 +83,7 @@ class OdooQuery:
             domain=list(domain or []),
             fields=validated_fields,
             limit=validated_limit,
+            include_total_count=include_total_count,
             database=database,
         )
 
@@ -373,7 +376,20 @@ class OdooQuery:
         domain: list[Any],
         fields: list[str] | None,
         limit: int,
+        include_total_count: bool = False,
     ) -> str:
+        total_count_lines = (
+            [
+                "_oduit_total_count = _oduit_model.search_count(_oduit_domain)",
+                "_oduit_limited = _oduit_total_count > len(_oduit_records)",
+            ]
+            if include_total_count
+            else [
+                "_oduit_total_count = None",
+                "_oduit_limited = len(_oduit_records) >= "
+                f"{limit} if {limit} > 0 else False",
+            ]
+        )
         return "\n".join(
             [
                 f"_oduit_model = env[{model!r}]",
@@ -382,9 +398,12 @@ class OdooQuery:
                 f"_oduit_records = _oduit_model.search(_oduit_domain, limit={limit})",
                 "_oduit_rows = _oduit_records.read(_oduit_fields) "
                 "if _oduit_fields is not None else _oduit_records.read()",
+                *total_count_lines,
                 "{",
                 f"    'model': {model!r},",
                 "    'count': len(_oduit_records),",
+                "    'total_count': _oduit_total_count,",
+                "    'limited': _oduit_limited,",
                 "    'ids': _oduit_records.ids,",
                 "    'records': _oduit_rows,",
                 "    'fields': _oduit_fields,",

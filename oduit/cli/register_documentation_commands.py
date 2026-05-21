@@ -12,6 +12,7 @@ from .commands.documentation import (
     addons_documentation_command,
     dependency_graph_documentation_command,
     model_documentation_command,
+    technical_documentation_accept_command,
     technical_documentation_check_command,
     technical_documentation_command,
     technical_documentation_next_command,
@@ -409,6 +410,11 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             "--progress/--no-progress",
             help="Print progress updates to stderr while generating documentation",
         ),
+        progress_level: str = typer.Option(
+            "compact",
+            "--progress-level",
+            help="Progress verbosity: compact, model, or debug",
+        ),
         format_name: str | None = typer.Option(
             None,
             "--format",
@@ -431,6 +437,7 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             force=force,
             format_name=format_name,
             progress=progress,
+            progress_level=progress_level,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
             path_prefix=path_prefix,
@@ -507,6 +514,25 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             format_name=format_name,
             include_files=include_files,
             fail_on_stale=fail_on_stale,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @docs_app.command("technical-accept")
+    def docs_technical_accept_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        force: bool = typer.Option(
+            False,
+            "--force",
+            help="Allow acceptance even when source changed since generation",
+        ),
+    ) -> None:
+        """Accept a manually reviewed architecture document snapshot."""
+        technical_documentation_accept_command(
+            ctx,
+            target=target,
+            force=force,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             print_command_error_result_fn=print_command_error_result_fn,
         )
