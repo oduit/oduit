@@ -185,9 +185,10 @@ oduit --env dev export-lang sale --allow-mutation --language de_DE
 Addon-local Arc42 docs can now be tracked with a durable sidecar:
 
 ```bash
-oduit --env dev docs technical @addons/has_base --output-in-addon
-oduit --env dev docs technical-status @addons/has_base
-oduit --env dev docs technical-status --only-stale
+oduit --env dev docs technical @addons/has_base --output-in-addon --source-only
+oduit --env dev docs technical-check @addons/has_base --include-files
+oduit --env dev docs technical-next addons
+oduit --env dev docs technical-status --select-dir addons --only-stale
 ```
 
 Writing addon-local technical docs creates both:
@@ -197,7 +198,17 @@ Writing addon-local technical docs creates both:
 <addon>/docs/architecture.oduit.json
 ```
 
-The sidecar records the first tracked generation time, the last generation time, and whether the document or addon source changed after generation.
+Long-running human `docs technical` runs print compact progress updates to stderr.
+JSON stdout stays machine-parseable, and agent commands remain JSON-only.
+
+The sidecar records the first tracked generation time, the last generation
+time, whether the document or addon source changed after generation, and stores
+paths relative to the project base (`.oduit.toml` directory first, then git
+root, then cwd fallback).
+
+Use `technical-check` as the CI/script-friendly freshness gate for one addon.
+Use `technical-next` to pick the next addon that still needs documentation
+attention.
 
 Runtime DB mutation policy is controlled by explicit config flags:
 

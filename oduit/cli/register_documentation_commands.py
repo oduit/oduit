@@ -12,7 +12,9 @@ from .commands.documentation import (
     addons_documentation_command,
     dependency_graph_documentation_command,
     model_documentation_command,
+    technical_documentation_check_command,
     technical_documentation_command,
+    technical_documentation_next_command,
     technical_documentation_status_command,
 )
 from .runtime_context import AppRegistrationContext
@@ -402,6 +404,11 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             "--force",
             help="Overwrite an existing documentation file",
         ),
+        progress: bool | None = typer.Option(
+            None,
+            "--progress/--no-progress",
+            help="Print progress updates to stderr while generating documentation",
+        ),
         format_name: str | None = typer.Option(
             None,
             "--format",
@@ -423,6 +430,7 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             output_in_addon=output_in_addon,
             force=force,
             format_name=format_name,
+            progress=progress,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
             path_prefix=path_prefix,
@@ -467,6 +475,65 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             format_name=format_name,
             select_dir=select_dir,
             only_stale=only_stale,
+            include_files=include_files,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @docs_app.command("technical-check")
+    def docs_technical_check_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        format_name: str | None = typer.Option(
+            None,
+            "--format",
+            help="Output format: text or json",
+        ),
+        include_files: bool = typer.Option(
+            False,
+            "--include-files",
+            help="Include changed, added, and removed file lists",
+        ),
+        fail_on_stale: bool = typer.Option(
+            True,
+            "--fail-on-stale/--no-fail-on-stale",
+            help="Exit non-zero when the tracked documentation is stale",
+        ),
+    ) -> None:
+        """Check one addon's technical-documentation freshness."""
+        technical_documentation_check_command(
+            ctx,
+            target=target,
+            format_name=format_name,
+            include_files=include_files,
+            fail_on_stale=fail_on_stale,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @docs_app.command("technical-next")
+    def docs_technical_next_command(
+        ctx: typer.Context,
+        path: str | None = typer.Argument(
+            None,
+            help="Optional addon root or addons collection path",
+        ),
+        format_name: str | None = typer.Option(
+            None,
+            "--format",
+            help="Output format: text or json",
+        ),
+        include_files: bool = typer.Option(
+            False,
+            "--include-files",
+            help="Include the selected status details in structured output",
+        ),
+    ) -> None:
+        """Return the next addon that needs technical-documentation work."""
+        technical_documentation_next_command(
+            ctx,
+            path=path,
+            format_name=format_name,
             include_files=include_files,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             print_command_error_result_fn=print_command_error_result_fn,

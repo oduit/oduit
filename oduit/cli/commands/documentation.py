@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +21,12 @@ from ...documentation_tracking import (
     inspect_all_technical_documentation_statuses,
     inspect_technical_documentation_status,
     load_technical_documentation_metadata,
+    select_next_technical_doc_status,
+    technical_doc_needs_action,
     utc_now_iso,
     write_technical_documentation_metadata,
 )
+from ...project_paths import resolve_project_path_context
 from ...technical_documentation import (
     resolve_addon_documentation_target,
     resolve_technical_doc_output_path,
@@ -99,6 +103,7 @@ def _emit_document_output(
     data: dict[str, Any],
     rendered_content: str,
     output_path: Path | None,
+    output_path_value: str | None = None,
 ) -> None:
     if output_path is not None:
         _write_output(rendered_content, output_path)
@@ -109,7 +114,9 @@ def _emit_document_output(
                 "success": True,
                 "operation": operation,
                 "format": format_name,
-                "output_path": str(output_path) if output_path is not None else None,
+                "output_path": output_path_value
+                if output_path_value is not None
+                else (str(output_path) if output_path is not None else None),
                 **data,
             },
             result_type=result_type,
@@ -123,17 +130,67 @@ def _emit_document_output(
     print(rendered_content)
 
 
+def _progress_source_label(source: str) -> str:
+    return {
+        "explicit": "explicit",
+        "local_config": ".oduit.toml",
+        "git": "git",
+        "cwd": "cwd",
+    }.get(source, source)
+
+
+def _format_progress_message(stage: str, data: dict[str, Any]) -> str | None:
+    module = data.get("module")
+    if stage == "path_base":
+        return (
+            "resolving project path base: "
+            f"{data.get('display_base', '.')} "
+            f"({_progress_source_label(str(data.get('source', 'cwd')))})"
+        )
+    if stage == "resolve_target":
+        return f"resolving addon target: {data.get('target', '')}".rstrip()
+    if stage == "technical_inventory" and module:
+        return f"collecting source inventory: {module}"
+    if stage == "dependency_graph" and module:
+        return f"collecting dependency and model evidence: {module}"
+    if stage == "render" and module:
+        return f"rendering arc42 markdown: {module}"
+    if stage == "writing":
+        return f"writing: {data.get('path', '')}".rstrip()
+    if stage == "writing_metadata":
+        return f"writing metadata: {data.get('path', '')}".rstrip()
+    return None
+
+
+def _make_docs_progress(global_config: Any, *, enabled: bool | None) -> Any:
+    if enabled is False:
+        return None
+    if enabled is None:
+        if getattr(getattr(global_config, "format", None), "value", None) == "json":
+            return None
+        if not sys.stderr.isatty():
+            return None
+
+    def progress(stage: str, data: dict[str, Any]) -> None:
+        message = _format_progress_message(stage, data)
+        if message:
+            typer.echo(f"[oduit docs] {message}", err=True)
+
+    return progress
+
+
 def _generation_options(
     *,
     source_only: bool,
     include_arch: bool,
     path_prefix: str | None,
+    path_base_source: str | None,
     max_models: int | None,
     max_fields_per_model: int | None,
     field_attributes: list[str],
     view_types: list[str],
 ) -> dict[str, Any]:
-    return {
+    options = {
         "source_only": source_only,
         "include_arch": include_arch,
         "path_prefix": path_prefix,
@@ -142,6 +199,9 @@ def _generation_options(
         "field_attributes": list(field_attributes),
         "view_types": list(view_types),
     }
+    if path_base_source is not None:
+        options["path_base"] = {"path": ".", "source": path_base_source}
+    return options
 
 
 def _addon_local_metadata_output_path(
@@ -151,6 +211,7 @@ def _addon_local_metadata_output_path(
         return None
     addon_output_path = resolve_technical_doc_output_path(
         bundle.target,
+        addon_root=getattr(bundle, "source_addon_root", None),
         output=None,
         output_in_addon=True,
     )
@@ -236,6 +297,19 @@ def _render_status_text(statuses: list[Any], *, include_files: bool) -> str:
                     f"removed: {_summarize_paths(status.removed_files)}",
                 ]
             )
+    return "\n".join(lines)
+
+
+def _render_single_status_text(status: Any, *, include_files: bool) -> str:
+    lines = [f"{status.module}: {status.status}"]
+    if include_files:
+        lines.extend(
+            [
+                f"changed: {_summarize_paths(status.changed_files)}",
+                f"added: {_summarize_paths(status.added_files)}",
+                f"removed: {_summarize_paths(status.removed_files)}",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -606,6 +680,7 @@ def technical_documentation_command(
     output_in_addon: bool,
     force: bool,
     format_name: str | None,
+    progress: bool | None,
     max_models: int | None,
     max_fields_per_model: int | None,
     path_prefix: str | None,
@@ -625,6 +700,20 @@ def technical_documentation_command(
 
     field_attributes = _parse_csv_items(attributes)
     view_types = _parse_csv_items(types)
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    effective_path_prefix = path_context.base_dir.as_posix()
+    progress_cb = _make_docs_progress(global_config, enabled=progress)
+    if progress_cb is not None:
+        progress_cb(
+            "path_base",
+            {
+                "display_base": path_context.relative(path_context.base_dir),
+                "source": path_context.source,
+            },
+        )
     ops = build_odoo_operations_fn(global_config)
     try:
         bundle = ops.build_technical_documentation(
@@ -639,7 +728,9 @@ def technical_documentation_command(
             view_types=view_types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
-            path_prefix=path_prefix,
+            path_prefix=effective_path_prefix,
+            path_base_dir=effective_path_prefix,
+            progress=progress_cb,
         )
     except module_not_found_error_cls as exc:
         print_command_error_result_fn(
@@ -681,11 +772,17 @@ def technical_documentation_command(
     resolved_output_path = (
         resolve_technical_doc_output_path(
             bundle.target,
+            addon_root=getattr(bundle, "source_addon_root", None),
             output=output_path,
             output_in_addon=output_in_addon,
         )
         if bundle.target is not None
         else output_path
+    )
+    display_output_path = (
+        path_context.relative(resolved_output_path)
+        if resolved_output_path is not None
+        else None
     )
 
     if resolved_output_path is not None and bundle.target is not None:
@@ -732,6 +829,7 @@ def technical_documentation_command(
             data=bundle.to_dict(),
             rendered_content=rendered_content,
             output_path=resolved_output_path,
+            output_path_value=display_output_path,
         )
         return
 
@@ -747,6 +845,8 @@ def technical_documentation_command(
             bundle.output_path = f"docs/{TECHNICAL_DOC_FILENAME}"
             bundle.metadata_path = f"docs/{TECHNICAL_DOC_METADATA_FILENAME}"
             bundle.markdown = render_arc42_addon_markdown(bundle)
+            if progress_cb is not None:
+                progress_cb("writing", {"path": display_output_path})
             _write_output(bundle.markdown, resolved_output_path)
             metadata = build_technical_documentation_metadata(
                 bundle=bundle,
@@ -755,20 +855,35 @@ def technical_documentation_command(
                 generation_options=_generation_options(
                     source_only=source_only,
                     include_arch=include_arch,
-                    path_prefix=path_prefix,
+                    path_prefix=".",
+                    path_base_source=path_context.source,
                     max_models=max_models,
                     max_fields_per_model=max_fields_per_model,
                     field_attributes=field_attributes,
                     view_types=view_types,
                 ),
                 previous_metadata=previous_metadata,
+                path_base_dir=path_context.base_dir,
+                source_addon_root=Path(
+                    bundle.source_addon_root or bundle.addon_root
+                ).resolve(strict=False),
             )
+            if progress_cb is not None:
+                progress_cb(
+                    "writing_metadata",
+                    {"path": path_context.relative(metadata_output_path)},
+                )
             write_technical_documentation_metadata(metadata, metadata_output_path)
-            print(f"Wrote markdown documentation to {resolved_output_path}")
-            print(f"Wrote documentation metadata to {metadata_output_path}")
+            print(f"Wrote markdown documentation to {display_output_path}")
+            print(
+                "Wrote documentation metadata to "
+                f"{path_context.relative(metadata_output_path)}"
+            )
             return
+        if progress_cb is not None:
+            progress_cb("writing", {"path": display_output_path})
         _write_output(bundle.markdown, resolved_output_path)
-        print(f"Wrote markdown documentation to {resolved_output_path}")
+        print(f"Wrote markdown documentation to {display_output_path}")
         return
     print(bundle.markdown)
 
@@ -794,9 +909,19 @@ def technical_documentation_status_command(
     if resolved_format not in {"text", "json"}:
         raise typer.BadParameter("format must be either 'text' or 'json'")
 
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+    )
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+    )
     if target is not None:
         try:
-            resolved_target = resolve_addon_documentation_target(env_config, target)
+            resolved_target = resolve_addon_documentation_target(
+                env_config,
+                target,
+                path_base_dir=path_context.base_dir,
+            )
         except FileNotFoundError as exc:
             print_command_error_result_fn(
                 global_config,
@@ -828,12 +953,14 @@ def technical_documentation_status_command(
             inspect_technical_documentation_status(
                 addon_root=resolved_target.addon_root,
                 module=resolved_target.module,
+                path_base_dir=path_context.base_dir,
             )
         ]
     else:
         statuses = inspect_all_technical_documentation_statuses(
             addons_path=str(env_config["addons_path"]),
             select_dir=select_dir,
+            path_base_dir=path_context.base_dir,
         )
         if select_dir is not None and not statuses:
             print_command_error_result_fn(
@@ -865,3 +992,137 @@ def technical_documentation_status_command(
         print("Technical documentation status\n\nNo matching addons.")
         return
     print(_render_status_text(statuses, include_files=include_files))
+
+
+def technical_documentation_check_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    format_name: str | None,
+    include_files: bool,
+    fail_on_stale: bool,
+    resolve_command_env_config_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Check one addon's technical-documentation freshness state."""
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    path_context = resolve_project_path_context(config_path=global_config.config_path)
+    resolved_format = _resolve_status_format(global_config, format_name)
+    if resolved_format not in {"text", "json"}:
+        raise typer.BadParameter("format must be either 'text' or 'json'")
+
+    try:
+        resolved_target = resolve_addon_documentation_target(
+            env_config,
+            target,
+            path_base_dir=path_context.base_dir,
+        )
+    except FileNotFoundError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_check",
+            str(exc),
+            error_type="NotFoundError",
+            details={"target": target},
+            remediation=[
+                "Use a valid addon name or a path that resolves to an addon root."
+            ],
+        )
+        raise typer.Exit(1) from None
+
+    status = inspect_technical_documentation_status(
+        addon_root=resolved_target.addon_root,
+        module=resolved_target.module,
+        path_base_dir=path_context.base_dir,
+    )
+    if resolved_target.target_kind == "module" and resolved_target.ambiguous:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_check",
+            "Refusing to inspect an ambiguous module-name resolution.",
+            error_type="AmbiguousTargetError",
+            details={
+                "target": target,
+                "candidate_addon_roots": resolved_target.candidate_addon_roots,
+            },
+            remediation=["Use an explicit addon path such as `@addons/has_base`."],
+        )
+        raise typer.Exit(1) from None
+    success = status.up_to_date or not fail_on_stale
+
+    if resolved_format == "json":
+        payload = output_result_to_json(
+            {
+                "success": success,
+                "operation": "docs_technical_check",
+                "type": "technical_documentation_status",
+                "status": status.to_dict(),
+                "include_files": include_files,
+            },
+            result_type="technical_documentation_status",
+        )
+        print(json.dumps(payload))
+    else:
+        print(_render_single_status_text(status, include_files=include_files))
+
+    if not success:
+        raise typer.Exit(1)
+
+
+def technical_documentation_next_command(
+    ctx: typer.Context,
+    *,
+    path: str | None,
+    format_name: str | None,
+    include_files: bool,
+    resolve_command_env_config_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Return the next addon that needs technical-documentation work."""
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    path_context = resolve_project_path_context(config_path=global_config.config_path)
+    resolved_format = _resolve_status_format(global_config, format_name)
+    if resolved_format not in {"text", "json"}:
+        raise typer.BadParameter("format must be either 'text' or 'json'")
+
+    statuses = inspect_all_technical_documentation_statuses(
+        addons_path=str(env_config["addons_path"]),
+        select_dir=path,
+        path_base_dir=path_context.base_dir,
+    )
+    if path is not None and not statuses:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_next",
+            f"No addons found in directory '{path}'",
+            error_type="NotFoundError",
+            details={"path": path},
+        )
+        raise typer.Exit(1) from None
+
+    next_status = select_next_technical_doc_status(statuses)
+    stale_count = sum(1 for status in statuses if technical_doc_needs_action(status))
+
+    if resolved_format == "json":
+        payload = output_result_to_json(
+            {
+                "success": True,
+                "operation": "docs_technical_next",
+                "type": "technical_documentation_next",
+                "next_module": next_status.module if next_status is not None else None,
+                "status": next_status.to_dict() if next_status is not None else None,
+                "scanned_count": len(statuses),
+                "stale_count": stale_count,
+                "include_files": include_files,
+            },
+            result_type="technical_documentation_next",
+        )
+        print(json.dumps(payload))
+        return
+
+    if next_status is None:
+        typer.echo("No addon needs technical documentation.", err=True)
+        return
+    print(next_status.module)

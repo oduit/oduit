@@ -640,6 +640,7 @@ class TechnicalDocumentation(DictModel):
 
     module: str
     addon_root: str
+    source_addon_root: str | None = None
     template: str = "arc42"
     target: AddonDocTarget | None = None
     output_path: str | None = None

@@ -125,6 +125,7 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "addon-documentation.schema.json",
         SCHEMAS / "agent" / "technical-documentation.schema.json",
         SCHEMAS / "agent" / "technical-documentation-status.schema.json",
+        SCHEMAS / "agent" / "technical-documentation-next.schema.json",
         SCHEMAS / "agent" / "addon-inspection.schema.json",
         SCHEMAS / "agent" / "update-plan.schema.json",
         SCHEMAS / "agent" / "addon-change-context.schema.json",
@@ -515,6 +516,18 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
                         "agent",
                         "technical-doc-status",
                         "my_partner",
+                    ],
+                ).output
+            ),
+            "technical-documentation-next.schema.json": json.loads(
+                runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "technical-doc-next",
+                        str(addons_dir),
                     ],
                 ).output
             ),
@@ -1047,3 +1060,71 @@ def test_agent_technical_doc_status_payload_validates_against_schema(
     _validate_schema(envelope_schema, payload)
     _validate_schema(command_schema, payload)
     assert payload["operation"] == "technical_doc_status"
+
+
+def test_agent_technical_doc_check_payload_validates_against_status_schema(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "my_partner")
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc-check",
+                "my_partner",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    envelope_schema = json.loads((SCHEMAS / "result-envelope.schema.json").read_text())
+    command_schema = json.loads(
+        (SCHEMAS / "agent" / "technical-documentation-status.schema.json").read_text()
+    )
+    _validate_schema(envelope_schema, payload)
+    _validate_schema(command_schema, payload)
+    assert payload["operation"] == "technical_doc_check"
+
+
+def test_agent_technical_doc_next_payload_validates_against_schema(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    _make_addon(addons_dir, "my_partner")
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc-next",
+                str(addons_dir),
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    envelope_schema = json.loads((SCHEMAS / "result-envelope.schema.json").read_text())
+    command_schema = json.loads(
+        (SCHEMAS / "agent" / "technical-documentation-next.schema.json").read_text()
+    )
+    _validate_schema(envelope_schema, payload)
+    _validate_schema(command_schema, payload)
+    assert payload["operation"] == "technical_doc_next"

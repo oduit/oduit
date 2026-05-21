@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -15,9 +16,12 @@ from ...documentation_tracking import (
     inspect_all_technical_documentation_statuses,
     inspect_technical_documentation_status,
     load_technical_documentation_metadata,
+    select_next_technical_doc_status,
+    technical_doc_needs_action,
     utc_now_iso,
     write_technical_documentation_metadata,
 )
+from ...project_paths import resolve_project_path_context
 from ...technical_documentation import (
     resolve_addon_documentation_target,
     resolve_technical_doc_output_path,
@@ -65,12 +69,13 @@ def _generation_options(
     source_only: bool,
     include_arch: bool,
     path_prefix: str | None,
+    path_base_source: str | None,
     max_models: int | None,
     max_fields_per_model: int | None,
     field_attributes: list[str],
     view_types: list[str],
 ) -> dict[str, Any]:
-    return {
+    options = {
         "source_only": source_only,
         "include_arch": include_arch,
         "path_prefix": path_prefix,
@@ -79,6 +84,9 @@ def _generation_options(
         "field_attributes": list(field_attributes),
         "view_types": list(view_types),
     }
+    if path_base_source is not None:
+        options["path_base"] = {"path": ".", "source": path_base_source}
+    return options
 
 
 def agent_technical_doc_command(
@@ -142,6 +150,11 @@ def agent_technical_doc_command(
         if types
         else []
     )
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    effective_path_prefix = path_context.base_dir.as_posix()
 
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
     try:
@@ -157,7 +170,9 @@ def agent_technical_doc_command(
             view_types=view_types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
-            path_prefix=path_prefix,
+            path_prefix=effective_path_prefix,
+            path_base_dir=effective_path_prefix,
+            progress=None,
         )
     except module_not_found_error_cls as exc:
         agent_fail_fn(
@@ -196,6 +211,7 @@ def agent_technical_doc_command(
     assert bundle.target is not None
     output_path = resolve_technical_doc_output_path(
         bundle.target,
+        addon_root=getattr(bundle, "source_addon_root", None),
         output=None,
         output_in_addon=True,
     )
@@ -206,8 +222,8 @@ def agent_technical_doc_command(
         "module": bundle.module,
         "addon_root": bundle.addon_root,
         "template": bundle.template,
-        "would_write": output_path.as_posix(),
-        "would_write_metadata": metadata_path.as_posix(),
+        "would_write": path_context.relative(output_path),
+        "would_write_metadata": path_context.relative(metadata_path),
         "section_count": len(_section_titles(bundle)),
         "sections": _section_titles(bundle),
         "preview": bundle.markdown[:500],
@@ -298,24 +314,30 @@ def agent_technical_doc_command(
         generation_options=_generation_options(
             source_only=source_only,
             include_arch=include_arch,
-            path_prefix=path_prefix,
+            path_prefix=".",
+            path_base_source=path_context.source,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
             field_attributes=field_attributes,
             view_types=view_types,
         ),
         previous_metadata=previous_metadata,
+        path_base_dir=path_context.base_dir,
+        source_addon_root=Path(bundle.source_addon_root or bundle.addon_root).resolve(
+            strict=False
+        ),
     )
     write_technical_documentation_metadata(metadata, metadata_path)
     status = inspect_technical_documentation_status(
-        addon_root=bundle.addon_root,
+        addon_root=bundle.source_addon_root or bundle.addon_root,
         module=bundle.module,
+        path_base_dir=path_context.base_dir,
     )
     write_payload = {
         "module": bundle.module,
         "addon_root": bundle.addon_root,
-        "output_path": output_path.as_posix(),
-        "metadata_path": metadata_path.as_posix(),
+        "output_path": path_context.relative(output_path),
+        "metadata_path": path_context.relative(metadata_path),
         "template": bundle.template,
         "created": not existed_before,
         "overwritten": existed_before,
@@ -377,11 +399,15 @@ def agent_technical_doc_status_command(
             details={"target": target, "select_dir": select_dir},
         )
 
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+    )
     if target is not None:
         try:
             resolved_target = resolve_addon_documentation_target(
                 global_config.env_config,
                 target,
+                path_base_dir=path_context.base_dir,
             )
         except FileNotFoundError as exc:
             agent_fail_fn(
@@ -412,12 +438,14 @@ def agent_technical_doc_status_command(
             inspect_technical_documentation_status(
                 addon_root=resolved_target.addon_root,
                 module=resolved_target.module,
+                path_base_dir=path_context.base_dir,
             )
         ]
     else:
         statuses = inspect_all_technical_documentation_statuses(
             addons_path=str(global_config.env_config["addons_path"]),
             select_dir=select_dir,
+            path_base_dir=path_context.base_dir,
         )
         if select_dir is not None and not statuses:
             agent_fail_fn(
@@ -436,6 +464,132 @@ def agent_technical_doc_status_command(
         result_type,
         {
             "statuses": [status.to_dict() for status in statuses],
+            "include_files": include_files,
+        },
+        warnings=[],
+        remediation=[],
+        read_only=True,
+        safety_level=safe_read_only,
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_technical_doc_check_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    include_files: bool,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Return freshness information for one technical-documentation target."""
+
+    operation = "technical_doc_check"
+    result_type = "technical_documentation_status"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    path_context = resolve_project_path_context(config_path=global_config.config_path)
+    try:
+        resolved_target = resolve_addon_documentation_target(
+            global_config.env_config,
+            target,
+            path_base_dir=path_context.base_dir,
+        )
+    except FileNotFoundError as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="NotFoundError",
+            details={"target": target},
+            remediation=[
+                "Use a valid addon name or a path that resolves to an addon root."
+            ],
+        )
+
+    status = inspect_technical_documentation_status(
+        addon_root=resolved_target.addon_root,
+        module=resolved_target.module,
+        path_base_dir=path_context.base_dir,
+    )
+    if resolved_target.target_kind == "module" and resolved_target.ambiguous:
+        agent_fail_fn(
+            operation,
+            result_type,
+            "Refusing to inspect an ambiguous module-name resolution.",
+            error_type="AmbiguousTargetError",
+            details={
+                "target": target,
+                "candidate_addon_roots": resolved_target.candidate_addon_roots,
+            },
+            remediation=["Use an explicit addon path such as `@addons/has_base`."],
+        )
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        {
+            "status": status.to_dict(),
+            "include_files": include_files,
+        },
+        warnings=list(status.warnings),
+        remediation=list(status.remediation),
+        read_only=True,
+        safety_level=safe_read_only,
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_technical_doc_next_command(
+    ctx: typer.Context,
+    *,
+    path: str | None,
+    include_files: bool,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    safe_read_only: str,
+) -> None:
+    """Return the next addon that needs technical-documentation work."""
+
+    operation = "technical_doc_next"
+    result_type = "technical_documentation_next"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+
+    path_context = resolve_project_path_context(config_path=global_config.config_path)
+    statuses = inspect_all_technical_documentation_statuses(
+        addons_path=str(global_config.env_config["addons_path"]),
+        select_dir=path,
+        path_base_dir=path_context.base_dir,
+    )
+    if path is not None and not statuses:
+        agent_fail_fn(
+            operation,
+            result_type,
+            f"No addons found in directory '{path}'",
+            error_type="NotFoundError",
+            details={"path": path},
+        )
+
+    next_status = select_next_technical_doc_status(statuses)
+    stale_count = sum(1 for status in statuses if technical_doc_needs_action(status))
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        {
+            "next_module": next_status.module if next_status is not None else None,
+            "status": next_status.to_dict() if next_status is not None else None,
+            "scanned_count": len(statuses),
+            "stale_count": stale_count,
             "include_files": include_files,
         },
         warnings=[],

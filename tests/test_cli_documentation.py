@@ -1,4 +1,7 @@
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -112,6 +115,7 @@ def _technical_documentation_bundle(addon_root: Path) -> TechnicalDocumentation:
     return TechnicalDocumentation(
         module="my_partner",
         addon_root=str(addon_root),
+        source_addon_root=str(addon_root),
         target=AddonDocTarget(
             module="my_partner",
             addon_root=str(addon_root),
@@ -120,6 +124,14 @@ def _technical_documentation_bundle(addon_root: Path) -> TechnicalDocumentation:
         ),
         markdown="# Architecture Documentation: my_partner\n",
     )
+
+
+def _local_loader(config: dict[str, str], root: Path) -> MagicMock:
+    loader = MagicMock()
+    loader.has_local_config.return_value = True
+    loader.get_local_config_path.return_value = str(root / ".oduit.toml")
+    loader.load_local_config.return_value = config
+    return loader
 
 
 def _make_technical_addon_root(addon_root: Path) -> None:
@@ -894,3 +906,211 @@ def test_docs_technical_status_reports_untracked_generated_doc(tmp_path: Path) -
     payload = json.loads(result.output)
     status = payload["statuses"][0]
     assert status["status"] == "untracked"
+
+
+def test_docs_technical_writes_relative_metadata_when_local_config_base_exists(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_technical_addon_root(addon_root)
+    (tmp_path / ".oduit.toml").write_text('[odoo_params]\naddons_path = "./addons"\n')
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with (
+            patch("oduit.cli.app.ConfigLoader", return_value=loader),
+            patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+        ):
+            ops = MagicMock()
+            ops.build_technical_documentation.return_value = (
+                _technical_documentation_bundle(addon_root)
+            )
+            mock_ops_class.return_value = ops
+
+            result = runner.invoke(
+                app,
+                [
+                    "docs",
+                    "technical",
+                    "my_partner",
+                    "--output-in-addon",
+                ],
+            )
+    finally:
+        os.chdir(cwd)
+
+    metadata = json.loads((addon_root / "docs" / "architecture.oduit.json").read_text())
+    assert result.exit_code == 0
+    assert metadata["addon_root"] == "addons/my_partner"
+    assert metadata["doc_path"] == "addons/my_partner/docs/architecture.md"
+    assert metadata["metadata_path"] == "addons/my_partner/docs/architecture.oduit.json"
+    assert metadata["generation_options"]["path_prefix"] == "."
+    assert metadata["generation_options"]["path_base"]["source"] == "local_config"
+    assert '"/tmp/' not in json.dumps(metadata)
+
+
+def test_docs_technical_progress_writes_to_stderr_without_corrupting_stdout(
+    tmp_path: Path,
+) -> None:
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_technical_addon_root(addon_root)
+    (tmp_path / ".oduit.toml").write_text('[odoo_params]\naddons_path = "./addons"\n')
+    cli_path = shutil.which("oduit")
+    assert cli_path is not None
+    env = dict(os.environ)
+    result = subprocess.run(
+        [
+            cli_path,
+            "docs",
+            "technical",
+            "addons/my_partner",
+            "--source-only",
+            "--progress",
+            "--format",
+            "json",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "[oduit docs] resolving project path base:" in result.stderr
+    assert "[oduit docs]" not in result.stdout
+    assert json.loads(result.stdout)["type"] == "technical_documentation"
+
+
+def test_docs_technical_status_select_dir_relative_addon_path_returns_one_status(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "has_crm"
+    other_root = tmp_path / "addons" / "has_sales"
+    _make_technical_addon_root(addon_root)
+    _make_technical_addon_root(other_root)
+    (tmp_path / ".oduit.toml").write_text('[odoo_params]\naddons_path = "./addons"\n')
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(
+                app,
+                [
+                    "docs",
+                    "technical-status",
+                    "--select-dir",
+                    "addons/has_crm",
+                    "--format",
+                    "json",
+                ],
+            )
+    finally:
+        os.chdir(cwd)
+
+    payload = json.loads(result.output)
+    assert result.exit_code == 0
+    assert [status["module"] for status in payload["statuses"]] == ["has_crm"]
+
+
+def test_docs_technical_check_exits_for_source_change_and_can_be_waived(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_technical_addon_root(addon_root)
+    (tmp_path / ".oduit.toml").write_text('[odoo_params]\naddons_path = "./addons"\n')
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with (
+            patch("oduit.cli.app.ConfigLoader", return_value=loader),
+            patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+        ):
+            ops = MagicMock()
+            ops.build_technical_documentation.return_value = (
+                _technical_documentation_bundle(addon_root)
+            )
+            mock_ops_class.return_value = ops
+            generate = runner.invoke(
+                app,
+                ["docs", "technical", "my_partner", "--output-in-addon"],
+            )
+        assert generate.exit_code == 0
+        source_path = addon_root / "models" / "res_partner.py"
+        source_path.write_text(source_path.read_text() + "\n# source change\n")
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            failing = runner.invoke(
+                app,
+                ["docs", "technical-check", "my_partner", "--format", "json"],
+            )
+            passing = runner.invoke(
+                app,
+                [
+                    "docs",
+                    "technical-check",
+                    "my_partner",
+                    "--format",
+                    "json",
+                    "--no-fail-on-stale",
+                ],
+            )
+    finally:
+        os.chdir(cwd)
+
+    assert failing.exit_code == 1
+    assert json.loads(failing.output)["status"]["status"] == "source_changed"
+    assert passing.exit_code == 0
+    assert json.loads(passing.output)["success"] is True
+
+
+def test_docs_technical_next_returns_expected_module_name(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_root = tmp_path / "addons"
+    _make_technical_addon_root(addons_root / "has_crm")
+    _make_technical_addon_root(addons_root / "z_sales")
+    (tmp_path / ".oduit.toml").write_text('[odoo_params]\naddons_path = "./addons"\n')
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(addons_root),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(app, ["docs", "technical-next", "addons"])
+    finally:
+        os.chdir(cwd)
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "has_crm"

@@ -39,7 +39,13 @@ from .addon_filters import (
 )
 from .agent import validate as _agent_validate_impl
 from .agent.documentation import (
+    agent_technical_doc_check_command as _agent_technical_doc_check_command,
+)
+from .agent.documentation import (
     agent_technical_doc_command as _agent_technical_doc_command,
+)
+from .agent.documentation import (
+    agent_technical_doc_next_command as _agent_technical_doc_next_command,
 )
 from .agent.documentation import (
     agent_technical_doc_status_command as _agent_technical_doc_status_command,
@@ -583,6 +589,8 @@ _agent_registration_context = AgentRegistrationContext(
         addon_info_command_impl=_agent_addon_info_command,
         addon_doc_command_impl=_agent_addon_doc_command,
         technical_doc_command_impl=_agent_technical_doc_command,
+        technical_doc_check_command_impl=_agent_technical_doc_check_command,
+        technical_doc_next_command_impl=_agent_technical_doc_next_command,
         technical_doc_status_command_impl=_agent_technical_doc_status_command,
         inspect_addon_command_impl=_agent_inspect_addon_command,
         plan_update_command_impl=_agent_plan_update_command,

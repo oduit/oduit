@@ -38,6 +38,18 @@ Command tiers:
      - ``beta_for_agents``
      - ``controlled_source_mutation``
      - Create or preview addon-local arc42 technical documentation.
+   * - ``technical-doc-status``
+     - ``beta_for_agents``
+     - ``safe_read_only``
+     - Return tracking and freshness status for addon technical docs.
+   * - ``technical-doc-check``
+     - ``beta_for_agents``
+     - ``safe_read_only``
+     - Return freshness information for one technical-documentation target.
+   * - ``technical-doc-next``
+     - ``beta_for_agents``
+     - ``safe_read_only``
+     - Return the next addon that needs technical-documentation work.
    * - ``plan-update``
      - ``stable_for_agents``
      - ``safe_read_only``

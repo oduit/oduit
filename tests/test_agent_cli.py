@@ -1670,6 +1670,7 @@ def _technical_documentation_bundle(addon_root: Path) -> TechnicalDocumentation:
     return TechnicalDocumentation(
         module="my_partner",
         addon_root=str(addon_root),
+        source_addon_root=str(addon_root),
         target=AddonDocTarget(
             module="my_partner",
             addon_root=str(addon_root),
@@ -1997,6 +1998,116 @@ def test_agent_technical_doc_status_reports_source_change(tmp_path: Path) -> Non
     statuses = _payload_data(payload)["statuses"]
     assert result.exit_code == 0
     assert statuses[0]["status"] == "source_changed"
+
+
+def test_agent_technical_doc_uses_relative_paths_when_git_base_exists(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    (tmp_path / ".git").mkdir()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc",
+                "my_partner",
+                "--allow-mutation",
+            ],
+        )
+
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert result.exit_code == 0
+    assert data["output_path"] == "addons/my_partner/docs/architecture.md"
+    assert data["metadata_path"] == "addons/my_partner/docs/architecture.oduit.json"
+
+
+def test_agent_technical_doc_check_is_read_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    (tmp_path / ".git").mkdir()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+        generate = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc",
+                "my_partner",
+                "--allow-mutation",
+                "--source-only",
+            ],
+        )
+
+    assert generate.exit_code == 0
+    source_path = addon_root / "models" / "res_partner.py"
+    source_path.write_text(source_path.read_text() + "\n# source change\n")
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc-check", "my_partner"],
+        )
+
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert result.exit_code == 0
+    assert payload["operation"] == "technical_doc_check"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    assert data["status"]["status"] == "source_changed"
+
+
+def test_agent_technical_doc_next_returns_expected_module(tmp_path: Path) -> None:
+    runner = CliRunner()
+    (tmp_path / ".git").mkdir()
+    addons_dir = tmp_path / "addons"
+    _make_technical_addon(addons_dir)
+    _make_technical_addon(addons_dir, module_name="z_sales")
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc-next", "addons"],
+        )
+
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert result.exit_code == 0
+    assert payload["operation"] == "technical_doc_next"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    assert data["next_module"] == "my_partner"
 
 
 def test_agent_test_summary_normalizes_failures(tmp_path: Path) -> None:

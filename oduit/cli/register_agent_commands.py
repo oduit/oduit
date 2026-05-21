@@ -70,6 +70,12 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     addon_info_command_impl = context.implementations.addon_info_command_impl
     addon_doc_command_impl = context.implementations.addon_doc_command_impl
     technical_doc_command_impl = context.implementations.technical_doc_command_impl
+    technical_doc_check_command_impl = (
+        context.implementations.technical_doc_check_command_impl
+    )
+    technical_doc_next_command_impl = (
+        context.implementations.technical_doc_next_command_impl
+    )
     technical_doc_status_command_impl = (
         context.implementations.technical_doc_status_command_impl
     )
@@ -393,6 +399,53 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             target=target,
             only_stale=only_stale,
             select_dir=select_dir,
+            include_files=include_files,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("technical-doc-check")
+    def agent_technical_doc_check(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        include_files: bool = typer.Option(
+            False,
+            "--include-files",
+            help="Include changed, added, and removed file lists in the payload",
+        ),
+    ) -> None:
+        """Return freshness information for one technical-documentation target."""
+        technical_doc_check_command_impl(
+            ctx,
+            target=target,
+            include_files=include_files,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            safe_read_only=safe_read_only,
+        )
+
+    @agent_app.command("technical-doc-next")
+    def agent_technical_doc_next(
+        ctx: typer.Context,
+        path: str | None = typer.Argument(
+            None,
+            help="Optional addon root or addons collection path",
+        ),
+        include_files: bool = typer.Option(
+            False,
+            "--include-files",
+            help="Include the selected status details in the payload",
+        ),
+    ) -> None:
+        """Return the next addon that needs technical-documentation work."""
+        technical_doc_next_command_impl(
+            ctx,
+            path=path,
             include_files=include_files,
             resolve_agent_global_config_fn=resolve_agent_global_config_fn,
             agent_fail_fn=agent_fail_fn,

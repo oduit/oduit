@@ -203,6 +203,8 @@ class AgentCommandImplementations:
     addon_info_command_impl: Any
     addon_doc_command_impl: Any
     technical_doc_command_impl: Any
+    technical_doc_check_command_impl: Any
+    technical_doc_next_command_impl: Any
     technical_doc_status_command_impl: Any
     inspect_addon_command_impl: Any
     plan_update_command_impl: Any

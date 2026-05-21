@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -44,6 +46,8 @@ from ..source_locator import (
 )
 from ..technical_documentation import resolve_addon_documentation_target
 from .base import OperationsService
+
+ProgressCallback = Callable[[str, dict[str, Any]], None]
 
 
 def _unique_strings(values: list[str]) -> list[str]:
@@ -231,18 +235,23 @@ class DocumentationOperationsService(OperationsService):
         max_models: int | None = None,
         max_fields_per_model: int | None = None,
         path_prefix: str | None = None,
+        progress: ProgressCallback | None = None,
     ) -> AddonDocumentation:
         """Build one addon documentation bundle."""
+        progress = progress or (lambda _stage, _data: None)
         requested_field_attributes = list(
             field_attributes or self.DEFAULT_FIELD_ATTRIBUTES
         )
         requested_view_types = list(view_types or [])
+        progress("inspect_addon", {"module": module_name})
         inspection = self.operations.inspect_addon(
             module_name,
             odoo_series=odoo_series,
         )
+        progress("model_inventory", {"module": module_name})
         model_inventory = self.operations.list_addon_models(module_name)
         test_inventory = self.operations.list_addon_tests(module_name)
+        progress("dependency_graph", {"module": module_name})
         dependency_graph = self.operations.dependency_graph([module_name])
         addon_root = inspection.module_path or model_inventory.addon_root
         languages, language_warnings = list_addon_languages(addon_root)
@@ -330,6 +339,7 @@ class DocumentationOperationsService(OperationsService):
                 )
             )
 
+        progress("recommended_tests", {"module": module_name})
         recommended_tests = self.operations.recommend_tests(module_name, [])
         bundle = AddonDocumentation(
             module=module_name,
@@ -367,16 +377,26 @@ class DocumentationOperationsService(OperationsService):
         max_models: int | None = None,
         max_fields_per_model: int | None = None,
         path_prefix: str | None = None,
+        path_base_dir: str | None = None,
+        progress: ProgressCallback | None = None,
     ) -> TechnicalDocumentation:
         """Build one arc42 technical-documentation bundle for an addon target."""
+        progress = progress or (lambda _stage, _data: None)
 
         if template != "arc42":
             raise ValueError(
                 "Only the 'arc42' technical documentation template is supported."
             )
 
+        progress("resolve_target", {"target": target})
         resolved_target = resolve_addon_documentation_target(
-            self.operations.env_config, target
+            self.operations.env_config,
+            target,
+            path_base_dir=path_base_dir,
+        )
+        progress("technical_inventory", {"module": resolved_target.module})
+        technical_inventory = list_addon_technical_inventory(
+            resolved_target.addon_root, resolved_target.module
         )
         addon_documentation = self.build_addon_documentation(
             resolved_target.module,
@@ -390,9 +410,7 @@ class DocumentationOperationsService(OperationsService):
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
             path_prefix=None,
-        )
-        technical_inventory = list_addon_technical_inventory(
-            resolved_target.addon_root, resolved_target.module
+            progress=progress,
         )
         warnings = _unique_strings(
             list(resolved_target.warnings)
@@ -406,6 +424,7 @@ class DocumentationOperationsService(OperationsService):
         bundle = TechnicalDocumentation(
             module=resolved_target.module,
             addon_root=resolved_target.addon_root,
+            source_addon_root=resolved_target.addon_root,
             template=template,
             target=resolved_target,
             source_only=source_only,
@@ -414,10 +433,15 @@ class DocumentationOperationsService(OperationsService):
             warnings=warnings,
             remediation=remediation,
         )
-        _apply_path_prefix(bundle, path_prefix=_normalize_path_prefix(path_prefix))
-        bundle.sections = build_arc42_addon_sections(bundle)
-        bundle.markdown = render_arc42_addon_markdown(bundle)
-        return bundle
+        render_bundle = copy.deepcopy(bundle)
+        _apply_path_prefix(
+            render_bundle,
+            path_prefix=_normalize_path_prefix(path_prefix),
+        )
+        progress("render", {"module": resolved_target.module, "template": template})
+        render_bundle.sections = build_arc42_addon_sections(render_bundle)
+        render_bundle.markdown = render_arc42_addon_markdown(render_bundle)
+        return render_bundle
 
     def build_model_documentation(
         self,

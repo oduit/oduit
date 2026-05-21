@@ -6,6 +6,7 @@
 
 import os
 import shutil
+from collections.abc import Callable
 from typing import Any
 
 from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
@@ -521,6 +522,7 @@ class OdooOperations:
         max_models: int | None = None,
         max_fields_per_model: int | None = None,
         path_prefix: str | None = None,
+        progress: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> AddonDocumentation:
         """Build one addon documentation bundle."""
         return self._documentation_service.build_addon_documentation(
@@ -535,6 +537,7 @@ class OdooOperations:
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
             path_prefix=path_prefix,
+            progress=progress,
         )
 
     def build_model_documentation(
@@ -610,6 +613,8 @@ class OdooOperations:
         max_models: int | None = None,
         max_fields_per_model: int | None = None,
         path_prefix: str | None = None,
+        path_base_dir: str | None = None,
+        progress: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> TechnicalDocumentation:
         """Build one technical-documentation bundle for an addon target."""
         return self._documentation_service.build_technical_documentation(
@@ -625,6 +630,8 @@ class OdooOperations:
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
             path_prefix=path_prefix,
+            path_base_dir=path_base_dir,
+            progress=progress,
         )
 
     def build_dependency_graph_documentation(

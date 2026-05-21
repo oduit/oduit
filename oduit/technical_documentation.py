@@ -43,16 +43,24 @@ def _is_under_configured_addons_path(path: Path, configured_paths: list[Path]) -
 
 
 def resolve_addon_documentation_target(
-    env_config: dict[str, Any], target: str
+    env_config: dict[str, Any],
+    target: str,
+    *,
+    path_base_dir: str | Path | None = None,
 ) -> AddonDocTarget:
     """Resolve a technical-documentation target to one concrete addon root."""
 
     raw_target = target[1:] if target.startswith("@") else target
     requested_path = Path(raw_target).expanduser()
+    base_dir = (
+        _resolve_path(Path(path_base_dir).expanduser())
+        if path_base_dir is not None
+        else _resolve_path(Path.cwd())
+    )
     resolved_requested_path = (
         _resolve_path(requested_path)
         if requested_path.is_absolute()
-        else _resolve_path(Path.cwd() / requested_path)
+        else _resolve_path(base_dir / requested_path)
     )
 
     path_manager = AddonsPathManager(env_config["addons_path"])
@@ -127,8 +135,9 @@ def resolve_addon_documentation_target(
 
 
 def resolve_technical_doc_output_path(
-    target: AddonDocTarget,
+    target: AddonDocTarget | None,
     *,
+    addon_root: str | Path | None = None,
     output: Path | None,
     output_in_addon: bool,
     filename: str = "architecture.md",
@@ -138,5 +147,10 @@ def resolve_technical_doc_output_path(
     if output is not None:
         return output
     if output_in_addon:
-        return Path(target.addon_root) / "docs" / filename
+        effective_addon_root = addon_root or (
+            target.addon_root if target is not None else None
+        )
+        if effective_addon_root is None:
+            return None
+        return Path(effective_addon_root) / "docs" / filename
     return None

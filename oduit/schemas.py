@@ -71,9 +71,13 @@ SAFE_READ_ONLY_OPERATIONS = {
     "docs_model",
     "docs_dependency_graph",
     "docs_technical",
+    "docs_technical_check",
+    "docs_technical_next",
     "docs_technical_status",
     "addon_doc",
     "technical_doc_preview",
+    "technical_doc_check",
+    "technical_doc_next",
     "technical_doc_status",
 }
 
@@ -147,6 +151,7 @@ SAFE_READ_ONLY_TYPES = {
     "model_documentation",
     "dependency_graph_documentation",
     "technical_documentation",
+    "technical_documentation_next",
     "technical_documentation_status",
 }
 

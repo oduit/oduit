@@ -109,24 +109,21 @@ If addon resolution fails, stop and report the configured `addons_path` issue. D
 Use this when the user asks to review, plan, or preview documentation.
 
 ```bash
-oduit agent technical-doc @addons/<module> \
-  --path "$(pwd)"
+oduit agent technical-doc @addons/<module>
 ```
 
 For a source-only preview:
 
 ```bash
 oduit agent technical-doc @addons/<module> \
-  --source-only \
-  --path "$(pwd)"
+  --source-only
 ```
 
 When you need the full Markdown in the JSON payload for editing or review:
 
 ```bash
 oduit agent technical-doc @addons/<module> \
-  --include-markdown \
-  --path "$(pwd)"
+  --include-markdown
 ```
 
 Expected behavior:
@@ -142,8 +139,7 @@ Use this when the user explicitly asks to create, write, update, or fix the addo
 
 ```bash
 oduit agent technical-doc @addons/<module> \
-  --allow-mutation \
-  --path "$(pwd)"
+  --allow-mutation
 ```
 
 This writes:
@@ -158,8 +154,7 @@ If the file already exists and the user asked to update/replace it:
 ```bash
 oduit agent technical-doc @addons/<module> \
   --allow-mutation \
-  --force \
-  --path "$(pwd)"
+  --force
 ```
 
 For source-only generation:
@@ -167,8 +162,7 @@ For source-only generation:
 ```bash
 oduit agent technical-doc @addons/<module> \
   --allow-mutation \
-  --source-only \
-  --path "$(pwd)"
+  --source-only
 ```
 
 After writing, always read the generated file before finalizing:
@@ -189,9 +183,14 @@ When oduit writes `<addon>/docs/architecture.md`, it also writes:
 
 Use this sidecar to check when the document was first tracked, when it was last generated, whether the Markdown was manually edited after generation, and whether addon source files changed after generation.
 
+New sidecars store paths relative to the project base automatically. Prefer a
+project-local `.oduit.toml` and explicit addon paths such as
+`@addons/<module>` when writing docs.
+
 Check one addon:
 
 ```bash
+oduit agent technical-doc-check @addons/<module> --include-files
 oduit agent technical-doc-status @addons/<module>
 ```
 
@@ -205,10 +204,20 @@ Human CLI equivalents:
 
 ```bash
 oduit docs technical-status @addons/<module>
+oduit docs technical-check @addons/<module> --include-files
+oduit docs technical-next addons
 oduit docs technical-status --only-stale
 ```
 
-If status is `source_changed`, regenerate or manually review the architecture document. If status is `document_edited`, compare the human edits before overwriting with `--force`.
+Pick the next addon that still needs work:
+
+```bash
+oduit agent technical-doc-next addons
+```
+
+If status is `source_changed`, regenerate or manually review the architecture
+document. If status is `document_edited`, compare the human edits before
+overwriting with `--force`.
 
 `created_at` means the first tracked generation recorded by oduit. Older generated documents without a sidecar are reported as `untracked` until they are regenerated.
 
@@ -220,8 +229,7 @@ Preview to stdout:
 
 ```bash
 oduit docs technical @addons/<module> \
-  --template arc42 \
-  --path "$(pwd)"
+  --template arc42
 ```
 
 Write to the addon:
@@ -229,8 +237,7 @@ Write to the addon:
 ```bash
 oduit docs technical @addons/<module> \
   --template arc42 \
-  --output-in-addon \
-  --path "$(pwd)"
+  --output-in-addon
 ```
 
 Overwrite an existing addon-local doc:
@@ -239,8 +246,7 @@ Overwrite an existing addon-local doc:
 oduit docs technical @addons/<module> \
   --template arc42 \
   --output-in-addon \
-  --force \
-  --path "$(pwd)"
+  --force
 ```
 
 Source-only fallback:
@@ -249,8 +255,7 @@ Source-only fallback:
 oduit docs technical @addons/<module> \
   --template arc42 \
   --source-only \
-  --output-in-addon \
-  --path "$(pwd)"
+  --output-in-addon
 ```
 
 ## Runtime enrichment
@@ -277,8 +282,7 @@ For large addons, constrain generated documentation:
 oduit agent technical-doc @addons/<module> \
   --max-models 40 \
   --max-fields-per-model 120 \
-  --types form,tree,kanban,search \
-  --path "$(pwd)"
+  --types form,tree,kanban,search
 ```
 
 For the human CLI:
@@ -288,8 +292,7 @@ oduit docs technical @addons/<module> \
   --output-in-addon \
   --max-models 40 \
   --max-fields-per-model 120 \
-  --view-types form,tree,kanban,search \
-  --path "$(pwd)"
+  --view-types form,tree,kanban,search
 ```
 
 Keep raw XML architecture out by default. Only use `--include-arch` if the user explicitly needs raw view XML or a specific XML customization cannot be explained otherwise.
@@ -407,7 +410,8 @@ If `<addon>/docs/architecture.md` already exists:
 1. Preview the generated replacement first:
 
    ```bash
-   oduit agent technical-doc @addons/<module> --include-markdown --path "$(pwd)"
+   oduit agent technical-doc-check @addons/<module> --include-files
+   oduit agent technical-doc @addons/<module> --include-markdown
    ```
 
 2. Compare with the existing document.
@@ -423,8 +427,8 @@ Do not overwrite existing architecture documentation silently.
 For several related addons, still generate one addon-local Arc42 file per addon:
 
 ```bash
-oduit agent technical-doc @addons/<module_a> --allow-mutation --path "$(pwd)"
-oduit agent technical-doc @addons/<module_b> --allow-mutation --path "$(pwd)"
+oduit agent technical-doc @addons/<module_a> --allow-mutation
+oduit agent technical-doc @addons/<module_b> --allow-mutation
 ```
 
 Then optionally generate supplemental bundle/dependency docs if useful:
@@ -433,14 +437,12 @@ Then optionally generate supplemental bundle/dependency docs if useful:
 oduit docs dependency-graph \
   --modules <module_a>,<module_b> \
   --format markdown \
-  --output docs/technical/dependency_graph.md \
-  --path "$(pwd)"
+  --output docs/technical/dependency_graph.md
 
 oduit docs addons \
   --modules <module_a>,<module_b> \
   --format markdown \
-  --output-dir docs/technical/addon_bundle \
-  --path "$(pwd)"
+  --output-dir docs/technical/addon_bundle
 ```
 
 These supplemental outputs do not replace addon-local `docs/architecture.md`.
@@ -475,8 +477,7 @@ Regenerate source-only:
 ```bash
 oduit agent technical-doc @addons/<module> \
   --source-only \
-  --allow-mutation \
-  --path "$(pwd)"
+  --allow-mutation
 ```
 
 State in the document that runtime enrichment was unavailable.
@@ -489,8 +490,7 @@ Regenerate with limits:
 oduit agent technical-doc @addons/<module> \
   --max-models 30 \
   --max-fields-per-model 80 \
-  --types form,tree,search \
-  --path "$(pwd)"
+  --types form,tree,search
 ```
 
 ### Existing file
@@ -500,8 +500,7 @@ Use `--force` only after confirming replacement/update is intended:
 ```bash
 oduit agent technical-doc @addons/<module> \
   --allow-mutation \
-  --force \
-  --path "$(pwd)"
+  --force
 ```
 
 ## Safety rules

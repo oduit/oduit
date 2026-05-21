@@ -1,11 +1,15 @@
 import json
 from pathlib import Path
 
+from oduit.api_models import AddonDocTarget, TechnicalDocumentation
 from oduit.documentation_tracking import (
     TECHNICAL_DOC_METADATA_FILENAME,
+    build_technical_documentation_metadata,
     compute_document_snapshot,
     compute_source_snapshot,
+    inspect_all_technical_documentation_statuses,
     inspect_technical_documentation_status,
+    write_technical_documentation_metadata,
 )
 
 
@@ -24,6 +28,21 @@ def _make_addon(root: Path) -> None:
     (root / "views").mkdir(exist_ok=True)
     (root / "views" / "res_partner_views.xml").write_text(
         "<odoo><record id='view_partner_form' model='ir.ui.view'/></odoo>\n"
+    )
+
+
+def _technical_bundle(addon_root: Path) -> TechnicalDocumentation:
+    return TechnicalDocumentation(
+        module="my_partner",
+        addon_root=str(addon_root),
+        source_addon_root=str(addon_root),
+        target=AddonDocTarget(
+            module="my_partner",
+            addon_root=str(addon_root),
+            target_kind="module",
+            manifest_path=str(addon_root / "__manifest__.py"),
+        ),
+        markdown="# Architecture Documentation: my_partner\n",
     )
 
 
@@ -100,3 +119,115 @@ def test_invalid_metadata_returns_metadata_invalid_status(tmp_path: Path) -> Non
 
     assert status.status == "metadata_invalid"
     assert status.warnings
+
+
+def test_build_metadata_uses_project_relative_paths_when_base_is_provided(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path
+    addon_root = project_root / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "architecture.md"
+    metadata_path = docs_dir / TECHNICAL_DOC_METADATA_FILENAME
+    doc_path.write_text("# Architecture Documentation: my_partner\n")
+
+    metadata = build_technical_documentation_metadata(
+        bundle=_technical_bundle(addon_root),
+        doc_path=doc_path,
+        metadata_path=metadata_path,
+        generation_options={
+            "path_prefix": ".",
+            "path_base": {"path": ".", "source": "local_config"},
+        },
+        path_base_dir=project_root,
+        source_addon_root=addon_root,
+    )
+
+    assert metadata.addon_root == "addons/my_partner"
+    assert metadata.doc_path == "addons/my_partner/docs/architecture.md"
+    assert metadata.metadata_path == "addons/my_partner/docs/architecture.oduit.json"
+    assert metadata.generation_options["path_prefix"] == "."
+    assert metadata.generation_options["path_base"]["source"] == "local_config"
+
+
+def test_absolute_metadata_remains_valid_when_status_uses_project_base(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path
+    addon_root = project_root / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "architecture.md"
+    metadata_path = docs_dir / TECHNICAL_DOC_METADATA_FILENAME
+    doc_path.write_text("# Architecture Documentation: my_partner\n")
+
+    metadata = build_technical_documentation_metadata(
+        bundle=_technical_bundle(addon_root),
+        doc_path=doc_path,
+        metadata_path=metadata_path,
+        generation_options={"path_prefix": str(project_root)},
+        source_addon_root=addon_root,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+
+    status = inspect_technical_documentation_status(
+        addon_root=addon_root,
+        module="my_partner",
+        path_base_dir=project_root,
+    )
+
+    assert status.status == "up_to_date"
+    assert status.warnings == []
+
+
+def test_status_selection_prefers_project_relative_directory_over_same_basename(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    external_root = tmp_path / "external"
+    project_addons = project_root / "addons"
+    external_addons = external_root / "addons"
+    _make_addon(project_addons / "has_crm")
+    _make_addon(external_addons / "outside_crm")
+
+    statuses = inspect_all_technical_documentation_statuses(
+        addons_path=f"{project_addons},{external_addons}",
+        select_dir="addons",
+        path_base_dir=project_root,
+    )
+
+    assert [status.module for status in statuses] == ["has_crm"]
+
+
+def test_status_selection_accepts_single_addon_relative_path(tmp_path: Path) -> None:
+    project_root = tmp_path
+    addons_root = project_root / "addons"
+    _make_addon(addons_root / "has_crm")
+    _make_addon(addons_root / "has_sales")
+
+    statuses = inspect_all_technical_documentation_statuses(
+        addons_path=str(addons_root),
+        select_dir="addons/has_crm",
+        path_base_dir=project_root,
+    )
+
+    assert len(statuses) == 1
+    assert statuses[0].module == "has_crm"
+
+
+def test_status_selection_keeps_legacy_basename_matching(tmp_path: Path) -> None:
+    project_root = tmp_path
+    custom_addons = project_root / "custom_addons"
+    _make_addon(custom_addons / "has_crm")
+
+    statuses = inspect_all_technical_documentation_statuses(
+        addons_path=str(custom_addons),
+        select_dir="custom_addons",
+        path_base_dir=project_root / "unrelated",
+    )
+
+    assert len(statuses) == 1
+    assert statuses[0].module == "has_crm"
