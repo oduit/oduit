@@ -2005,6 +2005,7 @@ def test_agent_technical_doc_uses_relative_paths_when_git_base_exists(
 ) -> None:
     runner = CliRunner()
     (tmp_path / ".git").mkdir()
+    (tmp_path / "dev.toml").write_text("[oduit]\n", encoding="utf-8")
     addon_root = _make_technical_addon(tmp_path / "addons")
     config = _agent_config(tmp_path, str(tmp_path / "addons"))
     loader = _loader_with_config(config, tmp_path)

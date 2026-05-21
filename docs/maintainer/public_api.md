@@ -97,6 +97,8 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `addon-doc`                | `stable_for_agents` | `safe_read_only`              | Return a structured addon documentation bundle.                        |
 | `technical-doc`            | `beta_for_agents`   | `controlled_source_mutation`  | Create or preview addon-local arc42 technical documentation.           |
 | `technical-doc-status`     | `beta_for_agents`   | `safe_read_only`              | Return tracking and freshness status for addon technical docs.         |
+| `technical-doc-check`      | `beta_for_agents`   | `safe_read_only`              | Return freshness information for one technical-documentation target.   |
+| `technical-doc-next`       | `beta_for_agents`   | `safe_read_only`              | Return the next addon that needs technical-documentation work.         |
 | `plan-update`              | `stable_for_agents` | `safe_read_only`              | Return a structured, read-only update plan for a module.               |
 | `prepare-addon-change`     | `beta_for_agents`   | `safe_read_only`              | Bundle the common read-only planning steps for one addon change.       |
 | `locate-model`             | `beta_for_agents`   | `safe_read_only`              | Locate likely source files for a model extension inside one addon.     |
@@ -158,6 +160,8 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `addon-doc`                | `stable_for_agents` | `safe_read_only`              | Return a structured addon documentation bundle.                        |
 | `technical-doc`            | `beta_for_agents`   | `controlled_source_mutation`  | Create or preview addon-local arc42 technical documentation.           |
 | `technical-doc-status`     | `beta_for_agents`   | `safe_read_only`              | Return tracking and freshness status for addon technical docs.         |
+| `technical-doc-check`      | `beta_for_agents`   | `safe_read_only`              | Return freshness information for one technical-documentation target.   |
+| `technical-doc-next`       | `beta_for_agents`   | `safe_read_only`              | Return the next addon that needs technical-documentation work.         |
 | `plan-update`              | `stable_for_agents` | `safe_read_only`              | Return a structured, read-only update plan for a module.               |
 | `prepare-addon-change`     | `beta_for_agents`   | `safe_read_only`              | Bundle the common read-only planning steps for one addon change.       |
 | `locate-model`             | `beta_for_agents`   | `safe_read_only`              | Locate likely source files for a model extension inside one addon.     |
