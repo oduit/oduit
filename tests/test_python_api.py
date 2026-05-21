@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import oduit.source_locator as source_locator
 from oduit import (
     AddonDocumentation,
     AddonInfo,
@@ -23,6 +24,8 @@ from oduit import (
     TechnicalDocumentation,
     UpdatePlan,
 )
+from oduit.api_models import DocumentationRuntimeInventory, ModelViewInventory
+from oduit.source_locator import list_model_extensions
 
 
 def _make_addon(
@@ -300,6 +303,56 @@ def test_build_technical_documentation_returns_typed_bundle(tmp_path: Path) -> N
     assert "## 1. Introduction and Goals" in bundle.markdown
 
 
+def test_build_technical_documentation_uses_addon_scoped_cached_source_scans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    target_dir = addons_dir / "target_big"
+    _make_addon(addons_dir, "target_big", depends=["base"])
+    (target_dir / "models").mkdir()
+    (target_dir / "models" / "a.py").write_text(
+        "from odoo import models\n\nclass A(models.Model):\n    _name = 'x.a'\n"
+    )
+    (target_dir / "models" / "b.py").write_text(
+        "from odoo import models\n\nclass B(models.Model):\n    _name = 'x.b'\n"
+    )
+    _make_addon(addons_dir, "unrelated_1", depends=["base"])
+    _make_addon(addons_dir, "unrelated_2", depends=["base"])
+
+    python_scan_counts: dict[str, int] = {}
+    view_scan_counts: dict[str, int] = {}
+    original_python_scan = source_locator._scan_python_sources
+    original_view_scan = source_locator._scan_view_extensions_by_model
+
+    def _count_python_scan(addon_root: str) -> object:
+        normalized = Path(addon_root).as_posix()
+        python_scan_counts[normalized] = python_scan_counts.get(normalized, 0) + 1
+        return original_python_scan(addon_root)
+
+    def _count_view_scan(addon_root: str, module: str) -> object:
+        normalized = Path(addon_root).as_posix()
+        view_scan_counts[normalized] = view_scan_counts.get(normalized, 0) + 1
+        return original_view_scan(addon_root, module)
+
+    monkeypatch.setattr(source_locator, "_scan_python_sources", _count_python_scan)
+    monkeypatch.setattr(
+        source_locator, "_scan_view_extensions_by_model", _count_view_scan
+    )
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    bundle = ops.build_technical_documentation("target_big", source_only=True)
+
+    assert bundle.module == "target_big"
+    target_root = target_dir.as_posix()
+    assert target_root in python_scan_counts
+    assert python_scan_counts[target_root] <= 2
+    assert view_scan_counts.get(target_root, 0) <= 1
+    assert not any("unrelated_1" in path for path in python_scan_counts)
+    assert not any("unrelated_2" in path for path in python_scan_counts)
+
+
 def test_build_technical_documentation_relativizes_paths_under_prefix(
     tmp_path: Path,
 ) -> None:
@@ -352,6 +405,99 @@ def test_build_model_documentation_returns_typed_bundle(tmp_path: Path) -> None:
     assert bundle.field_metadata is None
     assert bundle.extension_inventory is not None
     assert "Model documentation: res.partner" in bundle.markdown
+
+
+def test_build_addon_documentation_runtime_uses_batched_runtime_inventory(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    addon_dir = addons_dir / "my_partner"
+    _make_addon(addons_dir, "my_partner", depends=["base"])
+    (addon_dir / "models").mkdir()
+    (addon_dir / "models" / "partner.py").write_text(
+        "from odoo import fields, models\n\n"
+        "class ResPartner(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    score = fields.Integer()\n"
+    )
+    runtime_inventory = DocumentationRuntimeInventory(
+        models={
+            "res.partner": ModelFieldsResult(
+                success=True,
+                operation="get_model_fields",
+                model="res.partner",
+                attributes=["string", "type"],
+                field_names=["name"],
+                field_definitions={"name": {"string": "Name", "type": "char"}},
+            )
+        },
+        views={"res.partner": ModelViewInventory(model="res.partner")},
+    )
+
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+    with (
+        patch.object(
+            ops,
+            "get_models_documentation_runtime",
+            return_value=runtime_inventory,
+        ) as mock_batch,
+        patch.object(
+            ops,
+            "get_addon_install_state",
+            return_value=AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="my_partner",
+                record_found=True,
+                state="installed",
+                installed=True,
+            ),
+        ),
+        patch.object(
+            ops,
+            "get_model_fields",
+            side_effect=AssertionError("per-model field query should not run"),
+        ),
+        patch.object(
+            ops,
+            "get_model_views",
+            side_effect=AssertionError("per-model view query should not run"),
+        ),
+    ):
+        bundle = ops.build_addon_documentation("my_partner", source_only=False)
+
+    assert mock_batch.call_count == 1
+    assert bundle.models[0].documentation is not None
+    assert bundle.models[0].documentation.field_metadata is not None
+    assert bundle.models[0].documentation.field_metadata.model == "res.partner"
+
+
+def test_list_model_extensions_keeps_workspace_scope_behavior(tmp_path: Path) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    one_dir = addons_dir / "ext_one"
+    _make_addon(addons_dir, "ext_one", depends=["base"])
+    (one_dir / "models").mkdir()
+    (one_dir / "models" / "one.py").write_text(
+        "from odoo import models\n\n"
+        "class One(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+    )
+    two_dir = addons_dir / "ext_two"
+    _make_addon(addons_dir, "ext_two", depends=["base"])
+    (two_dir / "models").mkdir()
+    (two_dir / "models" / "two.py").write_text(
+        "from odoo import models\n\n"
+        "class Two(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+    )
+
+    inventory = list_model_extensions(str(addons_dir), "res.partner")
+
+    assert sorted(inventory.source_extension_modules) == ["ext_one", "ext_two"]
 
 
 def test_build_model_documentation_keeps_absolute_paths_outside_prefix(

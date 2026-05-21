@@ -30,6 +30,7 @@ from .api_models import (
     AddonTestInventory,
     BinaryProbe,
     DependencyGraphDocumentation,
+    DocumentationRuntimeInventory,
     EnvironmentContext,
     FieldSourceLocation,
     InstalledAddonInventory,
@@ -54,6 +55,7 @@ from .odoo_inspector import OdooInspector
 from .odoo_query import OdooQuery
 from .operation_result import OperationResult
 from .process_manager import ProcessManager
+from .source_locator import SourceScanCache
 
 
 class OdooOperations:
@@ -425,10 +427,16 @@ class OdooOperations:
         model: str,
         database: str | None = None,
         timeout: float = 30.0,
+        source_roots: list[tuple[str, str]] | None = None,
+        scan_cache: SourceScanCache | None = None,
     ) -> ModelExtensionInventory:
         """Return combined source and installed metadata for one model."""
         return self._source_analysis_service.find_model_extensions(
-            model=model, database=database, timeout=timeout
+            model=model,
+            database=database,
+            timeout=timeout,
+            source_roots=source_roots,
+            scan_cache=scan_cache,
         )
 
     def list_duplicates(self) -> dict[str, list[str]]:
@@ -736,6 +744,26 @@ class OdooOperations:
             database=database,
             timeout=timeout,
             include_arch=include_arch,
+        )
+
+    def get_models_documentation_runtime(
+        self,
+        models: list[str],
+        *,
+        attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        include_arch: bool = False,
+        database: str | None = None,
+        timeout: float = 60.0,
+    ) -> DocumentationRuntimeInventory:
+        """Return batched runtime metadata for documentation generation."""
+        return self._query_service.get_models_documentation_runtime(
+            models=models,
+            attributes=attributes,
+            view_types=view_types,
+            include_arch=include_arch,
+            database=database,
+            timeout=timeout,
         )
 
     def execute_python_code(

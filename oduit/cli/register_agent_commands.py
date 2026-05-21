@@ -311,7 +311,17 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             30.0, "--timeout", help="Runtime query timeout in seconds"
         ),
         source_only: bool = typer.Option(
-            False, "--source-only", help="Skip runtime/database enrichment"
+            True,
+            "--source-only/--runtime",
+            help=(
+                "Use source-only generation by default. Pass --runtime to include "
+                "database/runtime enrichment."
+            ),
+        ),
+        progress: bool = typer.Option(
+            True,
+            "--progress/--no-progress",
+            help="Print technical documentation generation progress to stderr.",
         ),
         include_arch: bool = typer.Option(
             False, "--include-arch", help="Include raw view XML in payloads"
@@ -354,6 +364,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             database=database,
             timeout=timeout,
             source_only=source_only,
+            progress=progress,
             include_arch=include_arch,
             attributes=attributes,
             types=types,

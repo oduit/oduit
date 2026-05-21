@@ -349,6 +349,16 @@ class ModelViewInventory(DictModel):
 
 
 @dataclass
+class DocumentationRuntimeInventory(DictModel):
+    """Batched runtime metadata for many models in documentation flows."""
+
+    models: dict[str, ModelFieldsResult] = dataclass_field(default_factory=dict)
+    views: dict[str, ModelViewInventory] = dataclass_field(default_factory=dict)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
 class SourceEvidence(DictModel):
     """Machine-readable evidence attached to source-location candidates."""
 

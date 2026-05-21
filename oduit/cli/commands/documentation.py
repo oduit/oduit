@@ -141,6 +141,9 @@ def _progress_source_label(source: str) -> str:
 
 def _format_progress_message(stage: str, data: dict[str, Any]) -> str | None:
     module = data.get("module")
+    model = data.get("model")
+    index = data.get("index")
+    total = data.get("total")
     if stage == "path_base":
         return (
             "resolving project path base: "
@@ -151,8 +154,23 @@ def _format_progress_message(stage: str, data: dict[str, Any]) -> str | None:
         return f"resolving addon target: {data.get('target', '')}".rstrip()
     if stage == "technical_inventory" and module:
         return f"collecting source inventory: {module}"
+    if stage == "inspect_addon" and module:
+        return f"inspecting addon: {module}"
+    if stage == "model_inventory" and module:
+        return f"collecting model inventory: {module}"
     if stage == "dependency_graph" and module:
-        return f"collecting dependency and model evidence: {module}"
+        return f"collecting dependency graph: {module}"
+    if stage == "model_documentation" and module and model:
+        suffix = f" ({index}/{total})" if index and total else ""
+        return f"documenting model: {module}:{model}{suffix}"
+    if stage == "model_source" and model:
+        return f"collecting source evidence: {model}"
+    if stage == "model_runtime_fields" and model:
+        return f"querying runtime fields: {model}"
+    if stage == "model_runtime_views" and model:
+        return f"querying runtime views: {model}"
+    if stage == "recommended_tests" and module:
+        return f"collecting test recommendations: {module}"
     if stage == "render" and module:
         return f"rendering arc42 markdown: {module}"
     if stage == "writing":

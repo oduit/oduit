@@ -17,6 +17,7 @@ from ..api_models import (
     AddonInstallState,
     DependencyGraphDocumentation,
     DocumentationDiagram,
+    DocumentationRuntimeInventory,
     ModelDocumentation,
     ModelExtensionInventory,
     ModelFieldsResult,
@@ -40,9 +41,11 @@ from ..documentation_renderer import (
     render_shared_model_markdown,
 )
 from ..source_locator import (
+    SourceScanCache,
     list_addon_languages,
     list_addon_technical_inventory,
     list_model_extensions,
+    list_model_extensions_for_roots,
 )
 from ..technical_documentation import resolve_addon_documentation_target
 from .base import OperationsService
@@ -235,6 +238,9 @@ class DocumentationOperationsService(OperationsService):
         max_models: int | None = None,
         max_fields_per_model: int | None = None,
         path_prefix: str | None = None,
+        source_scope: str = "workspace",
+        scan_cache: SourceScanCache | None = None,
+        render_markdown: bool = True,
         progress: ProgressCallback | None = None,
     ) -> AddonDocumentation:
         """Build one addon documentation bundle."""
@@ -254,6 +260,12 @@ class DocumentationOperationsService(OperationsService):
         progress("dependency_graph", {"module": module_name})
         dependency_graph = self.operations.dependency_graph([module_name])
         addon_root = inspection.module_path or model_inventory.addon_root
+        source_roots: list[tuple[str, str]] | None = None
+        if source_scope == "addon":
+            source_roots = [(module_name, addon_root)]
+        elif source_scope != "workspace":
+            raise ValueError("source_scope must be 'addon' or 'workspace'")
+
         languages, language_warnings = list_addon_languages(addon_root)
         addon_info = self._build_addon_info(
             inspection=inspection,
@@ -295,8 +307,31 @@ class DocumentationOperationsService(OperationsService):
                     f"{len(model_names)} model(s)."
                 )
 
+        runtime_inventory: DocumentationRuntimeInventory | None = None
+        if not source_only:
+            runtime_inventory = self.operations.get_models_documentation_runtime(
+                model_names,
+                attributes=requested_field_attributes,
+                view_types=requested_view_types,
+                include_arch=include_arch,
+                database=database,
+                timeout=timeout,
+            )
+            warnings.extend(runtime_inventory.warnings)
+            remediation.extend(runtime_inventory.remediation)
+
+        total_models = len(model_names)
         documented_models: list[AddonDocumentationModel] = []
-        for model_name in model_names:
+        for index, model_name in enumerate(model_names, start=1):
+            progress(
+                "model_documentation",
+                {
+                    "module": module_name,
+                    "model": model_name,
+                    "index": index,
+                    "total": total_models,
+                },
+            )
             entries = sorted(
                 grouped_entries[model_name],
                 key=lambda item: (item.relation_kind, item.path, item.class_name),
@@ -311,6 +346,19 @@ class DocumentationOperationsService(OperationsService):
                 view_types=requested_view_types,
                 max_fields=max_fields_per_model,
                 path_prefix=path_prefix,
+                source_roots=source_roots,
+                scan_cache=scan_cache,
+                progress=progress,
+                runtime_fields=(
+                    runtime_inventory.models.get(model_name)
+                    if runtime_inventory is not None
+                    else None
+                ),
+                runtime_views=(
+                    runtime_inventory.views.get(model_name)
+                    if runtime_inventory is not None
+                    else None
+                ),
             )
             warnings.extend(model_doc.warnings)
             remediation.extend(model_doc.remediation)
@@ -358,8 +406,9 @@ class DocumentationOperationsService(OperationsService):
             bundle,
             path_prefix=_normalize_path_prefix(path_prefix),
         )
-        bundle.sections = build_addon_sections(bundle)
-        bundle.markdown = render_addon_markdown(bundle)
+        if render_markdown:
+            bundle.sections = build_addon_sections(bundle)
+            bundle.markdown = render_addon_markdown(bundle)
         return bundle
 
     def build_technical_documentation(
@@ -398,6 +447,7 @@ class DocumentationOperationsService(OperationsService):
         technical_inventory = list_addon_technical_inventory(
             resolved_target.addon_root, resolved_target.module
         )
+        scan_cache = SourceScanCache()
         addon_documentation = self.build_addon_documentation(
             resolved_target.module,
             odoo_series=odoo_series,
@@ -409,6 +459,9 @@ class DocumentationOperationsService(OperationsService):
             view_types=view_types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            source_scope="addon",
+            scan_cache=scan_cache,
+            render_markdown=False,
             path_prefix=None,
             progress=progress,
         )
@@ -456,23 +509,43 @@ class DocumentationOperationsService(OperationsService):
         max_fields: int | None = None,
         source_modules: list[str] | tuple[str, ...] | None = None,
         path_prefix: str | None = None,
+        source_roots: list[tuple[str, str]] | None = None,
+        scan_cache: SourceScanCache | None = None,
+        progress: ProgressCallback | None = None,
+        runtime_fields: ModelFieldsResult | None = None,
+        runtime_views: Any | None = None,
     ) -> ModelDocumentation:
         """Build one model documentation bundle."""
+        progress = progress or (lambda _stage, _data: None)
         requested_field_attributes = list(
             field_attributes or self.DEFAULT_FIELD_ATTRIBUTES
         )
         requested_view_types = list(view_types or [])
         requested_source_modules = _unique_strings(list(source_modules or []))
         addons_path = self.operations.config.get_required("addons_path")
-        extension_inventory = (
-            list_model_extensions(addons_path, model)
-            if source_only
-            else self.operations.find_model_extensions(
+        progress("model_source", {"model": model})
+        if source_only:
+            extension_inventory = (
+                list_model_extensions_for_roots(
+                    source_roots,
+                    model,
+                    scan_cache=scan_cache,
+                )
+                if source_roots is not None
+                else list_model_extensions(
+                    addons_path,
+                    model,
+                    scan_cache=scan_cache,
+                )
+            )
+        else:
+            extension_inventory = self.operations.find_model_extensions(
                 model,
                 database=database,
                 timeout=timeout,
+                source_roots=source_roots,
+                scan_cache=scan_cache,
             )
-        )
         if requested_source_modules:
             extension_inventory, omitted_modules = _filter_extension_inventory(
                 extension_inventory,
@@ -481,8 +554,8 @@ class DocumentationOperationsService(OperationsService):
         else:
             omitted_modules = []
 
-        field_metadata: ModelFieldsResult | None = None
-        view_inventory = None
+        field_metadata: ModelFieldsResult | None = runtime_fields
+        view_inventory = runtime_views
         warnings = list(extension_inventory.warnings)
         remediation = list(extension_inventory.remediation)
         if omitted_modules:
@@ -492,12 +565,14 @@ class DocumentationOperationsService(OperationsService):
             )
 
         if not source_only:
-            field_metadata = self.operations.get_model_fields(
-                model,
-                attributes=requested_field_attributes,
-                database=database,
-                timeout=timeout,
-            )
+            progress("model_runtime_fields", {"model": model})
+            if field_metadata is None:
+                field_metadata = self.operations.get_model_fields(
+                    model,
+                    attributes=requested_field_attributes,
+                    database=database,
+                    timeout=timeout,
+                )
             if max_fields is not None and field_metadata.success:
                 field_metadata = self._limit_field_metadata(field_metadata, max_fields)
             if not field_metadata.success and field_metadata.error:
@@ -508,19 +583,26 @@ class DocumentationOperationsService(OperationsService):
                     "Verify database access if runtime field metadata is required."
                 )
 
-            view_inventory = self.operations.get_model_views(
-                model,
-                view_types=requested_view_types,
-                database=database,
-                timeout=timeout,
-                include_arch=include_arch,
-            )
+            progress("model_runtime_views", {"model": model})
+            if view_inventory is None:
+                view_inventory = self.operations.get_model_views(
+                    model,
+                    view_types=requested_view_types,
+                    database=database,
+                    timeout=timeout,
+                    include_arch=include_arch,
+                )
             warnings.extend(view_inventory.warnings)
             remediation.extend(view_inventory.remediation)
             if view_inventory.error:
                 warnings.append(
                     f"Failed to query runtime views: {view_inventory.error}"
                 )
+        elif source_only:
+            warnings.append(
+                "Runtime/database enrichment was skipped for speed. Re-run with "
+                "--runtime if live field/view metadata is required."
+            )
 
         diagrams = [
             render_model_inheritance_mermaid(

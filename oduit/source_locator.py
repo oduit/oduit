@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 import re
 import xml.etree.ElementTree as ET
+from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -64,6 +66,32 @@ class _ScanResult:
     classes: list[_ClassScan] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     scanned_files: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SourceScanCache:
+    """Per-command source scan cache keyed by addon root."""
+
+    python_by_root: dict[str, _ScanResult] = field(default_factory=dict)
+    view_by_root: dict[str, dict[str, list[ViewExtensionSource]]] = field(
+        default_factory=dict
+    )
+
+    def python_scan(self, addon_root: str) -> _ScanResult:
+        key = _path_str(addon_root)
+        if key not in self.python_by_root:
+            self.python_by_root[key] = _scan_python_sources(key)
+        return self.python_by_root[key]
+
+    def view_extensions_by_model(
+        self,
+        addon_root: str,
+        module: str,
+    ) -> dict[str, list[ViewExtensionSource]]:
+        key = _path_str(addon_root)
+        if key not in self.view_by_root:
+            self.view_by_root[key] = _scan_view_extensions_by_model(key, module)
+        return self.view_by_root[key]
 
 
 def _string_literal(node: ast.AST | None) -> str | None:
@@ -446,10 +474,10 @@ def _scan_todo_markers(
     return markers, warnings
 
 
-def _scan_view_extensions(
-    addon_root: str, module: str, model: str
-) -> list[ViewExtensionSource]:
-    view_extensions: list[ViewExtensionSource] = []
+def _scan_view_extensions_by_model(
+    addon_root: str, module: str
+) -> dict[str, list[ViewExtensionSource]]:
+    by_model: dict[str, list[ViewExtensionSource]] = defaultdict(list)
     root = Path(addon_root)
     normalized_addon_root = _path_str(addon_root)
     for path in sorted(root.rglob("*.xml")):
@@ -460,7 +488,8 @@ def _scan_view_extensions(
             continue
         xml_root = tree.getroot()
         for record in xml_root.iter("record"):
-            if _extract_view_model(record) != model:
+            model_name = _extract_view_model(record)
+            if not model_name:
                 continue
             inherit_ref = None
             name = None
@@ -478,7 +507,7 @@ def _scan_view_extensions(
                         priority = None
             if inherit_ref is None:
                 continue
-            view_extensions.append(
+            by_model[model_name].append(
                 ViewExtensionSource(
                     module=module,
                     addon_root=normalized_addon_root,
@@ -489,7 +518,23 @@ def _scan_view_extensions(
                     inherit_ref=inherit_ref,
                 )
             )
-    return view_extensions
+    return {
+        model_name: sorted(
+            items,
+            key=lambda item: (
+                item.module,
+                item.path,
+                item.record_id or "",
+            ),
+        )
+        for model_name, items in by_model.items()
+    }
+
+
+def _scan_view_extensions(
+    addon_root: str, module: str, model: str
+) -> list[ViewExtensionSource]:
+    return _scan_view_extensions_by_model(addon_root, module).get(model, [])
 
 
 def list_addon_technical_inventory(
@@ -565,20 +610,28 @@ def list_addon_technical_inventory(
     )
 
 
-def list_model_extensions(addons_path: str, model: str) -> ModelExtensionInventory:
-    """Return static extension locations for one model across all addons."""
+def list_model_extensions_for_roots(
+    addon_roots: Iterable[tuple[str, str]],
+    model: str,
+    *,
+    scan_cache: SourceScanCache | None = None,
+) -> ModelExtensionInventory:
+    """Return static extension locations for one model across selected addon roots."""
+    cache = scan_cache or SourceScanCache()
     base_declarations: list[ModelDeclarationSource] = []
     source_extensions: list[ModelExtensionSource] = []
     source_view_extensions: list[ViewExtensionSource] = []
     scanned_python_files: list[str] = []
     warnings: list[str] = []
 
-    for module, addon_root in _iter_addon_roots(addons_path):
+    for module, addon_root in addon_roots:
         normalized_addon_root = _path_str(addon_root)
-        scan = _scan_python_sources(addon_root)
+        scan = cache.python_scan(normalized_addon_root)
         scanned_python_files.extend(scan.scanned_files)
         warnings.extend(scan.warnings)
-        source_view_extensions.extend(_scan_view_extensions(addon_root, module, model))
+        source_view_extensions.extend(
+            cache.view_extensions_by_model(normalized_addon_root, module).get(model, [])
+        )
         for class_scan in scan.classes:
             added_fields = sorted(class_scan.field_lines)
             added_methods = sorted(class_scan.method_lines)
@@ -653,6 +706,35 @@ def list_model_extensions(addons_path: str, model: str) -> ModelExtensionInvento
         scanned_python_files=sorted(dict.fromkeys(scanned_python_files)),
         warnings=sorted(dict.fromkeys(warnings)),
         remediation=remediation,
+    )
+
+
+def list_model_extensions(
+    addons_path: str,
+    model: str,
+    *,
+    scan_cache: SourceScanCache | None = None,
+) -> ModelExtensionInventory:
+    """Return static extension locations for one model across all addons."""
+    return list_model_extensions_for_roots(
+        _iter_addon_roots(addons_path),
+        model,
+        scan_cache=scan_cache,
+    )
+
+
+def list_model_extensions_for_addon(
+    addon_root: str,
+    module: str,
+    model: str,
+    *,
+    scan_cache: SourceScanCache | None = None,
+) -> ModelExtensionInventory:
+    """Return static extension locations for one model in one addon root."""
+    return list_model_extensions_for_roots(
+        [(module, addon_root)],
+        model,
+        scan_cache=scan_cache,
     )
 
 

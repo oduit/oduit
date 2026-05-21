@@ -89,6 +89,51 @@ def _generation_options(
     return options
 
 
+def _agent_technical_doc_progress(enabled: bool) -> Any:
+    if not enabled:
+        return None
+
+    def progress(stage: str, data: dict[str, Any]) -> None:
+        module = data.get("module")
+        model = data.get("model")
+        index = data.get("index")
+        total = data.get("total")
+
+        message: str | None = None
+        if stage == "resolve_target":
+            message = f"resolving addon target: {data.get('target', '')}".rstrip()
+        elif stage == "technical_inventory" and module:
+            message = f"collecting source inventory: {module}"
+        elif stage == "inspect_addon" and module:
+            message = f"inspecting addon: {module}"
+        elif stage == "model_inventory" and module:
+            message = f"collecting model inventory: {module}"
+        elif stage == "dependency_graph" and module:
+            message = f"collecting dependency graph: {module}"
+        elif stage == "model_documentation" and module and model:
+            suffix = f" ({index}/{total})" if index and total else ""
+            message = f"documenting model: {module}:{model}{suffix}"
+        elif stage == "model_source" and model:
+            message = f"collecting source evidence: {model}"
+        elif stage == "model_runtime_fields" and model:
+            message = f"querying runtime fields: {model}"
+        elif stage == "model_runtime_views" and model:
+            message = f"querying runtime views: {model}"
+        elif stage == "recommended_tests" and module:
+            message = f"collecting test recommendations: {module}"
+        elif stage == "render" and module:
+            message = f"rendering arc42 markdown: {module}"
+        elif stage == "writing":
+            message = f"writing: {data.get('path', '')}".rstrip()
+        elif stage == "writing_metadata":
+            message = f"writing metadata: {data.get('path', '')}".rstrip()
+
+        if message:
+            typer.echo(f"[oduit agent technical-doc] {message}", err=True)
+
+    return progress
+
+
 def agent_technical_doc_command(
     ctx: typer.Context,
     *,
@@ -101,6 +146,7 @@ def agent_technical_doc_command(
     database: str | None,
     timeout: float,
     source_only: bool,
+    progress: bool,
     include_arch: bool,
     attributes: str | None,
     types: str | None,
@@ -155,6 +201,7 @@ def agent_technical_doc_command(
         explicit_base=path_prefix,
     )
     effective_path_prefix = path_context.base_dir.as_posix()
+    progress_cb = _agent_technical_doc_progress(progress)
 
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
     try:
@@ -172,7 +219,7 @@ def agent_technical_doc_command(
             max_fields_per_model=max_fields_per_model,
             path_prefix=effective_path_prefix,
             path_base_dir=effective_path_prefix,
-            progress=None,
+            progress=progress_cb,
         )
     except module_not_found_error_cls as exc:
         agent_fail_fn(
@@ -306,6 +353,8 @@ def agent_technical_doc_command(
     bundle.output_path = f"docs/{TECHNICAL_DOC_FILENAME}"
     bundle.metadata_path = f"docs/{TECHNICAL_DOC_METADATA_FILENAME}"
     bundle.markdown = render_arc42_addon_markdown(bundle)
+    if progress_cb is not None:
+        progress_cb("writing", {"path": path_context.relative(output_path)})
     output_path.write_text(bundle.markdown, encoding="utf-8")
     metadata = build_technical_documentation_metadata(
         bundle=bundle,
@@ -327,6 +376,8 @@ def agent_technical_doc_command(
             strict=False
         ),
     )
+    if progress_cb is not None:
+        progress_cb("writing_metadata", {"path": path_context.relative(metadata_path)})
     write_technical_documentation_metadata(metadata, metadata_path)
     status = inspect_technical_documentation_status(
         addon_root=bundle.source_addon_root or bundle.addon_root,

@@ -15,9 +15,11 @@ from ..api_models import (
 from ..exceptions import ConfigError, ModuleNotFoundError
 from ..output import print_error, print_error_result, print_info
 from ..source_locator import (
+    SourceScanCache,
     list_addon_models,
     list_addon_tests,
     list_model_extensions,
+    list_model_extensions_for_roots,
     locate_field_sources,
     locate_model_sources,
     recommend_tests,
@@ -207,10 +209,20 @@ class SourceAnalysisOperationsService(OperationsService):
         model: str,
         database: str | None = None,
         timeout: float = 30.0,
+        source_roots: list[tuple[str, str]] | None = None,
+        scan_cache: SourceScanCache | None = None,
     ) -> ModelExtensionInventory:
         """Return combined source and installed metadata for one model."""
         addons_path = self.operations.config.get_required("addons_path")
-        inventory = list_model_extensions(addons_path, model)
+        inventory = (
+            list_model_extensions_for_roots(
+                source_roots,
+                model,
+                scan_cache=scan_cache,
+            )
+            if source_roots is not None
+            else list_model_extensions(addons_path, model, scan_cache=scan_cache)
+        )
 
         field_result = self.operations.query_model(
             "ir.model.fields",

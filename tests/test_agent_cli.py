@@ -1,6 +1,9 @@
 import json
+import os
 import re
+import shutil
 import stat
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -1720,6 +1723,61 @@ def test_agent_technical_doc_dry_run_is_read_only(tmp_path: Path) -> None:
     assert data["would_write"].endswith("docs/architecture.md")
     assert data["would_write_metadata"].endswith("docs/architecture.oduit.json")
     assert "markdown" not in data
+    assert ops.build_technical_documentation.call_args.kwargs["source_only"] is True
+    assert ops.build_technical_documentation.call_args.kwargs["progress"] is not None
+
+
+def test_agent_technical_doc_runtime_flag_disables_source_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.build_technical_documentation.return_value = (
+            _technical_documentation_bundle(addon_root)
+        )
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc", "my_partner", "--runtime"],
+        )
+
+    assert result.exit_code == 0
+    assert ops.build_technical_documentation.call_args.kwargs["source_only"] is False
+
+
+def test_agent_technical_doc_progress_goes_to_stderr_only(tmp_path: Path) -> None:
+    _make_technical_addon(tmp_path / "addons")
+    (tmp_path / ".oduit.toml").write_text('[odoo_params]\naddons_path = "./addons"\n')
+    cli_path = shutil.which("oduit")
+    assert cli_path is not None
+    env = dict(os.environ)
+    result = subprocess.run(
+        [
+            cli_path,
+            "agent",
+            "technical-doc",
+            "addons/my_partner",
+            "--source-only",
+            "--progress",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "[oduit agent technical-doc]" in result.stderr
+    assert "[oduit agent technical-doc]" not in result.stdout
+    assert json.loads(result.stdout)["type"] == "technical_documentation"
 
 
 def test_agent_technical_doc_requires_allow_mutation_for_write(tmp_path: Path) -> None:
@@ -1777,6 +1835,7 @@ def test_agent_technical_doc_writes_addon_local_architecture_file(
                 "technical-doc",
                 "my_partner",
                 "--allow-mutation",
+                "--no-progress",
             ],
         )
 
@@ -1895,6 +1954,7 @@ def test_agent_technical_doc_writes_metadata_sidecar(tmp_path: Path) -> None:
                 "my_partner",
                 "--allow-mutation",
                 "--source-only",
+                "--no-progress",
             ],
         )
 
@@ -2029,6 +2089,7 @@ def test_agent_technical_doc_uses_relative_paths_when_git_base_exists(
                 "technical-doc",
                 "my_partner",
                 "--allow-mutation",
+                "--no-progress",
             ],
         )
 

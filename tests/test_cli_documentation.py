@@ -22,6 +22,7 @@ from oduit.api_models import (
     TechnicalDocumentation,
 )
 from oduit.cli.app import app
+from oduit.cli.commands.documentation import _format_progress_message
 
 
 def _documentation_bundle(module: str = "my_partner") -> AddonDocumentation:
@@ -989,6 +990,14 @@ def test_docs_technical_progress_writes_to_stderr_without_corrupting_stdout(
     assert "[oduit docs] resolving project path base:" in result.stderr
     assert "[oduit docs]" not in result.stdout
     assert json.loads(result.stdout)["type"] == "technical_documentation"
+
+
+def test_docs_progress_formatter_includes_model_index_suffix() -> None:
+    message = _format_progress_message(
+        "model_documentation",
+        {"module": "has_helpdesk", "model": "helpdesk.ticket", "index": 3, "total": 42},
+    )
+    assert message == "documenting model: has_helpdesk:helpdesk.ticket (3/42)"
 
 
 def test_docs_technical_status_select_dir_relative_addon_path_returns_one_status(
