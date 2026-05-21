@@ -18,8 +18,8 @@ The default single-addon output is an Arc42-style Markdown document stored insid
 Example:
 
 ```text
-@addons/has_base
-→ addons/has_base/docs/architecture.md
+addons/my_addon
+→ addons/my_addon/docs/architecture.md
 ```
 
 ## When to use this skill
@@ -73,19 +73,19 @@ oduit docs addon <module> --output docs/technical/<module>.md
 Prefer explicit addon paths for write operations:
 
 ```bash
-oduit agent technical-doc @addons/has_base --allow-mutation
+oduit agent technical-doc @addons/my_addon --allow-mutation
 ```
 
 Why:
 
-- `@addons/has_base` makes the write target unambiguous.
+- `@addons/my_addon` makes the write target unambiguous.
 - Module names can be duplicated across `addons_path`.
 - oduit refuses ambiguous source writes and asks for an explicit path.
 
 Use module names only for read-only preview when ambiguity is unlikely:
 
 ```bash
-oduit agent technical-doc has_base
+oduit agent technical-doc my_addon
 ```
 
 ## Standard setup checks
