@@ -1790,8 +1790,8 @@ def test_agent_technical_doc_writes_addon_local_architecture_file(
     assert payload["operation"] == "write_technical_doc"
     assert payload["read_only"] is False
     assert payload["safety_level"] == "controlled_source_mutation"
-    assert data["output_path"] == str(output_path)
-    assert data["metadata_path"] == str(metadata_path)
+    assert data["output_path"] == output_path.as_posix()
+    assert data["metadata_path"] == metadata_path.as_posix()
 
 
 def test_agent_technical_doc_refuses_overwrite_without_force(tmp_path: Path) -> None:
@@ -1902,7 +1902,7 @@ def test_agent_technical_doc_writes_metadata_sidecar(tmp_path: Path) -> None:
     data = _payload_data(payload)
     metadata_path = addon_root / "docs" / "architecture.oduit.json"
     assert result.exit_code == 0
-    assert data["metadata_path"] == str(metadata_path)
+    assert data["metadata_path"] == metadata_path.as_posix()
     assert data["created_at"]
     assert data["last_generated_at"]
     assert data["status"] == "up_to_date"

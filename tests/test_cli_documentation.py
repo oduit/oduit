@@ -566,8 +566,8 @@ def test_docs_technical_writes_to_addon_docs(tmp_path: Path) -> None:
     assert output_path.exists()
     assert "Metadata: docs/architecture.oduit.json" in output_path.read_text()
     assert metadata_path.exists()
-    assert str(output_path) in result.output
-    assert str(metadata_path) in result.output
+    assert output_path.as_posix() in result.output
+    assert metadata_path.as_posix() in result.output
 
 
 def test_docs_technical_refuses_overwrite_without_force(tmp_path: Path) -> None:
