@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from oduit.api_models import AddonDocTarget, TechnicalDocumentation
+from oduit.documentation_policy import DocumentationDirectoryPolicy
 from oduit.documentation_tracking import (
     TECHNICAL_DOC_METADATA_FILENAME,
     accept_reviewed_technical_documentation,
@@ -277,3 +278,22 @@ def test_status_selection_keeps_legacy_basename_matching(tmp_path: Path) -> None
 
     assert len(statuses) == 1
     assert statuses[0].module == "has_crm"
+
+
+def test_status_scan_filters_with_documentation_policy(tmp_path: Path) -> None:
+    native_root = tmp_path / "odoo" / "addons"
+    custom_root = tmp_path / "addons"
+    _make_addon(native_root / "account")
+    _make_addon(custom_root / "has_crm")
+
+    policy = DocumentationDirectoryPolicy(
+        configured=True,
+        allowed_dirs=(custom_root.resolve(strict=False),),
+    )
+    statuses = inspect_all_technical_documentation_statuses(
+        addons_path=f"{native_root},{custom_root}",
+        path_base_dir=tmp_path,
+        documentation_policy=policy,
+    )
+
+    assert [status.module for status in statuses] == ["has_crm"]

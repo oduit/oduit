@@ -12,6 +12,11 @@ from ...arc42_renderer import (
     inspect_generated_markdown_quality,
     render_arc42_addon_markdown,
 )
+from ...documentation_policy import (
+    DocumentationDirectoryPolicy,
+    DocumentationTargetNotAllowedError,
+    load_documentation_directory_policy,
+)
 from ...documentation_tracking import (
     TECHNICAL_DOC_FILENAME,
     TECHNICAL_DOC_METADATA_FILENAME,
@@ -123,6 +128,18 @@ def _status_to_payload_dict(status: Any, *, include_files: bool) -> dict[str, An
         data.pop("removed_files", None)
     data["metadata_summary"] = _metadata_summary(status)
     return data
+
+
+def _selected_path_is_outside_policy(
+    select_dir: str | None,
+    *,
+    path_context: Any,
+    documentation_policy: DocumentationDirectoryPolicy,
+) -> bool:
+    if select_dir is None or not documentation_policy.configured:
+        return False
+    selected = path_context.resolve_user_path(select_dir)
+    return not documentation_policy.intersects(selected)
 
 
 def _progress_stage_visible(stage: str, *, progress_level: str) -> bool:
@@ -282,6 +299,10 @@ def agent_technical_doc_command(
         config_path=global_config.config_path,
         explicit_base=path_prefix,
     )
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
     effective_path_prefix = path_context.base_dir.as_posix()
     normalized_progress_level = _normalize_progress_level(progress_level)
     progress_cb = _agent_technical_doc_progress(
@@ -304,6 +325,7 @@ def agent_technical_doc_command(
             max_fields_per_model=max_fields_per_model,
             path_prefix=effective_path_prefix,
             path_base_dir=effective_path_prefix,
+            documentation_policy=documentation_policy,
             progress=progress_cb,
             progress_level=normalized_progress_level,
             render_markdown=effective_dry_run,
@@ -330,6 +352,25 @@ def agent_technical_doc_command(
                 (
                     "Use either a valid addon name or a path that"
                     " resolves to an addon root."
+                ),
+            ],
+        )
+    except DocumentationTargetNotAllowedError as exc:
+        agent_fail_fn(
+            preview_operation,
+            result_type,
+            str(exc),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": target,
+                "addon_root": exc.addon_root,
+                "allowed_addon_dirs": exc.allowed_dirs,
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
                 ),
             ],
         )
@@ -555,12 +596,45 @@ def agent_technical_doc_status_command(
     path_context = resolve_project_path_context(
         config_path=global_config.config_path,
     )
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    if _selected_path_is_outside_policy(
+        select_dir,
+        path_context=path_context,
+        documentation_policy=documentation_policy,
+    ):
+        agent_fail_fn(
+            operation,
+            result_type,
+            (
+                f"Technical documentation is not allowed for directory '{select_dir}'; "
+                "it is outside [documentation].allowed_addon_dirs."
+            ),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": select_dir,
+                "addon_root": path_context.resolve_user_path(select_dir).as_posix(),
+                "allowed_addon_dirs": documentation_policy.display_allowed_dirs(
+                    base_dir=path_context.base_dir
+                ),
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
+                ),
+            ],
+        )
     if target is not None:
         try:
             resolved_target = resolve_addon_documentation_target(
                 global_config.env_config,
                 target,
                 path_base_dir=path_context.base_dir,
+                documentation_policy=documentation_policy,
             )
         except FileNotFoundError as exc:
             agent_fail_fn(
@@ -571,6 +645,25 @@ def agent_technical_doc_status_command(
                 details={"target": target},
                 remediation=[
                     "Use a valid addon name or a path that resolves to an addon root."
+                ],
+            )
+        except DocumentationTargetNotAllowedError as exc:
+            agent_fail_fn(
+                operation,
+                result_type,
+                str(exc),
+                error_type="DocumentationTargetNotAllowedError",
+                details={
+                    "target": target,
+                    "addon_root": exc.addon_root,
+                    "allowed_addon_dirs": exc.allowed_dirs,
+                },
+                remediation=[
+                    (
+                        "Use an addon under [documentation].allowed_addon_dirs, or "
+                        "update that allowlist only for project-controlled addon "
+                        "directories."
+                    ),
                 ],
             )
         if resolved_target.target_kind == "module" and resolved_target.ambiguous:
@@ -599,6 +692,7 @@ def agent_technical_doc_status_command(
             addons_path=str(global_config.env_config["addons_path"]),
             select_dir=select_dir,
             path_base_dir=path_context.base_dir,
+            documentation_policy=documentation_policy,
         )
         if select_dir is not None and not statuses:
             agent_fail_fn(
@@ -651,11 +745,16 @@ def agent_technical_doc_check_command(
     assert global_config.env_config is not None
 
     path_context = resolve_project_path_context(config_path=global_config.config_path)
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
     try:
         resolved_target = resolve_addon_documentation_target(
             global_config.env_config,
             target,
             path_base_dir=path_context.base_dir,
+            documentation_policy=documentation_policy,
         )
     except FileNotFoundError as exc:
         agent_fail_fn(
@@ -666,6 +765,25 @@ def agent_technical_doc_check_command(
             details={"target": target},
             remediation=[
                 "Use a valid addon name or a path that resolves to an addon root."
+            ],
+        )
+    except DocumentationTargetNotAllowedError as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": target,
+                "addon_root": exc.addon_root,
+                "allowed_addon_dirs": exc.allowed_dirs,
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
+                ),
             ],
         )
 
@@ -722,10 +840,43 @@ def agent_technical_doc_next_command(
     assert global_config.env_config is not None
 
     path_context = resolve_project_path_context(config_path=global_config.config_path)
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    if _selected_path_is_outside_policy(
+        path,
+        path_context=path_context,
+        documentation_policy=documentation_policy,
+    ):
+        agent_fail_fn(
+            operation,
+            result_type,
+            (
+                f"Technical documentation is not allowed for directory '{path}'; "
+                "it is outside [documentation].allowed_addon_dirs."
+            ),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": path,
+                "addon_root": path_context.resolve_user_path(path).as_posix(),
+                "allowed_addon_dirs": documentation_policy.display_allowed_dirs(
+                    base_dir=path_context.base_dir
+                ),
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
+                ),
+            ],
+        )
     statuses = inspect_all_technical_documentation_statuses(
         addons_path=str(global_config.env_config["addons_path"]),
         select_dir=path,
         path_base_dir=path_context.base_dir,
+        documentation_policy=documentation_policy,
     )
     if path is not None and not statuses:
         agent_fail_fn(
@@ -790,11 +941,16 @@ def agent_technical_doc_accept_command(
         controlled_source_mutation,
     )
     path_context = resolve_project_path_context(config_path=global_config.config_path)
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
     try:
         resolved_target = resolve_addon_documentation_target(
             global_config.env_config,
             target,
             path_base_dir=path_context.base_dir,
+            documentation_policy=documentation_policy,
         )
     except FileNotFoundError as exc:
         agent_fail_fn(
@@ -803,6 +959,25 @@ def agent_technical_doc_accept_command(
             str(exc),
             error_type="NotFoundError",
             details={"target": target},
+        )
+    except DocumentationTargetNotAllowedError as exc:
+        agent_fail_fn(
+            operation,
+            result_type,
+            str(exc),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": target,
+                "addon_root": exc.addon_root,
+                "allowed_addon_dirs": exc.allowed_dirs,
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
+                ),
+            ],
         )
 
     doc_path = Path(resolved_target.addon_root) / "docs" / TECHNICAL_DOC_FILENAME

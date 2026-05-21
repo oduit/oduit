@@ -2359,6 +2359,61 @@ def test_agent_technical_doc_next_returns_expected_module(tmp_path: Path) -> Non
     assert data["next_module"] == "my_partner"
 
 
+def test_agent_technical_doc_next_respects_allowed_addon_dirs(tmp_path: Path) -> None:
+    runner = CliRunner()
+    (tmp_path / ".git").mkdir()
+    native_root = tmp_path / "odoo" / "addons"
+    custom_root = tmp_path / "addons"
+    _make_technical_addon(native_root, module_name="account")
+    _make_technical_addon(custom_root, module_name="has_crm")
+    config = _agent_config(tmp_path, f"{native_root},{custom_root}")
+    config["documentation"] = {"allowed_addon_dirs": ["./addons"]}
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            ["--env", "dev", "agent", "technical-doc-next"],
+        )
+
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert result.exit_code == 0
+    assert data["next_module"] == "has_crm"
+
+
+def test_agent_technical_doc_write_refuses_disallowed_native_addon(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    native_root = tmp_path / "odoo" / "addons"
+    custom_root = tmp_path / "addons"
+    account_root = _make_technical_addon(native_root, module_name="account")
+    _make_technical_addon(custom_root, module_name="has_crm")
+    config = _agent_config(tmp_path, f"{native_root},{custom_root}")
+    config["documentation"] = {"allowed_addon_dirs": ["./addons"]}
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc",
+                "@odoo/addons/account",
+                "--allow-mutation",
+                "--source-only",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error_type"] == "DocumentationTargetNotAllowedError"
+    assert not (account_root / "docs" / "architecture.md").exists()
+
+
 def test_agent_technical_doc_accept_marks_reviewed_document_as_up_to_date(
     tmp_path: Path,
 ) -> None:

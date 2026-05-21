@@ -141,6 +141,45 @@ class TestConfigLoader(unittest.TestCase):
         new_callable=mock_open,
         read_data=(
             b'[binaries]\npython_bin = "/usr/bin/python3"\n'
+            b'[odoo_params]\naddons_path = ["./odoo/addons", "./addons"]\n'
+            b'[documentation]\nallowed_addon_dirs = ["./addons"]\n'
+        ),
+    )
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    def test_load_toml_sectioned_config_preserves_documentation_policy(
+        self, mock_expanduser, mock_exists, mock_file
+    ):
+        mock_expanduser.return_value = "/mocked/home/.config/oduit"
+        mock_exists.side_effect = lambda path: path.endswith("test.toml")
+
+        with patch.object(ConfigLoader, "_import_toml_libs") as mock_import:
+            mock_tomllib = MagicMock()
+            mock_tomllib.load.return_value = {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {"addons_path": ["./odoo/addons", "./addons"]},
+                "documentation": {"allowed_addon_dirs": ["./addons"]},
+            }
+            mock_import.return_value = (mock_tomllib, None)
+
+            config = ConfigLoader().load_config("test")
+            details = ConfigLoader().load_config_details("test")
+
+        self.assertEqual(config["addons_path"], "./odoo/addons,./addons")
+        self.assertEqual(
+            config["documentation"],
+            {"allowed_addon_dirs": ["./addons"]},
+        )
+        self.assertEqual(
+            details.canonical_config["documentation"],
+            {"allowed_addon_dirs": ["./addons"]},
+        )
+
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data=(
+            b'[binaries]\npython_bin = "/usr/bin/python3"\n'
             b'[odoo_params]\naddons_path = ["/path1", "/path2"]\n'
             b"allow_uninstall = true\n"
         ),

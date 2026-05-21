@@ -102,6 +102,10 @@ oduit agent resolve-addon-root @addons/<module>
 oduit agent addon-info <module>
 ```
 
+After `oduit agent resolve-config`, inspect
+`[documentation].allowed_addon_dirs`. Never write docs for addons outside that
+allowlist.
+
 If `doctor` fails only because runtime/database access is unavailable, continue with `--source-only`.
 
 If addon resolution fails, stop and report the configured `addons_path` issue. Do not invent module paths.
@@ -227,8 +231,14 @@ oduit docs technical-status --only-stale
 Pick the next addon that still needs work:
 
 ```bash
-oduit agent technical-doc-next addons
+oduit agent technical-doc-next
 ```
+
+Use `oduit agent technical-doc-next addons` only when intentionally narrowing
+the search further.
+
+If `technical-doc-next` returns a native Odoo addon (for example `account`),
+the project config is likely missing `[documentation].allowed_addon_dirs`.
 
 If status is `source_changed`, regenerate or manually review the architecture
 document. If status is `document_edited`, compare the human edits before

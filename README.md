@@ -80,6 +80,11 @@ write_protect_db = false
 agent_write_protect_db = false
 needs_mutation_flag = false
 agent_needs_mutation_flag = false
+
+[documentation]
+# Only these addon directories may receive addon-local technical docs.
+# Useful when addons_path also contains native Odoo or third-party addon roots.
+allowed_addon_dirs = ["./addons"]
 ```
 
 Then run:
@@ -187,7 +192,7 @@ Addon-local Arc42 docs can now be tracked with a durable sidecar:
 ```bash
 oduit --env dev docs technical @addons/has_base --output-in-addon --source-only
 oduit --env dev docs technical-check @addons/has_base --include-files
-oduit --env dev docs technical-next addons
+oduit --env dev docs technical-next
 oduit --env dev docs technical-status --select-dir addons --only-stale
 ```
 
@@ -209,6 +214,9 @@ root, then cwd fallback).
 Use `technical-check` as the CI/script-friendly freshness gate for one addon.
 Use `technical-next` to pick the next addon that still needs documentation
 attention.
+When `[documentation].allowed_addon_dirs` is configured, `technical-next` and
+`technical-status` scan only those addon directories; native addons like
+`account` are excluded unless explicitly allowlisted.
 
 Runtime DB mutation policy is controlled by explicit config flags:
 

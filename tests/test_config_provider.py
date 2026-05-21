@@ -348,6 +348,53 @@ class TestConfigProvider(unittest.TestCase):
         self.assertTrue(provider.get_optional("needs_mutation_flag"))
         self.assertTrue(provider.get_optional("agent_needs_mutation_flag"))
 
+    def test_documentation_section_is_not_rendered_as_odoo_param(self):
+        provider = ConfigProvider(
+            {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {"addons_path": "/tmp/addons", "db_name": "test"},
+                "documentation": {"allowed_addon_dirs": ["./addons"]},
+            }
+        )
+
+        params = provider.get_odoo_params_list([])
+        self.assertTrue(
+            all(not param.startswith("--documentation") for param in params)
+        )
+        self.assertEqual(
+            provider.get_optional("documentation"),
+            {"allowed_addon_dirs": ["./addons"]},
+        )
+
+    def test_documentation_section_is_preserved_in_flat_shape(self):
+        provider = ConfigProvider(
+            {
+                "python_bin": "/usr/bin/python3",
+                "addons_path": "/tmp/addons",
+                "db_name": "test",
+                "documentation": {"allowed_addon_dirs": ["./addons"]},
+                "documentation_allowed_addon_dirs": "./addons,./customer-addons",
+            }
+        )
+
+        params = provider.get_odoo_params_list([])
+        self.assertTrue(
+            all(not param.startswith("--documentation") for param in params)
+        )
+        self.assertEqual(
+            provider.get_optional("documentation"),
+            {"allowed_addon_dirs": ["./addons"]},
+        )
+        self.assertEqual(
+            provider.get_optional("documentation_allowed_addon_dirs"),
+            "./addons,./customer-addons",
+        )
+        sectioned = provider.to_sectioned_dict()
+        self.assertEqual(
+            sectioned["documentation"],
+            {"allowed_addon_dirs": ["./addons"]},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

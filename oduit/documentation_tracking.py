@@ -18,6 +18,7 @@ from .api_models import (
     TechnicalDocumentationMetadata,
     TechnicalDocumentationStatus,
 )
+from .documentation_policy import DocumentationDirectoryPolicy
 from .source_locator import list_addon_technical_inventory
 
 TECHNICAL_DOC_FILENAME = "architecture.md"
@@ -432,7 +433,7 @@ def inspect_technical_documentation_status(
     ):
         status.status = "document_edited"
         status.remediation.append(
-            "Compare the Markdown edits before overwriting with a fresh " "generation."
+            "Compare the Markdown edits before overwriting with a fresh generation."
         )
         return status
 
@@ -458,15 +459,22 @@ def inspect_all_technical_documentation_statuses(
     addons_path: str,
     select_dir: str | None = None,
     path_base_dir: Path | None = None,
+    documentation_policy: DocumentationDirectoryPolicy | None = None,
 ) -> list[TechnicalDocumentationStatus]:
     """Scan configured addons and return status for each addon."""
 
     statuses: list[TechnicalDocumentationStatus] = []
+    policy = documentation_policy or DocumentationDirectoryPolicy(
+        configured=False,
+        allowed_dirs=(),
+    )
     for module, addon_root in _iter_addon_roots(
         addons_path,
         select_dir=select_dir,
         path_base_dir=path_base_dir,
     ):
+        if not policy.is_allowed(addon_root):
+            continue
         statuses.append(
             inspect_technical_documentation_status(
                 addon_root=addon_root,

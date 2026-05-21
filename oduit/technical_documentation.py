@@ -7,6 +7,10 @@ from typing import Any
 
 from .addons_path_manager import AddonsPathManager
 from .api_models import AddonDocTarget
+from .documentation_policy import (
+    DocumentationDirectoryPolicy,
+    DocumentationTargetNotAllowedError,
+)
 from .module_manager import ModuleManager
 
 _MANIFEST_FILENAMES = ("__manifest__.py", "__openerp__.py")
@@ -47,6 +51,7 @@ def resolve_addon_documentation_target(
     target: str,
     *,
     path_base_dir: str | Path | None = None,
+    documentation_policy: DocumentationDirectoryPolicy | None = None,
 ) -> AddonDocTarget:
     """Resolve a technical-documentation target to one concrete addon root."""
 
@@ -69,6 +74,7 @@ def resolve_addon_documentation_target(
         for path in path_manager.get_configured_paths()
     ]
     warnings: list[str] = []
+    policy = documentation_policy
 
     if resolved_requested_path.exists():
         addon_root = _find_addon_root(resolved_requested_path)
@@ -84,6 +90,17 @@ def resolve_addon_documentation_target(
         if not inside_configured_addons_path:
             warnings.append(
                 "The resolved addon path is outside the configured addons_path entries."
+            )
+        if policy is not None and not policy.is_allowed(addon_root):
+            raise DocumentationTargetNotAllowedError(
+                (
+                    "Technical documentation is not allowed for addon target "
+                    f"{target!r}; "
+                    "the resolved addon root is outside "
+                    "[documentation].allowed_addon_dirs."
+                ),
+                addon_root=addon_root.as_posix(),
+                allowed_dirs=policy.display_allowed_dirs(base_dir=base_dir),
             )
         addon_root_str = addon_root.as_posix()
         return AddonDocTarget(
@@ -118,6 +135,17 @@ def resolve_addon_documentation_target(
         warnings.append(
             "Module-name resolution is ambiguous; use an explicit addon path for "
             "source mutation."
+        )
+    if policy is not None and not policy.is_allowed(addon_root):
+        raise DocumentationTargetNotAllowedError(
+            (
+                "Technical documentation is not allowed for addon target "
+                f"{target!r}; "
+                "the resolved addon root is outside "
+                "[documentation].allowed_addon_dirs."
+            ),
+            addon_root=addon_root.as_posix(),
+            allowed_dirs=policy.display_allowed_dirs(base_dir=base_dir),
         )
 
     return AddonDocTarget(

@@ -26,6 +26,7 @@ from ..api_models import (
     TechnicalDocumentation,
 )
 from ..arc42_renderer import build_arc42_addon_sections, render_arc42_addon_markdown
+from ..documentation_policy import DocumentationDirectoryPolicy
 from ..documentation_renderer import (
     build_addon_sections,
     build_dependency_graph_sections,
@@ -431,6 +432,7 @@ class DocumentationOperationsService(OperationsService):
         max_fields_per_model: int | None = None,
         path_prefix: str | None = None,
         path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
         progress: ProgressCallback | None = None,
         progress_level: str = "compact",
         render_markdown: bool = True,
@@ -448,6 +450,7 @@ class DocumentationOperationsService(OperationsService):
             self.operations.env_config,
             target,
             path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
         )
         progress("technical_inventory", {"module": resolved_target.module})
         technical_inventory = list_addon_technical_inventory(

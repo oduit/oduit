@@ -1141,6 +1141,171 @@ def test_docs_technical_next_returns_expected_module_name(tmp_path: Path) -> Non
     assert result.output.strip() == "has_crm"
 
 
+def test_docs_technical_next_respects_allowed_addon_dirs(tmp_path: Path) -> None:
+    runner = CliRunner()
+    native_root = tmp_path / "odoo" / "addons"
+    custom_root = tmp_path / "addons"
+    _make_technical_addon_root(native_root / "account")
+    _make_technical_addon_root(custom_root / "has_crm")
+    config = {
+        "db_name": "test_db",
+        "addons_path": f"{native_root},{custom_root}",
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+        "documentation": {"allowed_addon_dirs": ["./addons"]},
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(app, ["docs", "technical-next"])
+    finally:
+        os.chdir(cwd)
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "has_crm"
+
+
+def test_docs_technical_next_rejects_select_dir_outside_allowed_addon_dirs(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    native_root = tmp_path / "odoo" / "addons"
+    custom_root = tmp_path / "addons"
+    _make_technical_addon_root(native_root / "account")
+    _make_technical_addon_root(custom_root / "has_crm")
+    config = {
+        "db_name": "test_db",
+        "addons_path": f"{native_root},{custom_root}",
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+        "documentation": {"allowed_addon_dirs": ["./addons"]},
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(
+                app,
+                ["--json", "docs", "technical-next", "odoo/addons"],
+            )
+    finally:
+        os.chdir(cwd)
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error_type"] == "DocumentationTargetNotAllowedError"
+
+
+def test_docs_technical_status_filters_to_allowed_addon_dirs(tmp_path: Path) -> None:
+    runner = CliRunner()
+    native_root = tmp_path / "odoo" / "addons"
+    custom_root = tmp_path / "addons"
+    _make_technical_addon_root(native_root / "account")
+    _make_technical_addon_root(custom_root / "has_crm")
+    config = {
+        "db_name": "test_db",
+        "addons_path": f"{native_root},{custom_root}",
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+        "documentation": {"allowed_addon_dirs": ["./addons"]},
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(
+                app, ["docs", "technical-status", "--format", "json"]
+            )
+    finally:
+        os.chdir(cwd)
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert [status["module"] for status in payload["statuses"]] == ["has_crm"]
+
+
+def test_docs_technical_refuses_native_addon_write_when_not_allowed(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    native_root = tmp_path / "odoo" / "addons"
+    custom_root = tmp_path / "addons"
+    account_root = native_root / "account"
+    _make_technical_addon_root(account_root)
+    _make_technical_addon_root(custom_root / "has_crm")
+    config = {
+        "db_name": "test_db",
+        "addons_path": f"{native_root},{custom_root}",
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+        "documentation": {"allowed_addon_dirs": ["./addons"]},
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(
+                app,
+                [
+                    "--json",
+                    "docs",
+                    "technical",
+                    "@odoo/addons/account",
+                    "--output-in-addon",
+                    "--source-only",
+                ],
+            )
+    finally:
+        os.chdir(cwd)
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error_type"] == "DocumentationTargetNotAllowedError"
+    assert not (account_root / "docs" / "architecture.md").exists()
+
+
+def test_docs_technical_check_rejects_module_target_outside_allowlist(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    native_root = tmp_path / "odoo" / "addons"
+    custom_root = tmp_path / "addons"
+    _make_technical_addon_root(native_root / "account")
+    _make_technical_addon_root(custom_root / "has_crm")
+    config = {
+        "db_name": "test_db",
+        "addons_path": f"{native_root},{custom_root}",
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+        "documentation": {"allowed_addon_dirs": ["./addons"]},
+    }
+    loader = _local_loader(config, tmp_path)
+    cwd = Path.cwd()
+
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(
+                app,
+                ["--json", "docs", "technical-check", "account"],
+            )
+    finally:
+        os.chdir(cwd)
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error_type"] == "DocumentationTargetNotAllowedError"
+
+
 def test_docs_technical_check_omits_file_lists_by_default(tmp_path: Path) -> None:
     runner = CliRunner()
     addon_root = tmp_path / "addons" / "my_partner"

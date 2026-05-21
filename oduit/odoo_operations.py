@@ -49,6 +49,7 @@ from .api_models import (
 )
 from .builders import ConfigProvider
 from .demo_process_manager import DemoProcessManager
+from .documentation_policy import DocumentationDirectoryPolicy
 from .module_manager import ModuleManager
 from .odoo_code_executor import OdooCodeExecutor
 from .odoo_inspector import OdooInspector
@@ -624,6 +625,7 @@ class OdooOperations:
         max_fields_per_model: int | None = None,
         path_prefix: str | None = None,
         path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
         progress: Callable[[str, dict[str, Any]], None] | None = None,
         progress_level: str = "compact",
         render_markdown: bool = True,
@@ -643,6 +645,7 @@ class OdooOperations:
             max_fields_per_model=max_fields_per_model,
             path_prefix=path_prefix,
             path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
             progress=progress,
             progress_level=progress_level,
             render_markdown=render_markdown,

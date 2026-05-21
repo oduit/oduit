@@ -13,6 +13,11 @@ from ...arc42_renderer import (
     inspect_generated_markdown_quality,
     render_arc42_addon_markdown,
 )
+from ...documentation_policy import (
+    DocumentationDirectoryPolicy,
+    DocumentationTargetNotAllowedError,
+    load_documentation_directory_policy,
+)
 from ...documentation_renderer import (
     render_dependency_graph_mermaid,
     render_shared_model_markdown,
@@ -56,6 +61,18 @@ def _resolve_status_format(global_config: Any, requested_format: str | None) -> 
         return requested_format
     format_value = getattr(getattr(global_config, "format", None), "value", None)
     return "json" if format_value == "json" else "text"
+
+
+def _selected_path_is_outside_policy(
+    select_dir: str | None,
+    *,
+    path_context: Any,
+    documentation_policy: DocumentationDirectoryPolicy,
+) -> bool:
+    if select_dir is None or not documentation_policy.configured:
+        return False
+    selected = path_context.resolve_user_path(select_dir)
+    return not documentation_policy.intersects(selected)
 
 
 def _write_output(content: str, output_path: Path | None) -> None:
@@ -423,7 +440,7 @@ def addon_documentation_command(
     module_not_found_error_cls: Any,
 ) -> None:
     """Generate documentation for one addon."""
-    global_config, _ = resolve_command_env_config_fn(ctx)
+    global_config, env_config = resolve_command_env_config_fn(ctx)
     resolved_format = _resolve_docs_format(global_config, format_name)
     ops = build_odoo_operations_fn(global_config)
     try:
@@ -489,7 +506,7 @@ def model_documentation_command(
     build_odoo_operations_fn: Any,
 ) -> None:
     """Generate documentation for one model."""
-    global_config, _ = resolve_command_env_config_fn(ctx)
+    global_config, env_config = resolve_command_env_config_fn(ctx)
     resolved_format = _resolve_docs_format(global_config, format_name)
     ops = build_odoo_operations_fn(global_config)
     bundle = ops.build_model_documentation(
@@ -781,7 +798,7 @@ def technical_documentation_command(
 ) -> None:
     """Generate arc42 technical documentation for one addon target."""
 
-    global_config, _ = resolve_command_env_config_fn(ctx)
+    global_config, env_config = resolve_command_env_config_fn(ctx)
     resolved_format = _resolve_docs_format(global_config, format_name)
     if resolved_format not in {"markdown", "json"}:
         raise typer.BadParameter("format must be either 'markdown' or 'json'")
@@ -793,6 +810,10 @@ def technical_documentation_command(
     path_context = resolve_project_path_context(
         config_path=global_config.config_path,
         explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
     )
     effective_path_prefix = path_context.base_dir.as_posix()
     normalized_progress_level = _normalize_progress_level(progress_level)
@@ -826,6 +847,7 @@ def technical_documentation_command(
             max_fields_per_model=max_fields_per_model,
             path_prefix=effective_path_prefix,
             path_base_dir=effective_path_prefix,
+            documentation_policy=documentation_policy,
             progress=progress_cb,
             progress_level=normalized_progress_level,
             render_markdown=render_markdown,
@@ -853,6 +875,26 @@ def technical_documentation_command(
                 (
                     "Use either a valid addon name or a path that"
                     " resolves to an addon root."
+                ),
+            ],
+        )
+        raise typer.Exit(1) from None
+    except DocumentationTargetNotAllowedError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical",
+            str(exc),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": target,
+                "addon_root": exc.addon_root,
+                "allowed_addon_dirs": exc.allowed_dirs,
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
                 ),
             ],
         )
@@ -1016,12 +1058,46 @@ def technical_documentation_status_command(
     path_context = resolve_project_path_context(
         config_path=global_config.config_path,
     )
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    if _selected_path_is_outside_policy(
+        select_dir,
+        path_context=path_context,
+        documentation_policy=documentation_policy,
+    ):
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_status",
+            (
+                f"Technical documentation is not allowed for directory '{select_dir}'; "
+                "it is outside [documentation].allowed_addon_dirs."
+            ),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": select_dir,
+                "addon_root": path_context.resolve_user_path(select_dir).as_posix(),
+                "allowed_addon_dirs": documentation_policy.display_allowed_dirs(
+                    base_dir=path_context.base_dir
+                ),
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
+                ),
+            ],
+        )
+        raise typer.Exit(1) from None
     if target is not None:
         try:
             resolved_target = resolve_addon_documentation_target(
                 env_config,
                 target,
                 path_base_dir=path_context.base_dir,
+                documentation_policy=documentation_policy,
             )
         except FileNotFoundError as exc:
             print_command_error_result_fn(
@@ -1032,6 +1108,26 @@ def technical_documentation_status_command(
                 details={"target": target},
                 remediation=[
                     "Use a valid addon name or a path that resolves to an addon root."
+                ],
+            )
+            raise typer.Exit(1) from None
+        except DocumentationTargetNotAllowedError as exc:
+            print_command_error_result_fn(
+                global_config,
+                "docs_technical_status",
+                str(exc),
+                error_type="DocumentationTargetNotAllowedError",
+                details={
+                    "target": target,
+                    "addon_root": exc.addon_root,
+                    "allowed_addon_dirs": exc.allowed_dirs,
+                },
+                remediation=[
+                    (
+                        "Use an addon under [documentation].allowed_addon_dirs, or "
+                        "update that allowlist only for project-controlled addon "
+                        "directories."
+                    ),
                 ],
             )
             raise typer.Exit(1) from None
@@ -1062,6 +1158,7 @@ def technical_documentation_status_command(
             addons_path=str(env_config["addons_path"]),
             select_dir=select_dir,
             path_base_dir=path_context.base_dir,
+            documentation_policy=documentation_policy,
         )
         if select_dir is not None and not statuses:
             print_command_error_result_fn(
@@ -1112,6 +1209,10 @@ def technical_documentation_check_command(
 
     global_config, env_config = resolve_command_env_config_fn(ctx)
     path_context = resolve_project_path_context(config_path=global_config.config_path)
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
+    )
     resolved_format = _resolve_status_format(global_config, format_name)
     if resolved_format not in {"text", "json"}:
         raise typer.BadParameter("format must be either 'text' or 'json'")
@@ -1121,6 +1222,7 @@ def technical_documentation_check_command(
             env_config,
             target,
             path_base_dir=path_context.base_dir,
+            documentation_policy=documentation_policy,
         )
     except FileNotFoundError as exc:
         print_command_error_result_fn(
@@ -1131,6 +1233,26 @@ def technical_documentation_check_command(
             details={"target": target},
             remediation=[
                 "Use a valid addon name or a path that resolves to an addon root."
+            ],
+        )
+        raise typer.Exit(1) from None
+    except DocumentationTargetNotAllowedError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_check",
+            str(exc),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": target,
+                "addon_root": exc.addon_root,
+                "allowed_addon_dirs": exc.allowed_dirs,
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
+                ),
             ],
         )
         raise typer.Exit(1) from None
@@ -1187,14 +1309,49 @@ def technical_documentation_next_command(
 
     global_config, env_config = resolve_command_env_config_fn(ctx)
     path_context = resolve_project_path_context(config_path=global_config.config_path)
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
+    )
     resolved_format = _resolve_status_format(global_config, format_name)
     if resolved_format not in {"text", "json"}:
         raise typer.BadParameter("format must be either 'text' or 'json'")
+
+    if _selected_path_is_outside_policy(
+        path,
+        path_context=path_context,
+        documentation_policy=documentation_policy,
+    ):
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_next",
+            (
+                f"Technical documentation is not allowed for directory '{path}'; "
+                "it is outside [documentation].allowed_addon_dirs."
+            ),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": path,
+                "addon_root": path_context.resolve_user_path(path).as_posix(),
+                "allowed_addon_dirs": documentation_policy.display_allowed_dirs(
+                    base_dir=path_context.base_dir
+                ),
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
+                ),
+            ],
+        )
+        raise typer.Exit(1) from None
 
     statuses = inspect_all_technical_documentation_statuses(
         addons_path=str(env_config["addons_path"]),
         select_dir=path,
         path_base_dir=path_context.base_dir,
+        documentation_policy=documentation_policy,
     )
     if path is not None and not statuses:
         print_command_error_result_fn(
@@ -1248,11 +1405,16 @@ def technical_documentation_accept_command(
 
     global_config, env_config = resolve_command_env_config_fn(ctx)
     path_context = resolve_project_path_context(config_path=global_config.config_path)
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
+    )
     try:
         resolved_target = resolve_addon_documentation_target(
             env_config,
             target,
             path_base_dir=path_context.base_dir,
+            documentation_policy=documentation_policy,
         )
     except FileNotFoundError as exc:
         print_command_error_result_fn(
@@ -1261,6 +1423,26 @@ def technical_documentation_accept_command(
             str(exc),
             error_type="NotFoundError",
             details={"target": target},
+        )
+        raise typer.Exit(1) from None
+    except DocumentationTargetNotAllowedError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_accept",
+            str(exc),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": target,
+                "addon_root": exc.addon_root,
+                "allowed_addon_dirs": exc.allowed_dirs,
+            },
+            remediation=[
+                (
+                    "Use an addon under [documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled addon "
+                    "directories."
+                ),
+            ],
         )
         raise typer.Exit(1) from None
     doc_path = Path(resolved_target.addon_root) / "docs" / TECHNICAL_DOC_FILENAME
