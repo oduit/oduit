@@ -691,6 +691,142 @@ class OdooOperations:
             write=write,
         )
 
+    def build_technical_evidence(
+        self,
+        target: str,
+        *,
+        template: str = "arc42",
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+        progress: Callable[[str, dict[str, Any]], None] | None = None,
+        progress_level: str = "compact",
+        render_markdown: bool = True,
+        evidence_version: int | None = None,
+    ) -> TechnicalDocumentation:
+        """Build split deterministic technical evidence bundle."""
+        return self._documentation_service.build_technical_evidence(
+            target,
+            template=template,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+            progress=progress,
+            progress_level=progress_level,
+            render_markdown=render_markdown,
+            evidence_version=evidence_version,
+        )
+
+    def write_technical_evidence(
+        self,
+        target: str,
+        *,
+        force: bool = False,
+        template: str = "arc42",
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+    ) -> dict[str, Any]:
+        """Write split deterministic evidence markdown and sidecar."""
+        return self._documentation_service.write_technical_evidence(
+            target,
+            force=force,
+            template=template,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+        )
+
+    def build_technical_report_seed(
+        self,
+        target: str,
+        *,
+        evidence_metadata: Any | None = None,
+        generate_evidence_if_missing: bool = True,
+        template: str = "arc42",
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+    ) -> TechnicalDocumentation:
+        """Build split LLM/human report seed bundle."""
+        return self._documentation_service.build_technical_report_seed(
+            target,
+            evidence_metadata=evidence_metadata,
+            generate_evidence_if_missing=generate_evidence_if_missing,
+            template=template,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+        )
+
+    def diff_technical_report_evidence(
+        self,
+        target: str,
+        *,
+        include_diff: bool = False,
+        significant_only: bool = False,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+    ) -> dict[str, Any]:
+        """Diff report snapshots against current evidence document."""
+        return self._documentation_service.diff_technical_report_evidence(
+            target,
+            include_diff=include_diff,
+            significant_only=significant_only,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+        )
+
     def build_dependency_graph_documentation(
         self,
         module_names: list[str],

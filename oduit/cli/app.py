@@ -48,6 +48,9 @@ from .agent.documentation import (
     agent_technical_doc_command as _agent_technical_doc_command,
 )
 from .agent.documentation import (
+    agent_technical_doc_diff_command as _agent_technical_doc_diff_command,
+)
+from .agent.documentation import (
     agent_technical_doc_next_command as _agent_technical_doc_next_command,
 )
 from .agent.documentation import (
@@ -55,6 +58,12 @@ from .agent.documentation import (
 )
 from .agent.documentation import (
     agent_technical_doc_status_command as _agent_technical_doc_status_command,
+)
+from .agent.documentation import (
+    agent_technical_evidence_command as _agent_technical_evidence_command,
+)
+from .agent.documentation import (
+    agent_technical_report_command as _agent_technical_report_command,
 )
 from .agent.mutate import (
     agent_create_addon_command as _agent_create_addon_command,
@@ -594,6 +603,9 @@ _agent_registration_context = AgentRegistrationContext(
         context_command_impl=_agent_context_command,
         addon_info_command_impl=_agent_addon_info_command,
         addon_doc_command_impl=_agent_addon_doc_command,
+        technical_evidence_command_impl=_agent_technical_evidence_command,
+        technical_report_command_impl=_agent_technical_report_command,
+        technical_doc_diff_command_impl=_agent_technical_doc_diff_command,
         technical_doc_command_impl=_agent_technical_doc_command,
         technical_doc_refresh_command_impl=_agent_technical_doc_refresh_command,
         technical_doc_accept_command_impl=_agent_technical_doc_accept_command,

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from oduit.managed_markdown import (
+    EvidenceSnapshotBlock,
     GeneratedMarkdownBlock,
+    parse_evidence_snapshot_blocks,
     parse_generated_blocks,
     refresh_generated_blocks,
+    render_evidence_snapshot_block,
     render_generated_block,
 )
 
@@ -144,3 +147,99 @@ def test_refresh_generated_blocks_normalizes_crlf_input() -> None:
     result = refresh_generated_blocks(markdown, {"arc42.constraints": _block()})
     assert result.errors == []
     assert "\r\n" not in result.markdown
+
+
+def test_render_evidence_snapshot_block_has_required_metadata() -> None:
+    rendered = render_evidence_snapshot_block(
+        EvidenceSnapshotBlock(
+            block_id="arc42.addon_overview",
+            renderer="arc42.addon_overview.v1",
+            evidence_path="docs/architecture.evidence.md",
+            evidence_version=3,
+            source_sha256="sha256:source",
+            content_sha256="sha256:content",
+            body="| Item | Count |\n|---|---|\n| File inventory | 58 |\n",
+        )
+    )
+    first_line = rendered.splitlines()[0]
+    assert first_line.startswith("<!-- oduit:evidence-snapshot:start {")
+    assert '"block_id":"arc42.addon_overview"' in first_line
+    assert '"evidence_version":3' in first_line
+    assert '"snapshot_sha256"' in first_line
+
+
+def test_parse_evidence_snapshot_blocks_returns_snapshot_details() -> None:
+    markdown = render_evidence_snapshot_block(
+        EvidenceSnapshotBlock(
+            block_id="arc42.addon_overview",
+            renderer="arc42.addon_overview.v1",
+            evidence_path="docs/architecture.evidence.md",
+            evidence_version=2,
+            source_sha256="sha256:source",
+            content_sha256="sha256:content",
+            body="| Item | Count |\n|---|---|\n| File inventory | 58 |\n",
+        )
+    )
+    parsed = parse_evidence_snapshot_blocks(markdown)
+    assert len(parsed) == 1
+    assert parsed[0].block_id == "arc42.addon_overview"
+    assert parsed[0].renderer == "arc42.addon_overview.v1"
+    assert parsed[0].evidence_version == 2
+    assert parsed[0].start_line > 0
+    assert parsed[0].end_line > parsed[0].start_line
+
+
+def test_parse_evidence_snapshot_blocks_rejects_malformed_marker() -> None:
+    markdown = (
+        "<!-- oduit:evidence-snapshot:start {broken-json} -->\n"
+        "body\n"
+        "<!-- oduit:evidence-snapshot:end -->\n"
+    )
+    try:
+        parse_evidence_snapshot_blocks(markdown)
+    except ValueError as exc:
+        assert "Malformed evidence snapshot marker" in str(exc)
+    else:
+        raise AssertionError("Expected parse failure for malformed marker")
+
+
+def test_parse_evidence_snapshot_blocks_rejects_duplicate_block_ids() -> None:
+    block = render_evidence_snapshot_block(
+        EvidenceSnapshotBlock(
+            block_id="arc42.addon_overview",
+            renderer="arc42.addon_overview.v1",
+            evidence_path="docs/architecture.evidence.md",
+            evidence_version=1,
+            source_sha256="sha256:source",
+            content_sha256="sha256:content",
+            body="x\n",
+        )
+    )
+    try:
+        parse_evidence_snapshot_blocks(f"{block}\n\n{block}\n")
+    except ValueError as exc:
+        assert "Duplicate evidence snapshot block_id" in str(exc)
+    else:
+        raise AssertionError("Expected duplicate block rejection")
+
+
+def test_evidence_snapshot_hash_changes_when_body_changes() -> None:
+    snapshot = EvidenceSnapshotBlock(
+        block_id="arc42.addon_overview",
+        renderer="arc42.addon_overview.v1",
+        evidence_path="docs/architecture.evidence.md",
+        evidence_version=1,
+        source_sha256="sha256:source",
+        content_sha256="sha256:content",
+        body="| Item | Count |\n|---|---|\n| File inventory | 58 |\n",
+    )
+    edited = EvidenceSnapshotBlock(
+        block_id=snapshot.block_id,
+        renderer=snapshot.renderer,
+        evidence_path=snapshot.evidence_path,
+        evidence_version=snapshot.evidence_version,
+        source_sha256=snapshot.source_sha256,
+        content_sha256=snapshot.content_sha256,
+        body="| Item | Count |\n|---|---|\n| File inventory | 60 |\n",
+    )
+    assert snapshot.snapshot_sha256 != edited.snapshot_sha256

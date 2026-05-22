@@ -25,8 +25,15 @@ from ..api_models import (
     SharedModelDocumentation,
     TechnicalDocumentation,
     TechnicalDocumentationGeneratedBlock,
+    TechnicalEvidenceMetadata,
 )
-from ..arc42_renderer import build_arc42_addon_sections, render_arc42_addon_markdown
+from ..arc42_renderer import (
+    build_arc42_addon_sections,
+    build_arc42_generated_blocks,
+    render_arc42_addon_markdown,
+    render_arc42_evidence_markdown,
+    render_arc42_report_seed_markdown,
+)
 from ..documentation_policy import DocumentationDirectoryPolicy
 from ..documentation_renderer import (
     build_addon_sections,
@@ -44,15 +51,24 @@ from ..documentation_renderer import (
 )
 from ..documentation_tracking import (
     TECHNICAL_DOC_METADATA_FILENAME,
+    TECHNICAL_EVIDENCE_METADATA_FILENAME,
+    build_technical_evidence_metadata,
     compute_document_snapshot,
     compute_source_snapshot,
+    diff_report_against_evidence,
     inspect_technical_documentation_status,
     load_technical_documentation_metadata,
+    load_technical_evidence_metadata,
     technical_doc_paths,
+    technical_evidence_paths,
     utc_now_iso,
     write_technical_documentation_metadata,
+    write_technical_evidence_metadata,
 )
-from ..managed_markdown import parse_generated_blocks, refresh_generated_blocks
+from ..managed_markdown import (
+    parse_generated_blocks,
+    refresh_generated_blocks,
+)
 from ..source_locator import (
     SourceScanCache,
     list_addon_languages,
@@ -710,6 +726,255 @@ class DocumentationOperationsService(OperationsService):
                 "refresh_count": getattr(metadata, "refresh_count", 0),
             },
         }
+
+    def build_technical_evidence(
+        self,
+        target: str,
+        *,
+        template: str = "arc42",
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+        progress: ProgressCallback | None = None,
+        progress_level: str = "compact",
+        render_markdown: bool = True,
+        evidence_version: int | None = None,
+    ) -> TechnicalDocumentation:
+        """Build deterministic split technical evidence markdown bundle."""
+
+        base_bundle = self.build_technical_documentation(
+            target,
+            template=template,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+            progress=progress,
+            progress_level=progress_level,
+            render_markdown=False,
+        )
+        bundle = copy.deepcopy(base_bundle)
+        bundle.output_path = "docs/architecture.evidence.md"
+        bundle.metadata_path = f"docs/{TECHNICAL_EVIDENCE_METADATA_FILENAME}"
+        if render_markdown:
+            bundle.markdown = render_arc42_evidence_markdown(
+                bundle,
+                evidence_version=evidence_version,
+                evidence_path=bundle.output_path,
+                metadata_path=bundle.metadata_path,
+            )
+        return bundle
+
+    def write_technical_evidence(
+        self,
+        target: str,
+        *,
+        force: bool = False,
+        template: str = "arc42",
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+    ) -> dict[str, Any]:
+        """Build and write technical evidence markdown + sidecar."""
+
+        resolved_target = resolve_addon_documentation_target(
+            self.operations.env_config,
+            target,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+        )
+        if resolved_target.target_kind == "module" and resolved_target.ambiguous:
+            raise ValueError(
+                "Refusing to write from an ambiguous module-name resolution."
+            )
+        addon_root = Path(resolved_target.addon_root).resolve(strict=False)
+        evidence_path, metadata_path = technical_evidence_paths(addon_root)
+        if evidence_path.exists() and not force:
+            raise FileExistsError(f"Output file already exists: {evidence_path}")
+        previous_metadata, warnings = load_technical_evidence_metadata(metadata_path)
+        next_version = (
+            previous_metadata.evidence_version if previous_metadata else 0
+        ) + 1
+        bundle = self.build_technical_evidence(
+            target,
+            template=template,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+            evidence_version=next_version,
+        )
+        bundle.generated_at = utc_now_iso()
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(bundle.markdown, encoding="utf-8")
+        metadata = build_technical_evidence_metadata(
+            bundle=bundle,
+            evidence_path=evidence_path,
+            metadata_path=metadata_path,
+            generation_options={
+                "source_only": bool(source_only),
+                "include_arch": bool(include_arch),
+                "field_attributes": list(field_attributes or []),
+                "view_types": list(view_types or []),
+                "max_models": max_models,
+                "max_fields_per_model": max_fields_per_model,
+            },
+            previous_metadata=previous_metadata,
+            path_base_dir=Path(path_base_dir).resolve(strict=False)
+            if path_base_dir
+            else None,
+            source_addon_root=Path(
+                bundle.source_addon_root or bundle.addon_root
+            ).resolve(strict=False),
+        )
+        write_technical_evidence_metadata(metadata, metadata_path)
+        return {
+            "module": bundle.module,
+            "addon_root": addon_root.as_posix(),
+            "evidence_path": evidence_path.as_posix(),
+            "metadata_path": metadata_path.as_posix(),
+            "evidence_version": metadata.evidence_version,
+            "generated_block_count": len(metadata.generated_blocks),
+            "warnings": warnings + list(bundle.warnings) + list(metadata.warnings),
+            "remediation": list(bundle.remediation),
+        }
+
+    def build_technical_report_seed(
+        self,
+        target: str,
+        *,
+        evidence_metadata: TechnicalEvidenceMetadata | None = None,
+        generate_evidence_if_missing: bool = True,
+        template: str = "arc42",
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool = False,
+        include_arch: bool = False,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+    ) -> TechnicalDocumentation:
+        """Build an LLM/human report seed from current evidence snapshots."""
+
+        bundle = self.build_technical_documentation(
+            target,
+            template=template,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+            render_markdown=False,
+        )
+        addon_root = Path(bundle.source_addon_root or bundle.addon_root).resolve(
+            strict=False
+        )
+        evidence_path, evidence_metadata_path = technical_evidence_paths(addon_root)
+        metadata = evidence_metadata
+        if metadata is None:
+            metadata, _warnings = load_technical_evidence_metadata(
+                evidence_metadata_path
+            )
+        if metadata is None:
+            if not generate_evidence_if_missing:
+                raise FileNotFoundError(
+                    "Technical evidence is missing. Run docs technical-evidence first."
+                )
+            evidence_blocks = build_arc42_generated_blocks(bundle)
+            metadata = TechnicalEvidenceMetadata(
+                module=bundle.module,
+                addon_root=addon_root.as_posix(),
+                evidence_path="docs/architecture.evidence.md",
+                metadata_path="docs/architecture.evidence.oduit.json",
+                evidence_version=0,
+            )
+        else:
+            try:
+                parsed = parse_generated_blocks(
+                    evidence_path.read_text(encoding="utf-8")
+                )
+                evidence_blocks = {block.id: block for block in parsed}
+            except Exception:
+                evidence_blocks = build_arc42_generated_blocks(bundle)
+        bundle.output_path = "docs/architecture.md"
+        bundle.metadata_path = "docs/architecture.oduit.json"
+        bundle.markdown = render_arc42_report_seed_markdown(
+            bundle,
+            evidence_metadata=metadata,
+            evidence_blocks=evidence_blocks,
+            include_snapshots=True,
+        )
+        return bundle
+
+    def diff_technical_report_evidence(
+        self,
+        target: str,
+        *,
+        include_diff: bool = False,
+        significant_only: bool = False,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+    ) -> dict[str, Any]:
+        """Diff report evidence snapshots against current evidence blocks."""
+
+        resolved_target = resolve_addon_documentation_target(
+            self.operations.env_config,
+            target,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+        )
+        result = diff_report_against_evidence(
+            addon_root=resolved_target.addon_root,
+            module=resolved_target.module,
+            path_base_dir=Path(path_base_dir).resolve(strict=False)
+            if path_base_dir
+            else None,
+            include_diff=include_diff,
+            significant_only=significant_only,
+        )
+        return result.to_dict()
 
     def build_model_documentation(
         self,

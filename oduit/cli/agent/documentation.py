@@ -27,6 +27,8 @@ from ...documentation_tracking import (
     load_technical_documentation_metadata,
     select_next_technical_doc_status,
     technical_doc_needs_action,
+    technical_doc_paths,
+    technical_evidence_paths,
     utc_now_iso,
     write_technical_documentation_metadata,
 )
@@ -558,6 +560,407 @@ def agent_technical_doc_command(
         remediation=list(bundle.remediation) + list(status.remediation),
         read_only=False,
         safety_level=controlled_source_mutation,
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_technical_evidence_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    allow_mutation: bool,
+    dry_run: bool,
+    force: bool,
+    include_markdown: bool,
+    database: str | None,
+    timeout: float,
+    source_only: bool,
+    include_arch: bool,
+    attributes: str | None,
+    types: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    path_prefix: str | None,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    agent_require_mutation_fn: Any,
+    odoo_operations_cls: Any,
+    safe_read_only: str,
+    controlled_source_mutation: str,
+) -> None:
+    """Create or write split deterministic technical evidence."""
+
+    result_type = "technical_evidence"
+    preview_operation = "technical_evidence_preview"
+    write_operation = "write_technical_evidence"
+    global_config = resolve_agent_global_config_fn(ctx, preview_operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(
+            preview_operation, result_type, "No environment configuration available"
+        )
+    assert global_config.env_config is not None
+
+    try:
+        dry_run_source = ctx.get_parameter_source("dry_run")
+    except Exception:
+        dry_run_source = ParameterSource.DEFAULT
+    effective_dry_run = dry_run
+    if not allow_mutation:
+        effective_dry_run = True
+    elif dry_run_source is ParameterSource.DEFAULT:
+        effective_dry_run = False
+    field_attributes = (
+        sorted({item.strip() for item in attributes.split(",") if item.strip()})
+        if attributes
+        else []
+    )
+    view_types = (
+        sorted({item.strip() for item in types.split(",") if item.strip()})
+        if types
+        else []
+    )
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    ops = odoo_operations_cls(global_config.env_config, verbose=False)
+    if effective_dry_run:
+        try:
+            bundle = ops.build_technical_evidence(
+                target,
+                odoo_series=global_config.odoo_series,
+                database=database,
+                timeout=timeout,
+                source_only=source_only,
+                include_arch=include_arch,
+                field_attributes=field_attributes,
+                view_types=view_types,
+                max_models=max_models,
+                max_fields_per_model=max_fields_per_model,
+                path_base_dir=path_context.base_dir.as_posix(),
+                documentation_policy=documentation_policy,
+            )
+        except Exception as exc:
+            agent_fail_fn(
+                preview_operation, result_type, str(exc), error_type=type(exc).__name__
+            )
+        addon_root = Path(bundle.source_addon_root or bundle.addon_root).resolve(
+            strict=False
+        )
+        evidence_path, metadata_path = technical_evidence_paths(addon_root)
+        data = {
+            "module": bundle.module,
+            "addon_root": bundle.addon_root,
+            "would_write": path_context.relative(evidence_path),
+            "would_write_metadata": path_context.relative(metadata_path),
+            "preview": bundle.markdown[:500],
+        }
+        if include_markdown:
+            data["markdown"] = bundle.markdown
+        payload = agent_payload_fn(
+            preview_operation,
+            result_type,
+            data,
+            warnings=list(bundle.warnings),
+            remediation=list(bundle.remediation)
+            + ["Retry with --allow-mutation to write evidence files."],
+            read_only=True,
+            safety_level=safe_read_only,
+        )
+        agent_emit_payload_fn(payload)
+        return
+
+    agent_require_mutation_fn(
+        allow_mutation,
+        write_operation,
+        result_type,
+        "technical evidence write",
+        controlled_source_mutation,
+    )
+    try:
+        data = ops.write_technical_evidence(
+            target,
+            force=force,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_base_dir=path_context.base_dir.as_posix(),
+            documentation_policy=documentation_policy,
+        )
+    except Exception as exc:
+        agent_fail_fn(
+            write_operation,
+            result_type,
+            str(exc),
+            error_type=type(exc).__name__,
+            read_only=False,
+            safety_level=controlled_source_mutation,
+        )
+    payload = agent_payload_fn(
+        write_operation,
+        result_type,
+        {
+            **data,
+            "evidence_path": path_context.relative(Path(data["evidence_path"])),
+            "metadata_path": path_context.relative(Path(data["metadata_path"])),
+        },
+        warnings=list(data.get("warnings", [])),
+        remediation=list(data.get("remediation", [])),
+        read_only=False,
+        safety_level=controlled_source_mutation,
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_technical_report_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    allow_mutation: bool,
+    dry_run: bool,
+    force: bool,
+    include_markdown: bool,
+    generate_evidence: bool,
+    database: str | None,
+    timeout: float,
+    source_only: bool,
+    include_arch: bool,
+    attributes: str | None,
+    types: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    path_prefix: str | None,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    agent_require_mutation_fn: Any,
+    odoo_operations_cls: Any,
+    safe_read_only: str,
+    controlled_source_mutation: str,
+) -> None:
+    """Create or write split LLM/human report seed."""
+
+    result_type = "technical_documentation"
+    preview_operation = "technical_report_preview"
+    write_operation = "write_technical_report"
+    global_config = resolve_agent_global_config_fn(ctx, preview_operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(
+            preview_operation, result_type, "No environment configuration available"
+        )
+    assert global_config.env_config is not None
+    try:
+        dry_run_source = ctx.get_parameter_source("dry_run")
+    except Exception:
+        dry_run_source = ParameterSource.DEFAULT
+    effective_dry_run = dry_run
+    if not allow_mutation:
+        effective_dry_run = True
+    elif dry_run_source is ParameterSource.DEFAULT:
+        effective_dry_run = False
+    field_attributes = (
+        sorted({item.strip() for item in attributes.split(",") if item.strip()})
+        if attributes
+        else []
+    )
+    view_types = (
+        sorted({item.strip() for item in types.split(",") if item.strip()})
+        if types
+        else []
+    )
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    ops = odoo_operations_cls(global_config.env_config, verbose=False)
+    if not effective_dry_run:
+        agent_require_mutation_fn(
+            allow_mutation,
+            write_operation,
+            result_type,
+            "technical report write",
+            controlled_source_mutation,
+        )
+    try:
+        bundle = ops.build_technical_report_seed(
+            target,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_base_dir=path_context.base_dir.as_posix(),
+            documentation_policy=documentation_policy,
+            generate_evidence_if_missing=generate_evidence or effective_dry_run,
+        )
+    except FileNotFoundError:
+        agent_fail_fn(
+            preview_operation,
+            result_type,
+            "Technical evidence is missing.",
+            error_type="MissingEvidenceError",
+            remediation=[
+                f"Run oduit docs technical-evidence @addons/{target}"
+                " --output-in-addon first."
+            ],
+            read_only=effective_dry_run,
+            safety_level=safe_read_only
+            if effective_dry_run
+            else controlled_source_mutation,
+        )
+    except Exception as exc:
+        agent_fail_fn(
+            preview_operation,
+            result_type,
+            str(exc),
+            error_type=type(exc).__name__,
+            read_only=effective_dry_run,
+            safety_level=safe_read_only
+            if effective_dry_run
+            else controlled_source_mutation,
+        )
+
+    addon_root = Path(bundle.source_addon_root or bundle.addon_root).resolve(
+        strict=False
+    )
+    report_path, metadata_path = technical_doc_paths(addon_root)
+    data = {
+        "module": bundle.module,
+        "addon_root": bundle.addon_root,
+        "would_write": path_context.relative(report_path),
+        "would_write_metadata": path_context.relative(metadata_path),
+        "preview": bundle.markdown[:500],
+    }
+    if include_markdown:
+        data["markdown"] = bundle.markdown
+    if effective_dry_run:
+        payload = agent_payload_fn(
+            preview_operation,
+            result_type,
+            data,
+            warnings=list(bundle.warnings),
+            remediation=list(bundle.remediation)
+            + ["Retry with --allow-mutation to write report seed."],
+            read_only=True,
+            safety_level=safe_read_only,
+        )
+        agent_emit_payload_fn(payload)
+        return
+
+    if report_path.exists() and not force:
+        agent_fail_fn(
+            write_operation,
+            result_type,
+            f"Output file already exists: {report_path}",
+            error_type="FileExistsError",
+            remediation=["Retry with --force to overwrite the report."],
+            read_only=False,
+            safety_level=controlled_source_mutation,
+        )
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    bundle.generated_at = utc_now_iso()
+    report_path.write_text(bundle.markdown, encoding="utf-8")
+    previous_metadata, warnings = load_technical_documentation_metadata(metadata_path)
+    metadata = build_technical_documentation_metadata(
+        bundle=bundle,
+        doc_path=report_path,
+        metadata_path=metadata_path,
+        generation_options={},
+        previous_metadata=previous_metadata,
+        path_base_dir=path_context.base_dir,
+        source_addon_root=addon_root,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+    payload = agent_payload_fn(
+        write_operation,
+        result_type,
+        {
+            "module": bundle.module,
+            "addon_root": bundle.addon_root,
+            "report_path": path_context.relative(report_path),
+            "metadata_path": path_context.relative(metadata_path),
+        },
+        warnings=warnings + list(bundle.warnings),
+        remediation=list(bundle.remediation),
+        read_only=False,
+        safety_level=controlled_source_mutation,
+    )
+    agent_emit_payload_fn(payload)
+
+
+def agent_technical_doc_diff_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    include_diff: bool,
+    significant_only: bool,
+    path_prefix: str | None,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    odoo_operations_cls: Any,
+    safe_read_only: str,
+) -> None:
+    """Read-only technical evidence/report diff command."""
+
+    operation = "technical_doc_diff"
+    result_type = "technical_evidence_diff"
+    global_config = resolve_agent_global_config_fn(ctx, operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(operation, result_type, "No environment configuration available")
+    assert global_config.env_config is not None
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    ops = odoo_operations_cls(global_config.env_config, verbose=False)
+    try:
+        data = ops.diff_technical_report_evidence(
+            target,
+            include_diff=include_diff,
+            significant_only=significant_only,
+            path_base_dir=path_context.base_dir.as_posix(),
+            documentation_policy=documentation_policy,
+        )
+    except Exception as exc:
+        agent_fail_fn(operation, result_type, str(exc), error_type=type(exc).__name__)
+    for key in ("report_path", "evidence_path", "evidence_metadata_path"):
+        if key in data:
+            data[key] = path_context.relative(Path(data[key]))
+    payload = agent_payload_fn(
+        operation,
+        result_type,
+        data,
+        warnings=list(data.get("warnings", [])),
+        remediation=list(data.get("remediation", [])),
+        read_only=True,
+        safety_level=safe_read_only,
     )
     agent_emit_payload_fn(payload)
 

@@ -1,6 +1,6 @@
 ---
 name: oduit-technical-documentation
-description: Use oduit to create or update Arc42 technical architecture documentation for Odoo addons. Trigger when the user asks to generate, write, update, review, or improve technical documentation for Odoo addons, especially addon-local docs/architecture.md files.
+description: Use oduit split technical documentation workflow deterministic evidence in docs/architecture.evidence.md and LLM/human report in docs/architecture.md.
 ---
 
 # oduit Arc42 technical documentation skill
@@ -9,10 +9,13 @@ description: Use oduit to create or update Arc42 technical architecture document
 
 Use `oduit` as the discovery, runtime-inspection, and rendering layer for Odoo addon technical documentation.
 
-The default single-addon output is an Arc42-style Markdown document stored inside the addon:
+The primary workflow is split:
 
 ```text
-<addon_root>/docs/architecture.md
+<addon_root>/docs/architecture.evidence.md          # generated deterministic evidence
+<addon_root>/docs/architecture.evidence.oduit.json  # evidence sidecar
+<addon_root>/docs/architecture.md                   # LLM/human report
+<addon_root>/docs/architecture.oduit.json           # report sidecar
 ```
 
 Example:
@@ -45,21 +48,25 @@ Do not use this skill for:
 
 ## Core rule
 
-For a single addon, prefer the Arc42 technical documentation command.
+For a single addon, prefer split commands:
 
 Never emit internal reasoning markers such as `Thought:` or `Thinking:` in user-visible output. Report only actions, outcomes, and concise decisions.
 
 Do this:
 
 ```bash
-oduit agent technical-doc @addons/<module>
-oduit agent technical-doc @addons/<module> --allow-mutation
+oduit agent technical-evidence @addons/<module>
+oduit agent technical-evidence @addons/<module> --allow-mutation --source-only
+oduit agent technical-report @addons/<module>
+oduit agent technical-doc-diff @addons/<module> --include-diff
 ```
 
 or, for the human CLI fallback:
 
 ```bash
-oduit docs technical @addons/<module> --output-in-addon
+oduit docs technical-evidence @addons/<module> --output-in-addon
+oduit docs technical-report @addons/<module> --output-in-addon
+oduit docs technical-diff @addons/<module> --include-diff
 ```
 
 Do not make this the primary workflow:
@@ -110,50 +117,34 @@ If `doctor` fails only because runtime/database access is unavailable, continue 
 
 If addon resolution fails, stop and report the configured `addons_path` issue. Do not invent module paths.
 
-## Primary workflow: preview one addon
+## Primary workflow: split evidence + report
 
 Use this when the user asks to review, plan, or preview documentation.
 
 ```bash
-oduit agent technical-doc @addons/<module>
+oduit agent technical-evidence @addons/<module>
+oduit agent technical-report @addons/<module>
+oduit agent technical-doc-diff @addons/<module> --include-diff
 ```
 
-For a source-only preview:
+Write evidence:
 
 ```bash
-oduit agent technical-doc @addons/<module> \
+oduit agent technical-evidence @addons/<module> \
+  --allow-mutation \
   --source-only
 ```
 
-When you need the full Markdown in the JSON payload for editing or review:
+Write report seed:
 
 ```bash
-oduit agent technical-doc @addons/<module> \
-  --include-markdown
+oduit agent technical-report @addons/<module> \
+  --allow-mutation
 ```
 
 Expected behavior:
 
-- operation: `technical_doc_preview`
-- read-only: `true`
-- safety level: `safe_read_only`
-- output hint: `<addon_root>/docs/architecture.md`
-
-## Primary workflow: write addon-local Arc42 documentation
-
-Use this when the user explicitly asks to create, write, update, or fix the addon documentation file.
-
-```bash
-oduit agent technical-doc @addons/<module> \
-  --allow-mutation
-```
-
-This writes:
-
-```text
-<addon_root>/docs/architecture.md
-<addon_root>/docs/architecture.oduit.json
-```
+Never manually edit `docs/architecture.evidence.md`. LLM/human edits belong in `docs/architecture.md`.
 
 If the file already exists and the user asked to update/replace it:
 
@@ -192,7 +183,9 @@ If manual edits were made after generation, either:
 - report `document_edited` as expected, or
 - run `oduit agent technical-doc-accept @addons/<module> --allow-mutation` to accept the reviewed document snapshot.
 
-## Managed block refresh workflow
+## Legacy monolithic workflow (legacy documents)
+
+Use this only for existing legacy docs containing `oduit:generated` blocks.
 
 Use refresh to update only generated evidence blocks while preserving manual prose
 outside managed markers.

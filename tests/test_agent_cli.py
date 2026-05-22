@@ -4221,3 +4221,149 @@ def test_agent_test_summary_module_uses_fast_test_tags_semantics(
     payload = json.loads(result.output)
     assert payload["data"]["selected_modules"] == ["x_sale"]
     assert payload["data"]["selection"].get("install") is None
+
+
+def test_agent_technical_evidence_preview_is_read_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        bundle = _technical_documentation_bundle(addon_root)
+        bundle.markdown = "# Automated Architecture Evidence: my_partner\n"
+        ops.build_technical_evidence.return_value = bundle
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app, ["--env", "dev", "agent", "technical-evidence", "my_partner"]
+        )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["operation"] == "technical_evidence_preview"
+    assert payload["type"] == "technical_evidence"
+    assert payload["read_only"] is True
+
+
+def test_agent_technical_evidence_allow_mutation_writes_sidecar(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+
+        def _write(*_args, **_kwargs):
+            docs_dir = addon_root / "docs"
+            docs_dir.mkdir(exist_ok=True)
+            (docs_dir / "architecture.evidence.md").write_text("# evidence\n")
+            (docs_dir / "architecture.evidence.oduit.json").write_text("{}")
+            return {
+                "module": "my_partner",
+                "addon_root": addon_root.as_posix(),
+                "evidence_path": (docs_dir / "architecture.evidence.md").as_posix(),
+                "metadata_path": (
+                    docs_dir / "architecture.evidence.oduit.json"
+                ).as_posix(),
+                "evidence_version": 1,
+                "generated_block_count": 1,
+                "warnings": [],
+                "remediation": [],
+            }
+
+        ops.write_technical_evidence.side_effect = _write
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-evidence",
+                "my_partner",
+                "--allow-mutation",
+            ],
+        )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["operation"] == "write_technical_evidence"
+    assert payload["read_only"] is False
+    assert (addon_root / "docs" / "architecture.evidence.oduit.json").exists()
+
+
+def test_agent_technical_report_preview_is_read_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        bundle = _technical_documentation_bundle(addon_root)
+        bundle.markdown = "# Architecture Documentation: my_partner\n"
+        ops.build_technical_report_seed.return_value = bundle
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app, ["--env", "dev", "agent", "technical-report", "my_partner"]
+        )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["operation"] == "technical_report_preview"
+    assert payload["read_only"] is True
+
+
+def test_agent_technical_doc_diff_returns_read_only_payload(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.diff_technical_report_evidence.return_value = {
+            "module": "my_partner",
+            "addon_root": "addons/my_partner",
+            "report_path": "addons/my_partner/docs/architecture.md",
+            "evidence_path": "addons/my_partner/docs/architecture.evidence.md",
+            "evidence_metadata_path": (
+                "addons/my_partner/docs/architecture.evidence.oduit.json"
+            ),
+            "status": "stale",
+            "current_evidence_version": 4,
+            "snapshot_count": 1,
+            "stale_count": 1,
+            "edited_snapshot_count": 0,
+            "missing_current_block_count": 0,
+            "entries": [{"block_id": "arc42.addon_overview", "diff": "---"}],
+            "warnings": [],
+            "remediation": [],
+        }
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc-diff",
+                "my_partner",
+                "--include-diff",
+            ],
+        )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "technical_evidence_diff"
+    assert payload["operation"] == "technical_doc_diff"
+    assert payload["read_only"] is True
+    assert payload["data"]["entries"][0]["diff"] == "---"

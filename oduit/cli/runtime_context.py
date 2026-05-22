@@ -202,6 +202,9 @@ class AgentCommandImplementations:
     context_command_impl: Any
     addon_info_command_impl: Any
     addon_doc_command_impl: Any
+    technical_evidence_command_impl: Any
+    technical_report_command_impl: Any
+    technical_doc_diff_command_impl: Any
     technical_doc_command_impl: Any
     technical_doc_refresh_command_impl: Any
     technical_doc_accept_command_impl: Any

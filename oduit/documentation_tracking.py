@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
+from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
@@ -18,14 +20,26 @@ from .api_models import (
     TechnicalDocumentationGeneratedBlock,
     TechnicalDocumentationMetadata,
     TechnicalDocumentationStatus,
+    TechnicalEvidenceDiffEntry,
+    TechnicalEvidenceDiffResult,
+    TechnicalEvidenceMetadata,
 )
 from .documentation_policy import DocumentationDirectoryPolicy
-from .managed_markdown import parse_generated_blocks, sha256_text
+from .managed_markdown import (
+    parse_evidence_snapshot_blocks,
+    parse_generated_blocks,
+    sha256_text,
+)
 from .source_locator import list_addon_technical_inventory
 
 TECHNICAL_DOC_FILENAME = "architecture.md"
 TECHNICAL_DOC_METADATA_FILENAME = "architecture.oduit.json"
 TECHNICAL_DOC_SCHEMA_VERSION = "oduit.technical_documentation.v1"
+TECHNICAL_REPORT_FILENAME = TECHNICAL_DOC_FILENAME
+TECHNICAL_REPORT_METADATA_FILENAME = TECHNICAL_DOC_METADATA_FILENAME
+TECHNICAL_EVIDENCE_FILENAME = "architecture.evidence.md"
+TECHNICAL_EVIDENCE_METADATA_FILENAME = "architecture.evidence.oduit.json"
+TECHNICAL_EVIDENCE_SCHEMA_VERSION = "oduit.technical_evidence.v1"
 TECHNICAL_DOC_STATUS_RANK = {
     "metadata_invalid": 10,
     "missing_document": 20,
@@ -76,6 +90,16 @@ def technical_doc_paths(addon_root: str | Path) -> tuple[Path, Path]:
     return (
         docs_dir / TECHNICAL_DOC_FILENAME,
         docs_dir / TECHNICAL_DOC_METADATA_FILENAME,
+    )
+
+
+def technical_evidence_paths(addon_root: str | Path) -> tuple[Path, Path]:
+    """Return technical-evidence Markdown and sidecar paths."""
+
+    docs_dir = Path(addon_root) / "docs"
+    return (
+        docs_dir / TECHNICAL_EVIDENCE_FILENAME,
+        docs_dir / TECHNICAL_EVIDENCE_METADATA_FILENAME,
     )
 
 
@@ -176,6 +200,34 @@ def load_technical_documentation_metadata(
     return metadata, []
 
 
+def load_technical_evidence_metadata(
+    metadata_path: str | Path,
+) -> tuple[TechnicalEvidenceMetadata | None, list[str]]:
+    """Load evidence sidecar metadata and return warnings on parse failures."""
+
+    path = Path(metadata_path)
+    if not path.exists():
+        return None, []
+    try:
+        raw_data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return None, [f"Failed to parse evidence metadata: {exc}"]
+    if not isinstance(raw_data, dict):
+        return None, ["Evidence metadata must be a JSON object."]
+    if raw_data.get("schema_version") != TECHNICAL_EVIDENCE_SCHEMA_VERSION:
+        return (
+            None,
+            [
+                "Evidence metadata has an unsupported schema version: "
+                f"{raw_data.get('schema_version')!r}"
+            ],
+        )
+    metadata = _evidence_metadata_from_dict(raw_data)
+    if metadata is None:
+        return None, ["Evidence metadata is missing required fields."]
+    return metadata, []
+
+
 def build_technical_documentation_metadata(
     *,
     bundle: TechnicalDocumentation,
@@ -244,6 +296,60 @@ def build_technical_documentation_metadata(
     )
 
 
+def build_technical_evidence_metadata(
+    *,
+    bundle: TechnicalDocumentation,
+    evidence_path: Path,
+    metadata_path: Path,
+    generation_options: dict[str, Any],
+    previous_metadata: TechnicalEvidenceMetadata | None = None,
+    path_base_dir: Path | None = None,
+    source_addon_root: Path | None = None,
+    generated_blocks: list[TechnicalDocumentationGeneratedBlock] | None = None,
+) -> TechnicalEvidenceMetadata:
+    """Build durable evidence metadata after writing evidence markdown."""
+
+    generated_at = bundle.generated_at or utc_now_iso()
+    snapshot_root = (
+        source_addon_root or Path(bundle.source_addon_root or bundle.addon_root)
+    ).resolve(strict=False)
+    storage_base = (
+        path_base_dir.resolve(strict=False)
+        if path_base_dir is not None
+        else Path.cwd().resolve(strict=False)
+    )
+    source_snapshot = compute_source_snapshot(snapshot_root, module=bundle.module)
+    evidence_document_snapshot = compute_document_snapshot(evidence_path)
+    detected_generated_blocks = (
+        generated_blocks
+        if generated_blocks is not None
+        else _generated_blocks_from_document(evidence_path)
+    )
+    previous_version = previous_metadata.evidence_version if previous_metadata else 0
+    return TechnicalEvidenceMetadata(
+        schema_version=TECHNICAL_EVIDENCE_SCHEMA_VERSION,
+        module=bundle.module,
+        addon_root=_portable_path(snapshot_root, base_dir=storage_base),
+        evidence_path=_portable_path(evidence_path, base_dir=storage_base),
+        metadata_path=_portable_path(metadata_path, base_dir=storage_base),
+        template="arc42-evidence-v1",
+        evidence_version=max(1, previous_version + 1),
+        created_at=(
+            previous_metadata.created_at
+            if previous_metadata is not None and previous_metadata.created_at
+            else generated_at
+        ),
+        last_generated_at=generated_at,
+        generator={"name": "oduit", "version": __version__},
+        generation_options=dict(generation_options),
+        evidence_counts=_evidence_counts(bundle),
+        source_snapshot=source_snapshot,
+        evidence_document_snapshot=evidence_document_snapshot,
+        generated_blocks=detected_generated_blocks,
+        warnings=[],
+    )
+
+
 def accept_reviewed_technical_documentation(
     *,
     addon_root: str | Path,
@@ -302,6 +408,21 @@ def write_technical_documentation_metadata(
     metadata_path: str | Path,
 ) -> None:
     """Write stable, pretty JSON with a trailing newline."""
+
+    path = Path(metadata_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(metadata.to_dict(), indent=2, sort_keys=True, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def write_technical_evidence_metadata(
+    metadata: TechnicalEvidenceMetadata,
+    metadata_path: str | Path,
+) -> None:
+    """Write stable JSON metadata for evidence documents."""
 
     path = Path(metadata_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -579,6 +700,246 @@ def select_next_technical_doc_status(
     )[0]
 
 
+def parse_markdown_table(text: str) -> list[list[str]] | None:
+    """Parse a markdown table into a list of rows, excluding separator row."""
+
+    lines = [
+        line.strip() for line in text.replace("\r\n", "\n").split("\n") if line.strip()
+    ]
+    if len(lines) < 2:
+        return None
+
+    def _split(line: str) -> list[str] | None:
+        if "|" not in line:
+            return None
+        raw = line.strip()
+        if raw.startswith("|"):
+            raw = raw[1:]
+        if raw.endswith("|"):
+            raw = raw[:-1]
+        return [cell.strip() for cell in raw.split("|")]
+
+    header = _split(lines[0])
+    separator = _split(lines[1])
+    if header is None or separator is None or len(header) != len(separator):
+        return None
+    if any(not re.fullmatch(r":?-{3,}:?", cell.replace(" ", "")) for cell in separator):
+        return None
+    rows = [header]
+    for line in lines[2:]:
+        cells = _split(line)
+        if cells is None:
+            return None
+        rows.append(cells)
+    return rows
+
+
+def normalize_markdown_for_significance(text: str) -> str:
+    """Normalize markdown so spacing/alignment-only changes become equal."""
+
+    table_rows = parse_markdown_table(text)
+    if table_rows is not None:
+        return "\n".join("|".join(cell.strip() for cell in row) for row in table_rows)
+
+    normalized_lines: list[str] = []
+    for raw_line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("<!--") and "oduit:" in stripped:
+            continue
+        if stripped == "":
+            if normalized_lines and normalized_lines[-1] == "":
+                continue
+            normalized_lines.append("")
+            continue
+        normalized_lines.append(stripped)
+    return "\n".join(normalized_lines).strip()
+
+
+def _render_diff(old_text: str, new_text: str) -> str | None:
+    diff_lines = list(
+        unified_diff(
+            old_text.splitlines(),
+            new_text.splitlines(),
+            fromfile="report_snapshot",
+            tofile="current_evidence",
+            lineterm="",
+        )
+    )
+    if not diff_lines:
+        return None
+    return "\n".join(diff_lines)
+
+
+def diff_report_against_evidence(
+    *,
+    addon_root: str | Path,
+    module: str,
+    path_base_dir: Path | None = None,
+    include_diff: bool = False,
+    significant_only: bool = False,
+) -> TechnicalEvidenceDiffResult:
+    """Diff report snapshot blocks against the current evidence document."""
+
+    root = Path(addon_root).resolve(strict=False)
+    report_path, _ = technical_doc_paths(root)
+    evidence_path, evidence_metadata_path = technical_evidence_paths(root)
+    storage_base = (
+        path_base_dir.resolve(strict=False)
+        if path_base_dir is not None
+        else Path.cwd().resolve(strict=False)
+    )
+    result = TechnicalEvidenceDiffResult(
+        module=module,
+        addon_root=_portable_path(root, base_dir=storage_base),
+        report_path=_portable_path(report_path, base_dir=storage_base),
+        evidence_path=_portable_path(evidence_path, base_dir=storage_base),
+        evidence_metadata_path=_portable_path(
+            evidence_metadata_path, base_dir=storage_base
+        ),
+        status="up_to_date",
+    )
+    if not report_path.exists():
+        result.status = "missing_report"
+        result.remediation.append(
+            "Generate the report with docs technical-report first."
+        )
+        return result
+    if not evidence_path.exists() or not evidence_metadata_path.exists():
+        result.status = "missing_evidence"
+        result.remediation.append(
+            "Run oduit docs technical-evidence"
+            f" @addons/{module} --output-in-addon first."
+        )
+        return result
+
+    evidence_metadata, metadata_warnings = load_technical_evidence_metadata(
+        evidence_metadata_path
+    )
+    result.warnings.extend(metadata_warnings)
+    if evidence_metadata is None:
+        result.status = "invalid"
+        return result
+    result.current_evidence_version = evidence_metadata.evidence_version
+
+    try:
+        evidence_blocks = parse_generated_blocks(
+            evidence_path.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        result.status = "invalid"
+        result.warnings.append(f"Failed to parse evidence markdown: {exc}")
+        return result
+    evidence_by_id = {block.id: block for block in evidence_blocks}
+
+    try:
+        report_snapshots = parse_evidence_snapshot_blocks(
+            report_path.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        result.status = "invalid"
+        result.entries.append(
+            TechnicalEvidenceDiffEntry(
+                block_id="__marker__",
+                status="marker_invalid",
+                significant=True,
+                message=str(exc),
+            )
+        )
+        result.warnings.append(str(exc))
+        return result
+
+    entries: list[TechnicalEvidenceDiffEntry] = []
+    for snapshot in report_snapshots:
+        snapshot_sha = snapshot.metadata.get("snapshot_sha256")
+        snapshot_sha_str = snapshot_sha if isinstance(snapshot_sha, str) else None
+        current_snapshot_sha = sha256_text(snapshot.body)
+        entry = TechnicalEvidenceDiffEntry(
+            block_id=snapshot.block_id,
+            renderer=snapshot.renderer,
+            old_evidence_version=snapshot.evidence_version,
+            current_evidence_version=evidence_metadata.evidence_version,
+            old_source_sha256=(
+                snapshot.metadata.get("source_sha256")
+                if isinstance(snapshot.metadata.get("source_sha256"), str)
+                else None
+            ),
+            old_content_sha256=(
+                snapshot.metadata.get("content_sha256")
+                if isinstance(snapshot.metadata.get("content_sha256"), str)
+                else None
+            ),
+            snapshot_sha256=snapshot_sha_str,
+            current_snapshot_sha256=current_snapshot_sha,
+        )
+        current_block = evidence_by_id.get(snapshot.block_id)
+        if current_snapshot_sha != snapshot_sha_str:
+            entry.status = "snapshot_edited"
+            entry.significant = True
+            entry.message = "Snapshot body differs from recorded snapshot_sha256."
+            entries.append(entry)
+            continue
+        if current_block is None:
+            entry.status = "current_block_missing"
+            entry.significant = True
+            entry.message = "Referenced evidence block does not exist in evidence file."
+            entries.append(entry)
+            continue
+        entry.current_source_sha256 = (
+            current_block.metadata.get("source_sha256")
+            if isinstance(current_block.metadata.get("source_sha256"), str)
+            else None
+        )
+        entry.current_content_sha256 = (
+            current_block.metadata.get("content_sha256")
+            if isinstance(current_block.metadata.get("content_sha256"), str)
+            else sha256_text(current_block.body)
+        )
+        stale = (
+            entry.old_source_sha256 != entry.current_source_sha256
+            or entry.old_content_sha256 != entry.current_content_sha256
+        )
+        if not stale:
+            entry.status = "unchanged"
+            entries.append(entry)
+            continue
+
+        normalized_snapshot = normalize_markdown_for_significance(snapshot.body)
+        normalized_current = normalize_markdown_for_significance(current_block.body)
+        entry.significant = normalized_snapshot != normalized_current
+        entry.status = (
+            "snapshot_stale" if entry.significant else "snapshot_stale_insignificant"
+        )
+        if include_diff:
+            entry.diff = _render_diff(snapshot.body, current_block.body)
+        entries.append(entry)
+
+    result.snapshot_count = len(report_snapshots)
+    if significant_only:
+        entries = [entry for entry in entries if entry.significant]
+    result.entries = entries
+    result.stale_count = sum(
+        1
+        for entry in entries
+        if entry.status in {"snapshot_stale", "snapshot_stale_insignificant"}
+    )
+    result.edited_snapshot_count = sum(
+        1 for entry in entries if entry.status == "snapshot_edited"
+    )
+    result.missing_current_block_count = sum(
+        1 for entry in entries if entry.status == "current_block_missing"
+    )
+    if any(entry.status == "snapshot_edited" for entry in entries):
+        result.status = "edited_snapshots"
+    elif any(
+        entry.status in {"snapshot_stale", "current_block_missing"} for entry in entries
+    ):
+        result.status = "stale"
+    else:
+        result.status = "up_to_date"
+    return result
+
+
 def _canonical_json_bytes(data: Any) -> bytes:
     return json.dumps(
         data,
@@ -594,6 +955,8 @@ def _should_track_file(relative_path: str) -> bool:
     if normalized in {
         f"docs/{TECHNICAL_DOC_FILENAME}",
         f"docs/{TECHNICAL_DOC_METADATA_FILENAME}",
+        f"docs/{TECHNICAL_EVIDENCE_FILENAME}",
+        f"docs/{TECHNICAL_EVIDENCE_METADATA_FILENAME}",
     }:
         return False
     if path.name in _EXCLUDED_FILENAMES:
@@ -659,6 +1022,59 @@ def _metadata_from_dict(data: dict[str, Any]) -> TechnicalDocumentationMetadata 
         reviewed_at=_optional_str(data.get("reviewed_at")),
         reviewed_by=_optional_str(data.get("reviewed_by")),
         review_note=_optional_str(data.get("review_note")),
+        warnings=list(data.get("warnings", []))
+        if isinstance(data.get("warnings"), list)
+        else [],
+    )
+
+
+def _evidence_metadata_from_dict(
+    data: dict[str, Any],
+) -> TechnicalEvidenceMetadata | None:
+    required_text_fields = ("module", "addon_root", "evidence_path", "metadata_path")
+    if any(
+        not isinstance(data.get(field_name), str) for field_name in required_text_fields
+    ):
+        return None
+    source_snapshot = _source_snapshot_from_dict(data.get("source_snapshot"))
+    evidence_document_snapshot = _document_snapshot_from_dict(
+        data.get("evidence_document_snapshot")
+    )
+    if source_snapshot is None or evidence_document_snapshot is None:
+        return None
+    return TechnicalEvidenceMetadata(
+        schema_version=str(
+            data.get("schema_version", TECHNICAL_EVIDENCE_SCHEMA_VERSION)
+        ),
+        module=str(data["module"]),
+        addon_root=str(data["addon_root"]),
+        evidence_path=str(data["evidence_path"]),
+        metadata_path=str(data["metadata_path"]),
+        template=str(data.get("template", "arc42-evidence-v1")),
+        evidence_version=int(data.get("evidence_version", 0) or 0),
+        created_at=_optional_str(data.get("created_at")),
+        last_generated_at=_optional_str(data.get("last_generated_at")),
+        generator=(
+            dict(data.get("generator", {}))
+            if isinstance(data.get("generator"), dict)
+            else {}
+        ),
+        generation_options=(
+            dict(data.get("generation_options", {}))
+            if isinstance(data.get("generation_options"), dict)
+            else {}
+        ),
+        evidence_counts=(
+            {
+                str(key): int(value)
+                for key, value in data.get("evidence_counts", {}).items()
+            }
+            if isinstance(data.get("evidence_counts"), dict)
+            else {}
+        ),
+        source_snapshot=source_snapshot,
+        evidence_document_snapshot=evidence_document_snapshot,
+        generated_blocks=_generated_blocks_from_list(data.get("generated_blocks")),
         warnings=list(data.get("warnings", []))
         if isinstance(data.get("warnings"), list)
         else [],

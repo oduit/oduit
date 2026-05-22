@@ -69,6 +69,15 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     context_command_impl = context.implementations.context_command_impl
     addon_info_command_impl = context.implementations.addon_info_command_impl
     addon_doc_command_impl = context.implementations.addon_doc_command_impl
+    technical_evidence_command_impl = (
+        context.implementations.technical_evidence_command_impl
+    )
+    technical_report_command_impl = (
+        context.implementations.technical_report_command_impl
+    )
+    technical_doc_diff_command_impl = (
+        context.implementations.technical_doc_diff_command_impl
+    )
     technical_doc_command_impl = context.implementations.technical_doc_command_impl
     technical_doc_refresh_command_impl = (
         context.implementations.technical_doc_refresh_command_impl
@@ -392,6 +401,135 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             module_not_found_error_cls=module_not_found_error_cls,
             safe_read_only=safe_read_only,
             controlled_source_mutation=controlled_source_mutation,
+        )
+
+    @agent_app.command("technical-evidence")
+    def agent_technical_evidence(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+        force: bool = typer.Option(False, "--force"),
+        include_markdown: bool = typer.Option(False, "--include-markdown"),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(30.0, "--timeout"),
+        source_only: bool = typer.Option(
+            True,
+            "--source-only/--runtime",
+            help="Use source-only generation by default.",
+        ),
+        include_arch: bool = typer.Option(False, "--include-arch"),
+        attributes: str | None = typer.Option(
+            "string,type,required,readonly,store,relation",
+            "--attributes",
+        ),
+        types: str | None = typer.Option(None, "--types"),
+        max_models: int | None = typer.Option(None, "--max-models"),
+        max_fields_per_model: int | None = typer.Option(None, "--max-fields-per-model"),
+        path_prefix: str | None = typer.Option(None, "--path"),
+    ) -> None:
+        """Create or preview split deterministic technical evidence."""
+        technical_evidence_command_impl(
+            ctx,
+            target=target,
+            allow_mutation=allow_mutation,
+            dry_run=dry_run,
+            force=force,
+            include_markdown=include_markdown,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            attributes=attributes,
+            types=types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_mutation_fn=agent_require_mutation_fn,
+            odoo_operations_cls=get_odoo_operations_cls(),
+            safe_read_only=safe_read_only,
+            controlled_source_mutation=controlled_source_mutation,
+        )
+
+    @agent_app.command("technical-report")
+    def agent_technical_report(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+        force: bool = typer.Option(False, "--force"),
+        include_markdown: bool = typer.Option(False, "--include-markdown"),
+        generate_evidence: bool = typer.Option(False, "--generate-evidence"),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(30.0, "--timeout"),
+        source_only: bool = typer.Option(
+            True,
+            "--source-only/--runtime",
+            help="Use source-only generation by default.",
+        ),
+        include_arch: bool = typer.Option(False, "--include-arch"),
+        attributes: str | None = typer.Option(
+            "string,type,required,readonly,store,relation",
+            "--attributes",
+        ),
+        types: str | None = typer.Option(None, "--types"),
+        max_models: int | None = typer.Option(None, "--max-models"),
+        max_fields_per_model: int | None = typer.Option(None, "--max-fields-per-model"),
+        path_prefix: str | None = typer.Option(None, "--path"),
+    ) -> None:
+        """Create or preview split LLM/human architecture report seed."""
+        technical_report_command_impl(
+            ctx,
+            target=target,
+            allow_mutation=allow_mutation,
+            dry_run=dry_run,
+            force=force,
+            include_markdown=include_markdown,
+            generate_evidence=generate_evidence,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            attributes=attributes,
+            types=types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_mutation_fn=agent_require_mutation_fn,
+            odoo_operations_cls=get_odoo_operations_cls(),
+            safe_read_only=safe_read_only,
+            controlled_source_mutation=controlled_source_mutation,
+        )
+
+    @agent_app.command("technical-doc-diff")
+    def agent_technical_doc_diff(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        include_diff: bool = typer.Option(False, "--include-diff"),
+        significant_only: bool = typer.Option(False, "--significant-only"),
+        path_prefix: str | None = typer.Option(None, "--path"),
+    ) -> None:
+        """Diff report snapshots against current deterministic evidence."""
+        technical_doc_diff_command_impl(
+            ctx,
+            target=target,
+            include_diff=include_diff,
+            significant_only=significant_only,
+            path_prefix=path_prefix,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            odoo_operations_cls=get_odoo_operations_cls(),
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("technical-doc-refresh")

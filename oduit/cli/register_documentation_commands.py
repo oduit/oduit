@@ -12,12 +12,15 @@ from .commands.documentation import (
     addons_documentation_command,
     dependency_graph_documentation_command,
     model_documentation_command,
+    technical_diff_command,
     technical_documentation_accept_command,
     technical_documentation_check_command,
     technical_documentation_command,
     technical_documentation_next_command,
     technical_documentation_refresh_command,
     technical_documentation_status_command,
+    technical_evidence_command,
+    technical_report_command,
 )
 from .runtime_context import AppRegistrationContext
 
@@ -446,6 +449,116 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             build_odoo_operations_fn=build_odoo_operations_fn,
             print_command_error_result_fn=print_command_error_result_fn,
             module_not_found_error_cls=module_not_found_error_cls,
+        )
+
+    @docs_app.command("technical-evidence")
+    def docs_technical_evidence_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(30.0, "--timeout"),
+        source_only: bool = typer.Option(False, "--source-only"),
+        include_arch: bool = typer.Option(False, "--include-arch"),
+        attributes: str | None = typer.Option(
+            "string,type,required,readonly,store,relation",
+            "--field-attributes",
+        ),
+        types: str | None = typer.Option(None, "--view-types"),
+        max_models: int | None = typer.Option(None, "--max-models"),
+        max_fields_per_model: int | None = typer.Option(None, "--max-fields-per-model"),
+        path_prefix: str | None = typer.Option(None, "--path"),
+        output_in_addon: bool = typer.Option(
+            False, "--output-in-addon", help="Write addon-local evidence files"
+        ),
+        force: bool = typer.Option(False, "--force"),
+        format_name: str | None = typer.Option(None, "--format"),
+    ) -> None:
+        """Generate deterministic evidence markdown and sidecar."""
+        technical_evidence_command(
+            ctx,
+            target=target,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            attributes=attributes,
+            types=types,
+            output_in_addon=output_in_addon,
+            force=force,
+            format_name=format_name,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @docs_app.command("technical-report")
+    def docs_technical_report_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(30.0, "--timeout"),
+        source_only: bool = typer.Option(False, "--source-only"),
+        include_arch: bool = typer.Option(False, "--include-arch"),
+        attributes: str | None = typer.Option(
+            "string,type,required,readonly,store,relation",
+            "--field-attributes",
+        ),
+        types: str | None = typer.Option(None, "--view-types"),
+        max_models: int | None = typer.Option(None, "--max-models"),
+        max_fields_per_model: int | None = typer.Option(None, "--max-fields-per-model"),
+        path_prefix: str | None = typer.Option(None, "--path"),
+        output_in_addon: bool = typer.Option(
+            False, "--output-in-addon", help="Write addon-local report seed"
+        ),
+        force: bool = typer.Option(False, "--force"),
+        generate_evidence: bool = typer.Option(False, "--generate-evidence"),
+        format_name: str | None = typer.Option(None, "--format"),
+    ) -> None:
+        """Generate LLM/human report seed from evidence snapshots."""
+        technical_report_command(
+            ctx,
+            target=target,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            attributes=attributes,
+            types=types,
+            output_in_addon=output_in_addon,
+            force=force,
+            generate_evidence=generate_evidence,
+            format_name=format_name,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @docs_app.command("technical-diff")
+    def docs_technical_diff_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        include_diff: bool = typer.Option(False, "--include-diff"),
+        significant_only: bool = typer.Option(False, "--significant-only"),
+        format_name: str | None = typer.Option(None, "--format"),
+        path_prefix: str | None = typer.Option(None, "--path"),
+    ) -> None:
+        """Diff report snapshots against current generated evidence."""
+        technical_diff_command(
+            ctx,
+            target=target,
+            include_diff=include_diff,
+            format_name=format_name,
+            significant_only=significant_only,
+            path_prefix=path_prefix,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
         )
 
     @docs_app.command("technical-status")

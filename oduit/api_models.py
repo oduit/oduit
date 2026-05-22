@@ -650,6 +650,80 @@ class TechnicalDocumentationMetadata(DictModel):
 
 
 @dataclass
+class TechnicalEvidenceMetadata(DictModel):
+    """Durable addon-local metadata persisted next to generated evidence docs."""
+
+    schema_version: str = "oduit.technical_evidence.v1"
+    module: str = ""
+    addon_root: str = ""
+    evidence_path: str = "docs/architecture.evidence.md"
+    metadata_path: str = "docs/architecture.evidence.oduit.json"
+    template: str = "arc42-evidence-v1"
+    evidence_version: int = 0
+    created_at: str | None = None
+    last_generated_at: str | None = None
+    generator: dict[str, str] = dataclass_field(default_factory=dict)
+    generation_options: dict[str, Any] = dataclass_field(default_factory=dict)
+    evidence_counts: dict[str, int] = dataclass_field(default_factory=dict)
+    source_snapshot: DocumentationSourceSnapshot | None = None
+    evidence_document_snapshot: DocumentationDocumentSnapshot | None = None
+    generated_blocks: list[TechnicalDocumentationGeneratedBlock] = dataclass_field(
+        default_factory=list
+    )
+    warnings: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
+class TechnicalEvidenceSnapshot(DictModel):
+    block_id: str
+    renderer: str
+    evidence_path: str
+    evidence_version: int
+    source_sha256: str
+    content_sha256: str
+    snapshot_sha256: str
+    start_line: int | None = None
+    end_line: int | None = None
+    body: str = ""
+
+
+@dataclass
+class TechnicalEvidenceDiffEntry(DictModel):
+    block_id: str
+    renderer: str = ""
+    status: str = "unknown"
+    old_evidence_version: int | None = None
+    current_evidence_version: int | None = None
+    old_source_sha256: str | None = None
+    current_source_sha256: str | None = None
+    old_content_sha256: str | None = None
+    current_content_sha256: str | None = None
+    snapshot_sha256: str | None = None
+    current_snapshot_sha256: str | None = None
+    significant: bool = False
+    diff: str | None = None
+    message: str | None = None
+
+
+@dataclass
+class TechnicalEvidenceDiffResult(DictModel):
+    module: str
+    addon_root: str
+    report_path: str
+    evidence_path: str
+    evidence_metadata_path: str
+    status: str
+    current_evidence_version: int | None = None
+    snapshot_count: int = 0
+    stale_count: int = 0
+    edited_snapshot_count: int = 0
+    missing_current_block_count: int = 0
+    entries: list[TechnicalEvidenceDiffEntry] = dataclass_field(default_factory=list)
+    warnings: list[str] = dataclass_field(default_factory=list)
+    remediation: list[str] = dataclass_field(default_factory=list)
+
+
+@dataclass
 class TechnicalDocumentationStatus(DictModel):
     """Current tracking status for one addon-local technical document."""
 

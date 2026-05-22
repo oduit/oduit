@@ -32,6 +32,8 @@ from ...documentation_tracking import (
     load_technical_documentation_metadata,
     select_next_technical_doc_status,
     technical_doc_needs_action,
+    technical_doc_paths,
+    technical_evidence_paths,
     utc_now_iso,
     write_technical_documentation_metadata,
 )
@@ -1032,6 +1034,370 @@ def technical_documentation_command(
         print(f"Wrote markdown documentation to {display_output_path}")
         return
     print(bundle.markdown)
+
+
+def technical_evidence_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    database: str | None,
+    timeout: float,
+    source_only: bool,
+    include_arch: bool,
+    attributes: str | None,
+    types: str | None,
+    output_in_addon: bool,
+    force: bool,
+    format_name: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    path_prefix: str | None,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Generate deterministic technical evidence files."""
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    resolved_format = _resolve_status_format(global_config, format_name)
+    if resolved_format not in {"text", "json"}:
+        raise typer.BadParameter("format must be either 'text' or 'json'")
+    if not output_in_addon:
+        raise typer.BadParameter("--output-in-addon is required for technical-evidence")
+
+    field_attributes = _parse_csv_items(attributes)
+    view_types = _parse_csv_items(types)
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    ops = build_odoo_operations_fn(global_config)
+    try:
+        payload = ops.write_technical_evidence(
+            target,
+            force=force,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_base_dir=path_context.base_dir.as_posix(),
+            documentation_policy=documentation_policy,
+        )
+    except FileExistsError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_evidence",
+            str(exc),
+            error_type="FileExistsError",
+            details={"target": target},
+            remediation=["Retry with --force to overwrite evidence files."],
+        )
+        raise typer.Exit(2) from None
+    except (FileNotFoundError, ValueError, DocumentationTargetNotAllowedError) as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_evidence",
+            str(exc),
+            error_type=type(exc).__name__,
+            details={"target": target},
+        )
+        raise typer.Exit(2) from None
+
+    if resolved_format == "json":
+        print(
+            json.dumps(
+                output_result_to_json(
+                    {
+                        "success": True,
+                        "operation": "docs_technical_evidence",
+                        "type": "technical_evidence",
+                        "data": payload,
+                    }
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+    print(
+        "Wrote technical evidence to"
+        f" {path_context.relative(Path(payload['evidence_path']))}"
+    )
+    print(
+        "Wrote technical evidence metadata to "
+        f"{path_context.relative(Path(payload['metadata_path']))}"
+    )
+
+
+def technical_report_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    database: str | None,
+    timeout: float,
+    source_only: bool,
+    include_arch: bool,
+    attributes: str | None,
+    types: str | None,
+    output_in_addon: bool,
+    force: bool,
+    generate_evidence: bool,
+    format_name: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    path_prefix: str | None,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Generate LLM/human report seed markdown."""
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    resolved_format = _resolve_docs_format(global_config, format_name)
+    if resolved_format not in {"markdown", "json"}:
+        raise typer.BadParameter("format must be either 'markdown' or 'json'")
+    if not output_in_addon:
+        raise typer.BadParameter("--output-in-addon is required for technical-report")
+
+    field_attributes = _parse_csv_items(attributes)
+    view_types = _parse_csv_items(types)
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    ops = build_odoo_operations_fn(global_config)
+    try:
+        resolved_target = resolve_addon_documentation_target(
+            env_config,
+            target,
+            path_base_dir=path_context.base_dir,
+            documentation_policy=documentation_policy,
+        )
+    except (FileNotFoundError, ValueError, DocumentationTargetNotAllowedError) as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_report",
+            str(exc),
+            error_type=type(exc).__name__,
+            details={"target": target},
+        )
+        raise typer.Exit(2) from None
+
+    addon_root = Path(resolved_target.addon_root).resolve(strict=False)
+    report_path, report_metadata_path = technical_doc_paths(addon_root)
+    evidence_path, evidence_metadata_path = technical_evidence_paths(addon_root)
+    if (not evidence_path.exists() or not evidence_metadata_path.exists()) and (
+        not generate_evidence
+    ):
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_report",
+            "Technical evidence is missing.",
+            error_type="MissingEvidenceError",
+            details={"target": target},
+            remediation=[
+                (
+                    "Run oduit docs technical-evidence"
+                    f" @addons/{resolved_target.module}"
+                    " --output-in-addon first."
+                )
+            ],
+        )
+        raise typer.Exit(2) from None
+    try:
+        if generate_evidence and (
+            not evidence_path.exists() or not evidence_metadata_path.exists()
+        ):
+            ops.write_technical_evidence(
+                target,
+                force=False,
+                odoo_series=global_config.odoo_series,
+                database=database,
+                timeout=timeout,
+                source_only=source_only,
+                include_arch=include_arch,
+                field_attributes=field_attributes,
+                view_types=view_types,
+                max_models=max_models,
+                max_fields_per_model=max_fields_per_model,
+                path_base_dir=path_context.base_dir.as_posix(),
+                documentation_policy=documentation_policy,
+            )
+        _check_output_overwrite(report_path, force=force)
+        bundle = ops.build_technical_report_seed(
+            target,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_base_dir=path_context.base_dir.as_posix(),
+            documentation_policy=documentation_policy,
+            generate_evidence_if_missing=generate_evidence,
+        )
+    except FileExistsError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_report",
+            str(exc),
+            error_type="FileExistsError",
+            details={"target": target},
+            remediation=["Retry with --force to overwrite the report."],
+        )
+        raise typer.Exit(2) from None
+    except (FileNotFoundError, ValueError, DocumentationTargetNotAllowedError) as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_report",
+            str(exc),
+            error_type=type(exc).__name__,
+            details={"target": target},
+        )
+        raise typer.Exit(2) from None
+
+    bundle.generated_at = utc_now_iso()
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(bundle.markdown, encoding="utf-8")
+    previous_metadata, _ = load_technical_documentation_metadata(report_metadata_path)
+    metadata = build_technical_documentation_metadata(
+        bundle=bundle,
+        doc_path=report_path,
+        metadata_path=report_metadata_path,
+        generation_options=_generation_options(
+            source_only=source_only,
+            include_arch=include_arch,
+            path_prefix=".",
+            path_base_source=path_context.source,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            field_attributes=field_attributes,
+            view_types=view_types,
+        ),
+        previous_metadata=previous_metadata,
+        path_base_dir=path_context.base_dir,
+        source_addon_root=Path(bundle.source_addon_root or bundle.addon_root).resolve(
+            strict=False
+        ),
+    )
+    write_technical_documentation_metadata(metadata, report_metadata_path)
+    if resolved_format == "json":
+        print(
+            json.dumps(
+                output_result_to_json(
+                    {
+                        "success": True,
+                        "operation": "docs_technical_report",
+                        "type": "technical_documentation",
+                        "data": {
+                            "module": bundle.module,
+                            "report_path": path_context.relative(report_path),
+                            "metadata_path": path_context.relative(
+                                report_metadata_path
+                            ),
+                            "evidence_path": path_context.relative(evidence_path),
+                        },
+                    }
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+    print(f"Wrote markdown documentation to {path_context.relative(report_path)}")
+    print(
+        "Wrote documentation metadata to "
+        f"{path_context.relative(report_metadata_path)}"
+    )
+
+
+def technical_diff_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    include_diff: bool,
+    format_name: str | None,
+    significant_only: bool,
+    path_prefix: str | None,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Compare report evidence snapshots against current evidence blocks."""
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    resolved_format = _resolve_status_format(global_config, format_name)
+    if resolved_format not in {"text", "json"}:
+        raise typer.BadParameter("format must be either 'text' or 'json'")
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    ops = build_odoo_operations_fn(global_config)
+    try:
+        result = ops.diff_technical_report_evidence(
+            target,
+            include_diff=include_diff,
+            significant_only=significant_only,
+            path_base_dir=path_context.base_dir.as_posix(),
+            documentation_policy=documentation_policy,
+        )
+    except (FileNotFoundError, ValueError, DocumentationTargetNotAllowedError) as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_diff",
+            str(exc),
+            error_type=type(exc).__name__,
+            details={"target": target},
+        )
+        raise typer.Exit(2) from None
+
+    if resolved_format == "json":
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"Technical documentation evidence diff: {result['module']}")
+        print(f"Report:   {result['report_path']}")
+        print(f"Evidence: {result['evidence_path']}")
+        print(f"Current evidence version: {result.get('current_evidence_version')}")
+        print(f"Status: {result['status']}")
+        changed = [
+            entry
+            for entry in result.get("entries", [])
+            if entry["status"] != "unchanged"
+        ]
+        if changed:
+            print("\nChanged snapshots:")
+            for entry in changed:
+                change_label = (
+                    "stale significant"
+                    if entry["status"] == "snapshot_stale" and entry.get("significant")
+                    else entry["status"]
+                )
+                print(f"- {entry['block_id']}: {change_label}")
+    if result["status"] in {"stale", "edited_snapshots"}:
+        raise typer.Exit(1)
+    if result["status"] in {"invalid", "missing_report", "missing_evidence"}:
+        raise typer.Exit(2)
 
 
 def technical_documentation_refresh_command(

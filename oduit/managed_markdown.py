@@ -12,6 +12,11 @@ from typing import Any
 SCHEMA_VERSION = "oduit.generated_markdown_block.v1"
 START_RE = re.compile(r"^<!--\s*oduit:generated:start\s+({.*})\s*-->\s*$")
 END_RE = re.compile(r"^<!--\s*oduit:generated:end\s*-->\s*$")
+EVIDENCE_SNAPSHOT_SCHEMA_VERSION = "oduit.evidence_snapshot.v1"
+EVIDENCE_SNAPSHOT_START_RE = re.compile(
+    r"^<!--\s*oduit:evidence-snapshot:start\s+({.*})\s*-->\s*$"
+)
+EVIDENCE_SNAPSHOT_END_RE = re.compile(r"^<!--\s*oduit:evidence-snapshot:end\s*-->\s*$")
 
 
 def normalize_markdown_body(text: str) -> str:
@@ -66,6 +71,35 @@ class ParsedMarkdownBlock:
     id: str
     renderer: str
     schema_version: str
+    start_line: int
+    end_line: int
+    body: str
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class EvidenceSnapshotBlock:
+    block_id: str
+    renderer: str
+    evidence_path: str
+    evidence_version: int
+    source_sha256: str
+    content_sha256: str
+    body: str
+    schema_version: str = EVIDENCE_SNAPSHOT_SCHEMA_VERSION
+    copied_at: str | None = None
+
+    @property
+    def snapshot_sha256(self) -> str:
+        return sha256_text(self.body)
+
+
+@dataclass(frozen=True)
+class ParsedEvidenceSnapshotBlock:
+    block_id: str
+    renderer: str
+    evidence_path: str
+    evidence_version: int
     start_line: int
     end_line: int
     body: str
@@ -180,6 +214,123 @@ def parse_generated_blocks(markdown: str) -> list[ParsedMarkdownBlock]:
         )
         index = body_index + 1
 
+    return blocks
+
+
+def render_evidence_snapshot_block(snapshot: EvidenceSnapshotBlock) -> str:
+    """Render one evidence snapshot marker block for report documents."""
+
+    metadata: dict[str, Any] = {
+        "schema_version": snapshot.schema_version,
+        "block_id": snapshot.block_id,
+        "renderer": snapshot.renderer,
+        "evidence_path": snapshot.evidence_path,
+        "evidence_version": snapshot.evidence_version,
+        "source_sha256": snapshot.source_sha256,
+        "content_sha256": snapshot.content_sha256,
+        "snapshot_sha256": snapshot.snapshot_sha256,
+    }
+    if snapshot.copied_at:
+        metadata["copied_at"] = snapshot.copied_at
+    json_str = json.dumps(
+        metadata,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return (
+        "<!-- oduit:evidence-snapshot:start "
+        f"{json_str} -->\n"
+        f"{normalize_markdown_body(snapshot.body)}"
+        "<!-- oduit:evidence-snapshot:end -->"
+    )
+
+
+def parse_evidence_snapshot_blocks(markdown: str) -> list[ParsedEvidenceSnapshotBlock]:
+    """Parse evidence snapshot blocks line-by-line."""
+
+    blocks: list[ParsedEvidenceSnapshotBlock] = []
+    lines = markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    index = 0
+    seen_ids: set[str] = set()
+    while index < len(lines):
+        start_match = EVIDENCE_SNAPSHOT_START_RE.match(lines[index])
+        if start_match is None:
+            index += 1
+            continue
+
+        start_line = index + 1
+        try:
+            metadata = json.loads(start_match.group(1))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Malformed evidence snapshot marker at line {start_line}: {exc}"
+            ) from exc
+        if not isinstance(metadata, dict):
+            raise ValueError(
+                f"Evidence snapshot marker at line {start_line}"
+                " must contain JSON object."
+            )
+
+        required = {
+            "block_id": str,
+            "renderer": str,
+            "evidence_path": str,
+            "source_sha256": str,
+            "content_sha256": str,
+            "snapshot_sha256": str,
+        }
+        for field_name, field_type in required.items():
+            if not isinstance(metadata.get(field_name), field_type):
+                raise ValueError(
+                    "Evidence snapshot marker missing required field "
+                    f"'{field_name}' at line {start_line}."
+                )
+        evidence_version = metadata.get("evidence_version")
+        if not isinstance(evidence_version, int):
+            raise ValueError(
+                "Evidence snapshot marker missing required int field "
+                f"'evidence_version' at line {start_line}."
+            )
+        schema_version = metadata.get("schema_version")
+        if schema_version != EVIDENCE_SNAPSHOT_SCHEMA_VERSION:
+            raise ValueError(
+                "Evidence snapshot marker has unsupported schema_version at line "
+                f"{start_line}: {schema_version!r}"
+            )
+
+        block_id = str(metadata["block_id"])
+        if block_id in seen_ids:
+            raise ValueError(f"Duplicate evidence snapshot block_id '{block_id}'.")
+        seen_ids.add(block_id)
+
+        body_lines: list[str] = []
+        body_index = index + 1
+        while (
+            body_index < len(lines)
+            and EVIDENCE_SNAPSHOT_END_RE.match(lines[body_index]) is None
+        ):
+            body_lines.append(lines[body_index])
+            body_index += 1
+        if body_index >= len(lines):
+            raise ValueError(
+                f"Missing evidence snapshot end marker for block_id '{block_id}'."
+            )
+
+        body = normalize_markdown_body("\n".join(body_lines))
+        blocks.append(
+            ParsedEvidenceSnapshotBlock(
+                block_id=block_id,
+                renderer=str(metadata["renderer"]),
+                evidence_path=str(metadata["evidence_path"]),
+                evidence_version=evidence_version,
+                start_line=start_line,
+                end_line=body_index + 1,
+                body=body,
+                metadata=metadata,
+            )
+        )
+        index = body_index + 1
     return blocks
 
 
