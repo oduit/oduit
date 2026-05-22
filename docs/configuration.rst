@@ -157,6 +157,26 @@ Common Odoo keys:
 * ``http_port``
 * ``workers``
 
+Documentation workflow settings
+-------------------------------
+
+Use this section to constrain addon technical documentation writes and scans:
+
+.. code-block:: toml
+
+   [documentation]
+   allowed_addon_dirs = ["./addons"]
+
+``allowed_addon_dirs`` values are resolved relative to the project base:
+``.oduit.toml`` directory when present, then git root, then current working
+directory.
+
+This keeps ``technical-next`` and ``technical-status`` focused on your project
+addons and avoids selecting native/third-party addon roots by default.
+
+Legacy flat-key compatibility remains supported through
+``documentation_allowed_addon_dirs``.
+
 Python Usage
 ------------
 

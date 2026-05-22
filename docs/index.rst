@@ -13,6 +13,8 @@ Highlights
 * structured JSON output for automation and CI
 * addon intelligence commands such as ``list-addons``, ``list-depends``,
   ``install-order``, ``explain-install-order``, and ``impact-of-update``
+* split addon technical documentation workflows with deterministic evidence and
+  LLM/human report files
 * ``oduit agent`` as the primary automation surface for coding agents,
   including discovery, location, and verification flows such as
   ``get-model-fields``, ``locate-model``, ``validate-addon-change``, and
@@ -47,6 +49,7 @@ Contents
 
    installation
    quickstart
+   technical_documentation
    migrate-odoo-conf
    agent_contract
    agent_command_inventory

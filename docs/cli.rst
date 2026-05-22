@@ -1072,6 +1072,25 @@ a file. Use ``docs addons --output-dir`` to write the multi-file addon bundle
 ``--path`` to trim a shared absolute prefix from documented file paths; paths
 outside that prefix stay absolute.
 
+Documentation commands
+^^^^^^^^^^^^^^^^^^^^^^
+
+The ``docs`` group includes:
+
+* ``docs addon``
+* ``docs addons``
+* ``docs model``
+* ``docs dependency-graph``
+* ``docs technical-evidence``
+* ``docs technical-report``
+* ``docs technical-diff``
+* ``docs technical-status``
+* ``docs technical-check``
+* ``docs technical-next``
+* ``docs technical-refresh``
+* ``docs technical-accept``
+* ``docs technical`` (legacy/compatibility monolithic workflow)
+
 Showcase Replacements
 ^^^^^^^^^^^^^^^^^^^^^
 

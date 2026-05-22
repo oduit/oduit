@@ -26,6 +26,9 @@ Good fits:
 Do not use oduit for unrelated Python tests, static linting, or plain file
 search. Use normal repo tooling for those.
 
+For any task that asks to create, update, review, refresh, or diff addon
+architecture documentation, switch to the `oduit-technical-documentation` skill.
+
 ## First checks
 
 1. Prefer the repository's existing `oduit` command.
@@ -245,8 +248,13 @@ oduit print-manifest sale
 oduit list-depends sale
 oduit install-order sale,purchase
 oduit impact-of-update sale
-oduit docs technical @addons/sale --source-only --output-in-addon
-oduit docs addon sale --source-only  # legacy addon summary, not Arc42 architecture docs
+# Durable addon-local Arc42 docs: prefer the oduit-technical-documentation skill.
+oduit docs technical-evidence @addons/sale --output-in-addon --source-only
+oduit docs technical-report @addons/sale --output-in-addon --source-only
+oduit docs technical-diff @addons/sale --include-diff
+
+# Legacy/additional addon summary, not the Arc42 architecture workflow.
+oduit docs addon sale --source-only
 oduit inspect model res.partner
 oduit inspect field res.partner email --with-db
 oduit db table res_partner

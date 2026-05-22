@@ -185,35 +185,54 @@ oduit --env dev create-addon my_custom_module --allow-mutation
 oduit --env dev export-lang sale --allow-mutation --language de_DE
 ```
 
-## Technical documentation tracking
+## Split addon technical documentation
 
-Addon-local Arc42 docs can now be tracked with a durable sidecar:
+oduit can generate addon-local Arc42 documentation as a split workflow:
+
+```text
+<addon>/docs/architecture.evidence.md
+<addon>/docs/architecture.evidence.oduit.json
+<addon>/docs/architecture.md
+<addon>/docs/architecture.oduit.json
+```
+
+`architecture.evidence.md` is deterministic oduit evidence and should not be
+manually edited. `architecture.md` is the LLM/human architecture report and is
+the right place for reviewed prose, project context, and decisions.
+
+Recommended human CLI workflow:
 
 ```bash
-oduit --env dev docs technical @addons/has_base --output-in-addon --source-only
+oduit --env dev docs technical-evidence @addons/has_base --output-in-addon --source-only
+oduit --env dev docs technical-report @addons/has_base --output-in-addon --source-only
+oduit --env dev docs technical-diff @addons/has_base --include-diff
 oduit --env dev docs technical-check @addons/has_base --include-files
 oduit --env dev docs technical-next
 oduit --env dev docs technical-status --select-dir addons --only-stale
 ```
 
-Writing addon-local technical docs creates both:
+Recommended agent workflow:
 
-```text
-<addon>/docs/architecture.md
-<addon>/docs/architecture.oduit.json
+```bash
+oduit --env dev agent technical-evidence @addons/has_base --allow-mutation --source-only
+oduit --env dev agent technical-report @addons/has_base --allow-mutation --source-only
+oduit --env dev agent technical-doc-diff @addons/has_base --include-diff
+oduit --env dev agent technical-doc-check @addons/has_base --include-files
+oduit --env dev agent technical-doc-next
 ```
 
-Long-running human `docs technical` runs print compact progress updates to stderr.
-JSON stdout stays machine-parseable, and agent commands remain JSON-only.
-
-The sidecar records the first tracked generation time, the last generation
-time, whether the document or addon source changed after generation, and stores
-paths relative to the project base (`.oduit.toml` directory first, then git
-root, then cwd fallback).
+Use `--runtime` only when the configured database is a safe development or test
+database. Otherwise keep technical documentation source-only.
 
 Use `technical-check` as the CI/script-friendly freshness gate for one addon.
-Use `technical-next` to pick the next addon that still needs documentation
-attention.
+Use `technical-next` to pick the next addon that still needs documentation work.
+Use `technical-diff` to compare the report's embedded evidence snapshot against
+current deterministic evidence.
+
+`docs technical` and `agent technical-doc` remain available for legacy
+monolithic Arc42 files. Prefer `technical-evidence` plus `technical-report` for
+new documentation.
+
 When `[documentation].allowed_addon_dirs` is configured, `technical-next` and
 `technical-status` scan only those addon directories; native addons like
 `account` are excluded unless explicitly allowlisted.

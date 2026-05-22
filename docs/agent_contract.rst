@@ -46,6 +46,17 @@ Only mutate through the controlled mutation commands:
 * ``export-lang``
 * ``test-summary``
 
+For split addon technical documentation, use:
+
+* ``technical-evidence``      (``beta_for_agents``, ``controlled_source_mutation``)
+* ``technical-report``        (``beta_for_agents``, ``controlled_source_mutation``)
+* ``technical-doc-diff``      (``beta_for_agents``, ``safe_read_only``)
+* ``technical-doc-refresh``   (``beta_for_agents``, ``controlled_source_mutation``)
+* ``technical-doc-accept``    (``beta_for_agents``, ``controlled_source_mutation``)
+* ``technical-doc-check``     (``beta_for_agents``, ``safe_read_only``)
+* ``technical-doc-next``      (``beta_for_agents``, ``safe_read_only``)
+* ``technical-doc-status``    (``beta_for_agents``, ``safe_read_only``)
+
 Recommended Command Sequence
 ----------------------------
 
@@ -206,6 +217,16 @@ When available, commands also include:
 
 When ``--show-command`` is enabled, the raw command is exposed as
 ``data.command``.
+
+Technical-documentation payload notes:
+
+* preview payloads include ``would_write``, ``would_write_metadata``, and
+  ``preview``
+* ``--include-markdown`` is opt-in for full markdown output in agent payloads
+* write commands return relative output paths for changed files
+* ``technical-doc-check``, ``technical-doc-status``, and ``technical-doc-next``
+  default to compact file listings unless ``--include-files`` is passed
+* final payload JSON stays on stdout; progress output remains on stderr
 
 For source-location commands, prefer explicit decision fields over raw
 confidence alone:

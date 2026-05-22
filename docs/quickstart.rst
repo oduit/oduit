@@ -103,6 +103,17 @@ Addon Intelligence
    oduit --env dev docs addons --select-dir myaddons --output-dir ./docs-out
    oduit --env dev docs dependency-graph --modules sale,purchase
 
+Generate addon-local architecture docs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+   oduit --env dev agent technical-evidence @addons/my_addon --allow-mutation --source-only
+   oduit --env dev agent technical-report @addons/my_addon --allow-mutation --source-only
+   oduit --env dev agent technical-doc-check @addons/my_addon --include-files
+
+Use ``technical-diff`` to compare the report snapshot against current evidence.
+
 Operations
 ~~~~~~~~~~
 
