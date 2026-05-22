@@ -1,6 +1,61 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
+- Add technical documentation schema
+
+- Update skills
+
+- Improve technical docu
+
+- Improved documentation, schemas and skill
+
+- Speed up documentation
+
+- Improved technical doc creation flow
+
+- Add allowed addon dirs
+
+- Evidence blocks introduced for technical docu
+
+- Create seperate evidence doc file
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- Unit test
+
+- Fix  windows ci test
+
+- Rename addon to a more generic name
+
+- Timout for doc creation
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update changelog
+
+- Update skills and docs
+
+
+
+Miscellaneous
+~~~~~~~~~~~~~~~~~~~~~
+
+- Pre-commit, pytest and mypy
+
+
 0.4.5
 ----------
 
