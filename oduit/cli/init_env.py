@@ -3,7 +3,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import typer
 
@@ -194,7 +194,7 @@ def dumps_config_toml(env_config: dict[str, Any], config_loader: ConfigLoader) -
         )
         raise typer.Exit(1) from None
 
-    return tomli_w.dumps(env_config)
+    return cast(str, tomli_w.dumps(env_config))
 
 
 def resolve_init_target(

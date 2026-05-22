@@ -334,7 +334,7 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             ),
         ),
         progress: bool = typer.Option(
-            True,
+            False,
             "--progress/--no-progress",
             help="Print technical documentation generation progress to stderr.",
         ),

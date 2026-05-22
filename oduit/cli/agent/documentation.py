@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import typer
 from click.core import ParameterSource
@@ -86,7 +86,7 @@ def _generation_options(
     field_attributes: list[str],
     view_types: list[str],
 ) -> dict[str, Any]:
-    options = {
+    options: dict[str, Any] = {
         "source_only": source_only,
         "include_arch": include_arch,
         "path_prefix": path_prefix,
@@ -123,7 +123,8 @@ def _metadata_summary(status: Any) -> dict[str, Any]:
 
 
 def _status_to_payload_dict(status: Any, *, include_files: bool) -> dict[str, Any]:
-    data = status.to_dict()
+    raw_data = status.to_dict()
+    data = cast(dict[str, Any], raw_data if isinstance(raw_data, dict) else {})
     if not include_files:
         data.pop("changed_files", None)
         data.pop("added_files", None)
@@ -216,10 +217,9 @@ def _agent_progress_message(
 
 
 def _agent_technical_doc_progress(enabled: bool, *, progress_level: str) -> Any:
-    if not enabled:
-        return None
-
     def progress(stage: str, data: dict[str, Any]) -> None:
+        if not enabled:
+            return
         if not _progress_stage_visible(stage, progress_level=progress_level):
             return
         message = _agent_progress_message(
@@ -1174,6 +1174,7 @@ def agent_technical_doc_status_command(
         path_context=path_context,
         documentation_policy=documentation_policy,
     ):
+        assert select_dir is not None
         agent_fail_fn(
             operation,
             result_type,
@@ -1418,6 +1419,7 @@ def agent_technical_doc_next_command(
         path_context=path_context,
         documentation_policy=documentation_policy,
     ):
+        assert path is not None
         agent_fail_fn(
             operation,
             result_type,

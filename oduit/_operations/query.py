@@ -182,16 +182,17 @@ class QueryOperationsService(OperationsService):
         timeout: float = 30.0,
     ) -> QueryModelResult:
         """Delegate typed read-only model queries to ``OdooQuery``."""
+        query_kwargs: dict[str, Any] = {
+            "domain": domain,
+            "fields": fields,
+            "limit": limit,
+            "database": database,
+            "timeout": timeout,
+        }
+        if include_total_count:
+            query_kwargs["include_total_count"] = True
         return QueryModelResult.from_dict(
-            self.operations._get_query_helper().query_model(
-                model,
-                domain=domain,
-                fields=fields,
-                limit=limit,
-                include_total_count=include_total_count,
-                database=database,
-                timeout=timeout,
-            )
+            self.operations._get_query_helper().query_model(model, **query_kwargs)
         )
 
     def read_record(

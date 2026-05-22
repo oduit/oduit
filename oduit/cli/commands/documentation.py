@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import typer
 
@@ -275,7 +275,7 @@ def _generation_options(
     field_attributes: list[str],
     view_types: list[str],
 ) -> dict[str, Any]:
-    options = {
+    options: dict[str, Any] = {
         "source_only": source_only,
         "include_arch": include_arch,
         "path_prefix": path_prefix,
@@ -412,7 +412,8 @@ def _metadata_summary(status: Any) -> dict[str, Any]:
 
 
 def _status_to_payload_dict(status: Any, *, include_files: bool) -> dict[str, Any]:
-    data = status.to_dict()
+    raw_data = status.to_dict()
+    data = cast(dict[str, Any], raw_data if isinstance(raw_data, dict) else {})
     if not include_files:
         data.pop("changed_files", None)
         data.pop("added_files", None)
@@ -1562,6 +1563,7 @@ def technical_documentation_status_command(
         path_context=path_context,
         documentation_policy=documentation_policy,
     ):
+        assert select_dir is not None
         print_command_error_result_fn(
             global_config,
             "docs_technical_status",
@@ -1817,6 +1819,7 @@ def technical_documentation_next_command(
         path_context=path_context,
         documentation_policy=documentation_policy,
     ):
+        assert path is not None
         print_command_error_result_fn(
             global_config,
             "docs_technical_next",

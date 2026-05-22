@@ -458,6 +458,12 @@ def build_arc42_generated_blocks(
         "license": info.license if info else None,
         "source_only": bundle.source_only,
     }
+    depends_payload = constraints_source_payload["depends"]
+    declared_dependencies = (
+        [item for item in depends_payload if isinstance(item, str)]
+        if isinstance(depends_payload, list)
+        else []
+    )
 
     return {
         "arc42.manifest_summary": GeneratedMarkdownBlock(
@@ -497,7 +503,7 @@ def build_arc42_generated_blocks(
                             ],
                             [
                                 "Declared dependencies",
-                                _join_code_list(constraints_source_payload["depends"]),
+                                _join_code_list(declared_dependencies),
                                 "manifest depends",
                             ],
                             [

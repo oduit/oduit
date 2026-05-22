@@ -193,21 +193,15 @@ def _generated_blocks_from_markdown(
     parsed = parse_generated_blocks(markdown)
     generated: list[TechnicalDocumentationGeneratedBlock] = []
     for block in parsed:
+        source_sha = block.metadata.get("source_sha256")
+        content_sha = block.metadata.get("content_sha256")
         generated.append(
             TechnicalDocumentationGeneratedBlock(
                 id=block.id,
                 renderer=block.renderer,
                 schema_version=block.schema_version,
-                source_sha256=(
-                    block.metadata.get("source_sha256")
-                    if isinstance(block.metadata.get("source_sha256"), str)
-                    else ""
-                ),
-                content_sha256=(
-                    block.metadata.get("content_sha256")
-                    if isinstance(block.metadata.get("content_sha256"), str)
-                    else ""
-                ),
+                source_sha256=source_sha if isinstance(source_sha, str) else "",
+                content_sha256=content_sha if isinstance(content_sha, str) else "",
                 line_count=len(block.body.splitlines()),
             )
         )
@@ -912,6 +906,7 @@ class DocumentationOperationsService(OperationsService):
             strict=False
         )
         evidence_path, evidence_metadata_path = technical_evidence_paths(addon_root)
+        evidence_blocks: dict[str, Any]
         metadata = evidence_metadata
         if metadata is None:
             metadata, _warnings = load_technical_evidence_metadata(

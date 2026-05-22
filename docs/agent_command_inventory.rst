@@ -38,6 +38,26 @@ Command tiers:
      - ``beta_for_agents``
      - ``controlled_source_mutation``
      - Create or preview addon-local arc42 technical documentation.
+   * - ``technical-evidence``
+     - ``beta_for_agents``
+     - ``controlled_source_mutation``
+     - Create or preview split deterministic technical evidence.
+   * - ``technical-report``
+     - ``beta_for_agents``
+     - ``controlled_source_mutation``
+     - Create or preview split LLM/human architecture report seed.
+   * - ``technical-doc-diff``
+     - ``beta_for_agents``
+     - ``safe_read_only``
+     - Diff report snapshots against current deterministic evidence.
+   * - ``technical-doc-refresh``
+     - ``beta_for_agents``
+     - ``controlled_source_mutation``
+     - Refresh managed blocks inside addon-local arc42 technical documentation.
+   * - ``technical-doc-accept``
+     - ``beta_for_agents``
+     - ``controlled_source_mutation``
+     - Accept a manually reviewed architecture document snapshot.
    * - ``technical-doc-status``
      - ``beta_for_agents``
      - ``safe_read_only``

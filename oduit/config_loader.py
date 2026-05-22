@@ -10,7 +10,7 @@ from configparser import ConfigParser, SectionProxy
 from dataclasses import dataclass
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from .config_provider import ConfigProvider
 from .mutation_policy import raise_if_legacy_db_risk_level

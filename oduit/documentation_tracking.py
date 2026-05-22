@@ -1094,19 +1094,17 @@ def _generated_blocks_from_document(
         return []
     generated: list[TechnicalDocumentationGeneratedBlock] = []
     for block in blocks:
+        source_sha = block.metadata.get("source_sha256")
+        content_sha = block.metadata.get("content_sha256")
         generated.append(
             TechnicalDocumentationGeneratedBlock(
                 id=block.id,
                 renderer=block.renderer,
                 schema_version=block.schema_version,
-                source_sha256=(
-                    block.metadata.get("source_sha256")
-                    if isinstance(block.metadata.get("source_sha256"), str)
-                    else ""
-                ),
+                source_sha256=source_sha if isinstance(source_sha, str) else "",
                 content_sha256=(
-                    block.metadata.get("content_sha256")
-                    if isinstance(block.metadata.get("content_sha256"), str)
+                    content_sha
+                    if isinstance(content_sha, str)
                     else sha256_text(block.body)
                 ),
                 line_count=len(block.body.splitlines()),
