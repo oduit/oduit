@@ -9,6 +9,7 @@ from dataclasses import field as dataclass_field
 from typing import Any
 
 from .api_models import DocumentSection, TechnicalDocumentation
+from .managed_markdown import GeneratedMarkdownBlock, render_generated_block
 
 _JOINED_WORD_PATTERNS = [
     r"\bthisaddon\b",
@@ -227,8 +228,10 @@ def _runtime_candidates(bundle: TechnicalDocumentation) -> tuple[list[str], list
     )
 
 
-def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentSection]:
-    """Build arc42 sections for one technical-documentation bundle."""
+def build_arc42_generated_blocks(
+    bundle: TechnicalDocumentation,
+) -> dict[str, GeneratedMarkdownBlock]:
+    """Build deterministic managed blocks for direct source/runtime evidence."""
 
     addon_doc = bundle.addon_documentation
     inventory = bundle.technical_inventory
@@ -245,16 +248,6 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
     xml_records = inventory.xml_records if inventory is not None else []
     http_routes = inventory.http_routes if inventory is not None else []
     todo_markers = inventory.todo_markers if inventory is not None else []
-    main_scenarios, async_scenarios = _runtime_candidates(bundle)
-
-    security_files_text = _join_code_list(
-        inventory.security_files if inventory is not None else []
-    )
-    migration_files_text = _join_code_list(
-        inventory.migration_files if inventory is not None else []
-    )
-    model_list_text = _join_code_list(sorted({entry.model for entry in model_entries}))
-
     external_dependencies = (
         info.external_dependencies
         if info is not None and isinstance(info.external_dependencies, dict)
@@ -295,7 +288,6 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
             "Recommended tests and explicit validation commands.",
         ],
     ]
-
     overview_rows = [
         ["Addon root", f"`{bundle.addon_root}`"],
         ["Model entries", str(len(model_entries))],
@@ -305,7 +297,6 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
         ["Recommended tests", str(len(tests))],
         ["TODO markers", str(len(todo_markers))],
     ]
-
     manifest_rows = [
         ["Module", f"`{bundle.module}`"],
         ["Manifest name", _value_or_dash(info.name if info else None)],
@@ -324,7 +315,6 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
         ["Installable", _value_or_dash(info.installable if info else None)],
         ["Auto install", _value_or_dash(info.auto_install if info else None)],
     ]
-
     model_rows = [
         [
             f"`{entry.model}`",
@@ -334,7 +324,6 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
         ]
         for entry in model_entries
     ]
-
     xml_rows = [
         [
             record.xml_tag,
@@ -376,7 +365,6 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
         for test in tests[:20]
         if isinstance(test, dict)
     ]
-
     risks_rows = [[warning, "warning"] for warning in warning_lines]
     risks_rows.extend(
         [
@@ -384,7 +372,6 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
             for marker in todo_markers[:20]
         ]
     )
-
     glossary_rows = [
         [f"`{bundle.module}`", "Addon module under documentation."],
         *[
@@ -396,11 +383,9 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
             for route in http_routes[:10]
         ],
     ]
-
     file_count_rows = [
         [category, str(count)] for category, count in sorted(file_counts.items())
     ]
-
     appendix_rows = [
         ["Manifest dependencies", str(len(info.depends if info else []))],
         ["Model entries", str(len(model_entries))],
@@ -414,10 +399,433 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
         ["TODO markers", str(len(todo_markers))],
     ]
 
+    odoo_series = (
+        info.version_display.split(".")[0]
+        if info is not None and info.version_display
+        else None
+    )
+    constraints_source_payload = {
+        "odoo_series": odoo_series,
+        "depends": list(info.depends if info else []),
+        "external_dependencies": external_dependency_text,
+        "installable": info.installable if info else None,
+        "auto_install": info.auto_install if info else None,
+        "license": info.license if info else None,
+        "source_only": bundle.source_only,
+    }
+
+    return {
+        "arc42.manifest_summary": GeneratedMarkdownBlock(
+            id="arc42.manifest_summary",
+            renderer="arc42.manifest_summary.v1",
+            body="\n".join(
+                [
+                    "Derived from manifest:",
+                    f"- Name: `{_value_or_dash(info.name if info else None)}`",
+                    f"- Summary: `{_value_or_dash(info.summary if info else None)}`",
+                    f"- Category: `{_value_or_dash(info.category if info else None)}`",
+                    f"- License: `{_value_or_dash(info.license if info else None)}`",
+                ]
+            ),
+            source_payload=manifest_rows[:4],
+        ),
+        "arc42.quality_goals": GeneratedMarkdownBlock(
+            id="arc42.quality_goals",
+            renderer="arc42.quality_goals.v1",
+            body=_markdown_table(["Goal", "Rationale", "Evidence"], quality_rows),
+            source_payload=quality_rows,
+        ),
+        "arc42.constraints": GeneratedMarkdownBlock(
+            id="arc42.constraints",
+            renderer="arc42.constraints.v1",
+            body="\n".join(
+                [
+                    "Derived from oduit evidence:",
+                    "",
+                    _markdown_table(
+                        ["Constraint", "Value", "Evidence"],
+                        [
+                            [
+                                "Odoo series",
+                                _value_or_dash(odoo_series),
+                                "manifest version",
+                            ],
+                            [
+                                "Declared dependencies",
+                                _join_code_list(constraints_source_payload["depends"]),
+                                "manifest depends",
+                            ],
+                            [
+                                "External dependencies",
+                                external_dependency_text,
+                                "manifest external_dependencies",
+                            ],
+                            [
+                                "Installable",
+                                _value_or_dash(
+                                    constraints_source_payload["installable"]
+                                ),
+                                "manifest installable",
+                            ],
+                            [
+                                "Auto install",
+                                _value_or_dash(
+                                    constraints_source_payload["auto_install"]
+                                ),
+                                "manifest auto_install",
+                            ],
+                            [
+                                "License",
+                                _value_or_dash(constraints_source_payload["license"]),
+                                "manifest license",
+                            ],
+                            [
+                                "Source-only generation",
+                                _value_or_dash(bundle.source_only),
+                                "CLI/agent request",
+                            ],
+                        ],
+                    ),
+                ]
+            ),
+            source_payload=constraints_source_payload,
+        ),
+        "arc42.technical_context": GeneratedMarkdownBlock(
+            id="arc42.technical_context",
+            renderer="arc42.technical_context.v1",
+            body=_markdown_table(
+                ["Aspect", "Observed evidence"],
+                [
+                    ["Addon root", f"`{bundle.addon_root}`"],
+                    ["Dependencies", _join_code_list(info.depends if info else [])],
+                    [
+                        "Reverse dependencies",
+                        _join_code_list(info.reverse_dependencies if info else []),
+                    ],
+                    ["HTTP routes", str(len(http_routes))],
+                    [
+                        "Security files",
+                        str(len(inventory.security_files if inventory else [])),
+                    ],
+                    ["XML records", str(len(xml_records))],
+                ],
+            ),
+            source_payload={
+                "addon_root": bundle.addon_root,
+                "depends": list(info.depends if info else []),
+                "reverse_depends": list(info.reverse_dependencies if info else []),
+                "http_routes": len(http_routes),
+                "security_files": len(inventory.security_files if inventory else []),
+                "xml_records": len(xml_records),
+            },
+        ),
+        "arc42.solution_strategy_evidence": GeneratedMarkdownBlock(
+            id="arc42.solution_strategy_evidence",
+            renderer="arc42.solution_strategy_evidence.v1",
+            body="\n".join(
+                [
+                    "Derived from oduit evidence:",
+                    "",
+                    _bullet_lines(
+                        [
+                            (
+                                f"Extend or depend on "
+                                f"{_join_code_list(info.depends if info else [])} "
+                                "to integrate with the existing "
+                                "Odoo module graph."
+                            ),
+                            (
+                                f"Implement business data changes "
+                                f"through {len(model_entries)} "
+                                "declared or extended model entries."
+                            ),
+                            (
+                                f"Configure UI, reports, and data "
+                                f"through {len(xml_records)} XML records "
+                                "discovered in the addon tree."
+                            ),
+                            (
+                                f"Expose {len(http_routes)} HTTP "
+                                f"route(s) and {len(tests)} recommended "
+                                "test file(s) for verification."
+                            ),
+                        ]
+                    ),
+                ]
+            ),
+            source_payload={
+                "depends": list(info.depends if info else []),
+                "model_entries": len(model_entries),
+                "xml_records": len(xml_records),
+                "routes": len(http_routes),
+                "tests": len(tests),
+            },
+        ),
+        "arc42.addon_overview": GeneratedMarkdownBlock(
+            id="arc42.addon_overview",
+            renderer="arc42.addon_overview.v1",
+            body=_markdown_table(["Item", "Count"], overview_rows),
+            source_payload=overview_rows,
+        ),
+        "arc42.manifest_dependencies": GeneratedMarkdownBlock(
+            id="arc42.manifest_dependencies",
+            renderer="arc42.manifest_dependencies.v1",
+            body=_markdown_table(["Field", "Value"], manifest_rows),
+            source_payload=manifest_rows,
+        ),
+        "arc42.model_layer": GeneratedMarkdownBlock(
+            id="arc42.model_layer",
+            renderer="arc42.model_layer.v1",
+            body=_markdown_table(["Model", "Relation", "Class", "Path"], model_rows),
+            source_payload=model_rows,
+        ),
+        "arc42.xml_records": GeneratedMarkdownBlock(
+            id="arc42.xml_records",
+            renderer="arc42.xml_records.v1",
+            body="\n".join(
+                [
+                    _markdown_table(["Tag", "Model", "ID", "Name", "Path"], xml_rows),
+                    (
+                        ""
+                        if len(xml_records) <= 25
+                        else (
+                            "\nDerived from oduit evidence: "
+                            f"only the first 25 of "
+                            f"{len(xml_records)} XML records "
+                            "are shown here."
+                        )
+                    ),
+                ]
+            ),
+            source_payload={"xml_rows": xml_rows, "xml_count": len(xml_records)},
+        ),
+        "arc42.security_files": GeneratedMarkdownBlock(
+            id="arc42.security_files",
+            renderer="arc42.security_files.v1",
+            body=_markdown_table(["Security file", "Notes"], security_rows),
+            source_payload=security_rows,
+        ),
+        "arc42.routes": GeneratedMarkdownBlock(
+            id="arc42.routes",
+            renderer="arc42.routes.v1",
+            body=_markdown_table(
+                ["Route", "Handler", "Auth", "Type", "Methods", "Path"], route_rows
+            ),
+            source_payload=route_rows,
+        ),
+        "arc42.file_categories": GeneratedMarkdownBlock(
+            id="arc42.file_categories",
+            renderer="arc42.file_categories.v1",
+            body=_markdown_table(["Category", "Count"], data_rows),
+            source_payload=data_rows,
+        ),
+        "arc42.recommended_tests": GeneratedMarkdownBlock(
+            id="arc42.recommended_tests",
+            renderer="arc42.recommended_tests.v1",
+            body=_markdown_table(
+                ["Path", "Type", "References model", "Confidence"], test_rows
+            ),
+            source_payload=test_rows,
+        ),
+        "arc42.deployment_aspects": GeneratedMarkdownBlock(
+            id="arc42.deployment_aspects",
+            renderer="arc42.deployment_aspects.v1",
+            body=_markdown_table(
+                ["Deployment aspect", "Observed evidence"],
+                [
+                    ["Addon root", f"`{bundle.addon_root}`"],
+                    ["Dependencies", _join_code_list(info.depends if info else [])],
+                    ["External dependencies", external_dependency_text],
+                    [
+                        "Migration files",
+                        str(len(inventory.migration_files if inventory else [])),
+                    ],
+                    [
+                        "Data/demo files",
+                        str(file_counts.get("data", 0) + file_counts.get("demo", 0)),
+                    ],
+                    ["Documentation output", "`docs/architecture.md`"],
+                ],
+            ),
+            source_payload={
+                "addon_root": bundle.addon_root,
+                "depends": list(info.depends if info else []),
+                "external_dependencies": external_dependency_text,
+                "migration_files": len(inventory.migration_files if inventory else []),
+                "data_demo_files": file_counts.get("data", 0)
+                + file_counts.get("demo", 0),
+            },
+        ),
+        "arc42.quality_tree": GeneratedMarkdownBlock(
+            id="arc42.quality_tree",
+            renderer="arc42.quality_tree.v1",
+            body=_markdown_table(
+                ["Quality attribute", "Reason"],
+                [
+                    [
+                        "Maintainability",
+                        "Developers need quick onboarding and traceable evidence.",
+                    ],
+                    [
+                        "Upgradeability",
+                        "Dependencies and inherited models "
+                        "are sensitive to Odoo upgrades.",
+                    ],
+                    ["Security", "Routes and ACL files can expose business data."],
+                    [
+                        "Testability",
+                        "Targeted tests are needed for safe addon evolution.",
+                    ],
+                    [
+                        "Operational clarity",
+                        "Warnings and remediation should be "
+                        "actionable during maintenance.",
+                    ],
+                ],
+            ),
+            source_payload={"tests": len(tests), "warnings": len(warning_lines)},
+        ),
+        "arc42.quality_scenarios": GeneratedMarkdownBlock(
+            id="arc42.quality_scenarios",
+            renderer="arc42.quality_scenarios.v1",
+            body=_markdown_table(
+                ["Scenario", "Stimulus", "Expected response"],
+                [
+                    [
+                        "Documentation refresh",
+                        (
+                            "A maintainer regenerates "
+                            "`docs/architecture.md` after a "
+                            "code change."
+                        ),
+                        (
+                            "The document updates deterministically "
+                            "and keeps unknown intent marked with "
+                            "TODO."
+                        ),
+                    ],
+                    [
+                        "Security review",
+                        (
+                            "A reviewer inspects public routes or "
+                            "missing ACL coverage."
+                        ),
+                        (
+                            "Route auth values and missing security "
+                            "evidence remain visible in the "
+                            "generated document."
+                        ),
+                    ],
+                    [
+                        "Regression check",
+                        ("A developer changes models, views, " "or data files."),
+                        (
+                            "Recommended tests and remediation "
+                            "hints highlight the affected addon "
+                            "areas."
+                        ),
+                    ],
+                ],
+            ),
+            source_payload={
+                "routes": len(http_routes),
+                "security_files": len(security_rows),
+                "tests": len(tests),
+            },
+        ),
+        "arc42.risks": GeneratedMarkdownBlock(
+            id="arc42.risks",
+            renderer="arc42.risks.v1",
+            body=_markdown_table(["Risk or debt", "Source"], risks_rows),
+            source_payload=risks_rows,
+        ),
+        "arc42.glossary": GeneratedMarkdownBlock(
+            id="arc42.glossary",
+            renderer="arc42.glossary.v1",
+            body=_markdown_table(["Term", "Meaning"], glossary_rows),
+            source_payload=glossary_rows,
+        ),
+        "arc42.appendix_evidence_counts": GeneratedMarkdownBlock(
+            id="arc42.appendix_evidence_counts",
+            renderer="arc42.appendix_evidence_counts.v1",
+            body=_markdown_table(["Evidence item", "Count"], appendix_rows),
+            source_payload=appendix_rows,
+        ),
+        "arc42.appendix_file_categories": GeneratedMarkdownBlock(
+            id="arc42.appendix_file_categories",
+            renderer="arc42.appendix_file_categories.v1",
+            body=_markdown_table(["Category", "Count"], file_count_rows),
+            source_payload=file_count_rows,
+        ),
+        "arc42.appendix_routes": GeneratedMarkdownBlock(
+            id="arc42.appendix_routes",
+            renderer="arc42.appendix_routes.v1",
+            body=_markdown_table(
+                ["Route", "Handler", "Auth", "Type", "Methods", "Path"], route_rows
+            ),
+            source_payload=route_rows,
+        ),
+        "arc42.appendix_warnings": GeneratedMarkdownBlock(
+            id="arc42.appendix_warnings",
+            renderer="arc42.appendix_warnings.v1",
+            body=_bullet_lines(
+                warning_lines or ["No generation warnings were emitted."]
+            ),
+            source_payload=warning_lines,
+        ),
+        "arc42.appendix_remediation": GeneratedMarkdownBlock(
+            id="arc42.appendix_remediation",
+            renderer="arc42.appendix_remediation.v1",
+            body=_bullet_lines(
+                remediation_lines or ["No remediation hints were emitted."]
+            ),
+            source_payload=remediation_lines,
+        ),
+    }
+
+
+def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentSection]:
+    """Build arc42 sections for one technical-documentation bundle."""
+
+    addon_doc = bundle.addon_documentation
+    inventory = bundle.technical_inventory
+    info = addon_doc.addon_info if addon_doc is not None else None
+    tests = _recommended_tests(bundle)
+    warning_lines = _warning_lines(bundle)
+    remediation_lines = _remediation_lines(bundle)
+    model_entries = (
+        addon_doc.model_inventory.models
+        if addon_doc is not None and addon_doc.model_inventory is not None
+        else []
+    )
+    main_scenarios, async_scenarios = _runtime_candidates(bundle)
+    http_routes = inventory.http_routes if inventory is not None else []
+    security_files_text = _join_code_list(
+        inventory.security_files if inventory is not None else []
+    )
+    migration_files_text = _join_code_list(
+        inventory.migration_files if inventory is not None else []
+    )
+    model_list_text = _join_code_list(sorted({entry.model for entry in model_entries}))
+
+    external_dependencies = (
+        info.external_dependencies
+        if info is not None and isinstance(info.external_dependencies, dict)
+        else {}
+    )
+    external_dependency_text = ", ".join(
+        f"{kind}: {', '.join(values)}"
+        for kind, values in sorted(external_dependencies.items())
+        if values
+    )
+    if not external_dependency_text:
+        external_dependency_text = "-"
+
     business_context_lines = [
         "### 3.1 Business Context",
         "",
     ]
+    generated_blocks = build_arc42_generated_blocks(bundle)
     if http_routes or external_dependency_text != "-":
         business_context_lines.extend(
             [
@@ -455,18 +863,14 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                     f"The addon `{bundle.module}` is an Odoo addon "
                     f"located at `{bundle.addon_root}`.",
                     "",
-                    "Derived from manifest:",
-                    f"- Name: `{_value_or_dash(info.name if info else None)}`",
-                    f"- Summary: `{_value_or_dash(info.summary if info else None)}`",
-                    f"- Category: `{_value_or_dash(info.category if info else None)}`",
-                    f"- License: `{_value_or_dash(info.license if info else None)}`",
+                    render_generated_block(generated_blocks["arc42.manifest_summary"]),
                     "",
                     "TODO: Confirm the business goal and user-visible scope of this "
                     "addon.",
                     "",
                     "### 1.2 Quality Goals",
                     "",
-                    _markdown_table(["Goal", "Rationale", "Evidence"], quality_rows),
+                    render_generated_block(generated_blocks["arc42.quality_goals"]),
                     "",
                     "TODO: Validate and rank these quality goals with the project "
                     "owner.",
@@ -501,52 +905,7 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                 [
                     "## 2. Architecture Constraints",
                     "",
-                    "Derived from oduit evidence:",
-                    "",
-                    _markdown_table(
-                        ["Constraint", "Value", "Evidence"],
-                        [
-                            [
-                                "Odoo series",
-                                _value_or_dash(
-                                    info.version_display.split(".")[0]
-                                    if info and info.version_display
-                                    else None
-                                ),
-                                "manifest version",
-                            ],
-                            [
-                                "Declared dependencies",
-                                _join_code_list(info.depends if info else []),
-                                "manifest depends",
-                            ],
-                            [
-                                "External dependencies",
-                                external_dependency_text,
-                                "manifest external_dependencies",
-                            ],
-                            [
-                                "Installable",
-                                _value_or_dash(info.installable if info else None),
-                                "manifest installable",
-                            ],
-                            [
-                                "Auto install",
-                                _value_or_dash(info.auto_install if info else None),
-                                "manifest auto_install",
-                            ],
-                            [
-                                "License",
-                                _value_or_dash(info.license if info else None),
-                                "manifest license",
-                            ],
-                            [
-                                "Source-only generation",
-                                _value_or_dash(bundle.source_only),
-                                "CLI/agent request",
-                            ],
-                        ],
-                    ),
+                    render_generated_block(generated_blocks["arc42.constraints"]),
                     "",
                     "TODO: Confirm whether any deployment or compliance constraints "
                     "exist outside the manifest metadata.",
@@ -568,28 +927,7 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                     "",
                     "### 3.2 Technical Context",
                     "",
-                    _markdown_table(
-                        ["Aspect", "Observed evidence"],
-                        [
-                            ["Addon root", f"`{bundle.addon_root}`"],
-                            [
-                                "Dependencies",
-                                _join_code_list(info.depends if info else []),
-                            ],
-                            [
-                                "Reverse dependencies",
-                                _join_code_list(
-                                    info.reverse_dependencies if info else []
-                                ),
-                            ],
-                            ["HTTP routes", str(len(http_routes))],
-                            [
-                                "Security files",
-                                str(len(inventory.security_files if inventory else [])),
-                            ],
-                            ["XML records", str(len(xml_records))],
-                        ],
-                    ),
+                    render_generated_block(generated_blocks["arc42.technical_context"]),
                     "",
                     "TODO: Confirm upstream and downstream systems that are not "
                     "visible from static addon source inspection.",
@@ -604,31 +942,8 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                 [
                     "## 4. Solution Strategy",
                     "",
-                    "Derived from oduit evidence:",
-                    "",
-                    _bullet_lines(
-                        [
-                            (
-                                f"Extend or depend on "
-                                f"{_join_code_list(info.depends if info else [])} "
-                                "to integrate with the existing Odoo module graph."
-                            ),
-                            (
-                                f"Implement business data changes through "
-                                f"{len(model_entries)} "
-                                "declared or extended model entries."
-                            ),
-                            (
-                                f"Configure UI, reports, and data through "
-                                f"{len(xml_records)} "
-                                "XML records discovered in the addon tree."
-                            ),
-                            (
-                                f"Expose {len(http_routes)} HTTP route(s) "
-                                f"and {len(tests)} "
-                                "recommended test file(s) for verification."
-                            ),
-                        ]
+                    render_generated_block(
+                        generated_blocks["arc42.solution_strategy_evidence"]
                     ),
                     "",
                     "TODO: Confirm which of these technical strategies are deliberate "
@@ -649,42 +964,40 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                     "",
                     "### 5.1 Addon Overview",
                     "",
-                    _markdown_table(["Item", "Count"], overview_rows),
+                    render_generated_block(generated_blocks["arc42.addon_overview"]),
                     "",
                     "### 5.2 Manifest and Dependencies",
                     "",
-                    _markdown_table(["Field", "Value"], manifest_rows),
+                    render_generated_block(
+                        generated_blocks["arc42.manifest_dependencies"]
+                    ),
                     "",
                     "### 5.3 Python Model Layer",
                     "",
                     "Derived from oduit source scanning.",
                     "",
-                    _markdown_table(["Model", "Relation", "Class", "Path"], model_rows),
+                    render_generated_block(generated_blocks["arc42.model_layer"]),
                     "",
                     "TODO: Confirm whether these model extensions affect only backend "
                     "workflows or also portal-visible data.",
                     "",
                     "### 5.4 Views, Menus, Actions, Reports",
                     "",
-                    _markdown_table(["Tag", "Model", "ID", "Name", "Path"], xml_rows),
-                    (
-                        ""
-                        if len(xml_records) <= 25
-                        else (
-                            f"\nDerived from oduit evidence: only the first 25 "
-                            f"of {len(xml_records)} XML records are shown here."
-                        )
-                    ),
+                    render_generated_block(generated_blocks["arc42.xml_records"]),
                     "",
                     "### 5.5 Security and Access Control",
                     "",
-                    _markdown_table(["Security file", "Notes"], security_rows),
+                    render_generated_block(generated_blocks["arc42.security_files"]),
                     "",
                     _bullet_lines(
                         [
                             (
                                 "No dedicated security files were detected."
-                                if not security_rows
+                                if not (
+                                    inventory.security_files
+                                    if inventory is not None
+                                    else []
+                                )
                                 else (
                                     "Security files were detected and should be "
                                     "reviewed together with controller auth settings."
@@ -707,10 +1020,7 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                     "",
                     "### 5.6 Controllers and External Interfaces",
                     "",
-                    _markdown_table(
-                        ["Route", "Handler", "Auth", "Type", "Methods", "Path"],
-                        route_rows,
-                    ),
+                    render_generated_block(generated_blocks["arc42.routes"]),
                     "",
                     (
                         "TODO: Confirm whether additional integrations exist through "
@@ -724,18 +1034,16 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                     "",
                     "### 5.7 Data, Demo Data, and Configuration Records",
                     "",
-                    _markdown_table(["Category", "Count"], data_rows),
+                    render_generated_block(generated_blocks["arc42.file_categories"]),
                     "",
                     "### 5.8 Tests and Quality Gates",
                     "",
-                    _markdown_table(
-                        ["Path", "Type", "References model", "Confidence"], test_rows
-                    ),
+                    render_generated_block(generated_blocks["arc42.recommended_tests"]),
                     "",
                     (
                         "TODO: Add targeted tests or confirm manual validation if no "
                         "relevant tests were detected."
-                        if not test_rows
+                        if not tests
                         else (
                             "Derived from oduit evidence: recommended tests "
                             "are a starting point, not proof of complete coverage."
@@ -811,30 +1119,8 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                 [
                     "## 7. Deployment View",
                     "",
-                    _markdown_table(
-                        ["Deployment aspect", "Observed evidence"],
-                        [
-                            ["Addon root", f"`{bundle.addon_root}`"],
-                            [
-                                "Dependencies",
-                                _join_code_list(info.depends if info else []),
-                            ],
-                            ["External dependencies", external_dependency_text],
-                            [
-                                "Migration files",
-                                str(
-                                    len(inventory.migration_files if inventory else [])
-                                ),
-                            ],
-                            [
-                                "Data/demo files",
-                                str(
-                                    file_counts.get("data", 0)
-                                    + file_counts.get("demo", 0)
-                                ),
-                            ],
-                            ["Documentation output", "`docs/architecture.md`"],
-                        ],
+                    render_generated_block(
+                        generated_blocks["arc42.deployment_aspects"]
                     ),
                     "",
                     "TODO: Confirm deployment prerequisites outside the manifest, such "
@@ -975,62 +1261,11 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                     "",
                     "### 10.1 Quality Tree",
                     "",
-                    _markdown_table(
-                        ["Quality attribute", "Reason"],
-                        [
-                            [
-                                "Maintainability",
-                                "Developers need quick onboarding and traceable "
-                                "evidence.",
-                            ],
-                            [
-                                "Upgradeability",
-                                "Dependencies and inherited models are sensitive to"
-                                "Odoo upgrades.",
-                            ],
-                            [
-                                "Security",
-                                "Routes and ACL files can expose business data.",
-                            ],
-                            [
-                                "Testability",
-                                "Targeted tests are needed for safe addon evolution.",
-                            ],
-                            [
-                                "Operational clarity",
-                                "Warnings and remediation should be actionable during "
-                                "maintenance.",
-                            ],
-                        ],
-                    ),
+                    render_generated_block(generated_blocks["arc42.quality_tree"]),
                     "",
                     "### 10.2 Quality Scenarios",
                     "",
-                    _markdown_table(
-                        ["Scenario", "Stimulus", "Expected response"],
-                        [
-                            [
-                                "Documentation refresh",
-                                "A maintainer regenerates `docs/architecture.md` after "
-                                "a code change.",
-                                "The document updates deterministically and keeps "
-                                "unknown intent marked with TODO.",
-                            ],
-                            [
-                                "Security review",
-                                "A reviewer inspects public routes or missing ACL "
-                                "coverage.",
-                                "Route auth values and missing security evidence "
-                                "remain visible in the generated document.",
-                            ],
-                            [
-                                "Regression check",
-                                "A developer changes models, views, or data files.",
-                                "Recommended tests and remediation hints highlight the "
-                                "affected addon areas.",
-                            ],
-                        ],
-                    ),
+                    render_generated_block(generated_blocks["arc42.quality_scenarios"]),
                 ]
             ),
         ),
@@ -1045,7 +1280,7 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                 [
                     "## 11. Risks and Technical Debt",
                     "",
-                    _markdown_table(["Risk or debt", "Source"], risks_rows),
+                    render_generated_block(generated_blocks["arc42.risks"]),
                     "",
                     _bullet_lines(
                         remediation_lines
@@ -1066,7 +1301,7 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                 [
                     "## 12. Glossary",
                     "",
-                    _markdown_table(["Term", "Meaning"], glossary_rows),
+                    render_generated_block(generated_blocks["arc42.glossary"]),
                 ]
             ),
         ),
@@ -1078,29 +1313,28 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
                 [
                     "## Appendix A: oduit Evidence",
                     "",
-                    _markdown_table(["Evidence item", "Count"], appendix_rows),
+                    render_generated_block(
+                        generated_blocks["arc42.appendix_evidence_counts"]
+                    ),
                     "",
                     "### File category counts",
                     "",
-                    _markdown_table(["Category", "Count"], file_count_rows),
+                    render_generated_block(
+                        generated_blocks["arc42.appendix_file_categories"]
+                    ),
                     "",
                     "### Route inventory",
                     "",
-                    _markdown_table(
-                        ["Route", "Handler", "Auth", "Type", "Methods", "Path"],
-                        route_rows,
-                    ),
+                    render_generated_block(generated_blocks["arc42.appendix_routes"]),
                     "",
                     "### Generation warnings",
                     "",
-                    _bullet_lines(
-                        warning_lines or ["No generation warnings were emitted."]
-                    ),
+                    render_generated_block(generated_blocks["arc42.appendix_warnings"]),
                     "",
                     "### Remediation hints",
                     "",
-                    _bullet_lines(
-                        remediation_lines or ["No remediation hints were emitted."]
+                    render_generated_block(
+                        generated_blocks["arc42.appendix_remediation"]
                     ),
                 ]
             ),

@@ -51,6 +51,9 @@ from .agent.documentation import (
     agent_technical_doc_next_command as _agent_technical_doc_next_command,
 )
 from .agent.documentation import (
+    agent_technical_doc_refresh_command as _agent_technical_doc_refresh_command,
+)
+from .agent.documentation import (
     agent_technical_doc_status_command as _agent_technical_doc_status_command,
 )
 from .agent.mutate import (
@@ -592,6 +595,7 @@ _agent_registration_context = AgentRegistrationContext(
         addon_info_command_impl=_agent_addon_info_command,
         addon_doc_command_impl=_agent_addon_doc_command,
         technical_doc_command_impl=_agent_technical_doc_command,
+        technical_doc_refresh_command_impl=_agent_technical_doc_refresh_command,
         technical_doc_accept_command_impl=_agent_technical_doc_accept_command,
         technical_doc_check_command_impl=_agent_technical_doc_check_command,
         technical_doc_next_command_impl=_agent_technical_doc_next_command,

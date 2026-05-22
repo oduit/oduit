@@ -608,6 +608,19 @@ class DocumentationDocumentSnapshot(DictModel):
 
 
 @dataclass
+class TechnicalDocumentationGeneratedBlock(DictModel):
+    """Persisted metadata for one managed generated markdown block."""
+
+    id: str
+    renderer: str
+    schema_version: str = "oduit.generated_markdown_block.v1"
+    source_sha256: str = ""
+    content_sha256: str = ""
+    line_count: int | None = None
+    updated_at: str | None = None
+
+
+@dataclass
 class TechnicalDocumentationMetadata(DictModel):
     """Durable addon-local metadata persisted next to generated docs."""
 
@@ -625,6 +638,11 @@ class TechnicalDocumentationMetadata(DictModel):
     evidence_counts: dict[str, int] = dataclass_field(default_factory=dict)
     source_snapshot: DocumentationSourceSnapshot | None = None
     document_snapshot: DocumentationDocumentSnapshot | None = None
+    generated_blocks: list[TechnicalDocumentationGeneratedBlock] = dataclass_field(
+        default_factory=list
+    )
+    refresh_count: int = 0
+    last_refreshed_at: str | None = None
     reviewed_at: str | None = None
     reviewed_by: str | None = None
     review_note: str | None = None
@@ -646,6 +664,12 @@ class TechnicalDocumentationStatus(DictModel):
     up_to_date: bool = False
     document_edited_since_last_generation: bool = False
     source_changed_since_last_generation: bool = False
+    generated_block_count: int = 0
+    stale_generated_blocks: list[str] = dataclass_field(default_factory=list)
+    edited_generated_blocks: list[str] = dataclass_field(default_factory=list)
+    missing_generated_blocks: list[str] = dataclass_field(default_factory=list)
+    unknown_generated_blocks: list[str] = dataclass_field(default_factory=list)
+    generated_blocks_up_to_date: bool = False
     created_at: str | None = None
     last_generated_at: str | None = None
     generation_count: int | None = None

@@ -11,8 +11,10 @@ from oduit.documentation_tracking import (
     compute_source_snapshot,
     inspect_all_technical_documentation_statuses,
     inspect_technical_documentation_status,
+    load_technical_documentation_metadata,
     write_technical_documentation_metadata,
 )
+from oduit.managed_markdown import GeneratedMarkdownBlock, render_generated_block
 
 
 def _make_addon(root: Path) -> None:
@@ -45,6 +47,20 @@ def _technical_bundle(addon_root: Path) -> TechnicalDocumentation:
             manifest_path=str(addon_root / "__manifest__.py"),
         ),
         markdown="# Architecture Documentation: my_partner\n",
+    )
+
+
+def _constraints_block() -> GeneratedMarkdownBlock:
+    return GeneratedMarkdownBlock(
+        id="arc42.constraints",
+        renderer="arc42.constraints.v1",
+        body=(
+            "Derived from oduit evidence:\n\n"
+            "| Constraint | Value | Evidence |\n"
+            "|---|---|---|\n"
+            "| Declared dependencies | `base` | manifest depends |\n"
+        ),
+        source_payload={"depends": ["base"]},
     )
 
 
@@ -297,3 +313,163 @@ def test_status_scan_filters_with_documentation_policy(tmp_path: Path) -> None:
     )
 
     assert [status.module for status in statuses] == ["has_crm"]
+
+
+def test_metadata_round_trips_generated_blocks(tmp_path: Path) -> None:
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "architecture.md"
+    metadata_path = docs_dir / TECHNICAL_DOC_METADATA_FILENAME
+    doc_path.write_text(
+        "# Architecture Documentation: my_partner\n\n"
+        + render_generated_block(_constraints_block())
+        + "\n"
+    )
+
+    metadata = build_technical_documentation_metadata(
+        bundle=_technical_bundle(addon_root),
+        doc_path=doc_path,
+        metadata_path=metadata_path,
+        generation_options={},
+        source_addon_root=addon_root,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+    loaded, warnings = load_technical_documentation_metadata(metadata_path)
+
+    assert warnings == []
+    assert loaded is not None
+    assert len(loaded.generated_blocks) == 1
+    assert loaded.generated_blocks[0].id == "arc42.constraints"
+    assert loaded.generated_blocks[0].renderer == "arc42.constraints.v1"
+
+
+def test_status_reports_generated_blocks_up_to_date_for_fresh_doc(
+    tmp_path: Path,
+) -> None:
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "architecture.md"
+    metadata_path = docs_dir / TECHNICAL_DOC_METADATA_FILENAME
+    doc_path.write_text(
+        "# Architecture Documentation: my_partner\n\n"
+        + render_generated_block(_constraints_block())
+        + "\n"
+    )
+    metadata = build_technical_documentation_metadata(
+        bundle=_technical_bundle(addon_root),
+        doc_path=doc_path,
+        metadata_path=metadata_path,
+        generation_options={},
+        source_addon_root=addon_root,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+
+    status = inspect_technical_documentation_status(
+        addon_root=addon_root, module="my_partner"
+    )
+
+    assert status.generated_blocks_up_to_date is True
+    assert status.generated_block_count == 1
+    assert status.edited_generated_blocks == []
+
+
+def test_status_manual_prose_edit_keeps_generated_blocks_up_to_date(
+    tmp_path: Path,
+) -> None:
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "architecture.md"
+    metadata_path = docs_dir / TECHNICAL_DOC_METADATA_FILENAME
+    doc_path.write_text(
+        "# Architecture Documentation: my_partner\n\n"
+        + render_generated_block(_constraints_block())
+        + "\n"
+    )
+    metadata = build_technical_documentation_metadata(
+        bundle=_technical_bundle(addon_root),
+        doc_path=doc_path,
+        metadata_path=metadata_path,
+        generation_options={},
+        source_addon_root=addon_root,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+    doc_path.write_text(doc_path.read_text() + "\nManual prose edit outside block.\n")
+
+    status = inspect_technical_documentation_status(
+        addon_root=addon_root, module="my_partner"
+    )
+
+    assert status.status == "document_edited"
+    assert status.generated_blocks_up_to_date is True
+    assert status.edited_generated_blocks == []
+
+
+def test_status_edit_inside_generated_block_is_reported(tmp_path: Path) -> None:
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "architecture.md"
+    metadata_path = docs_dir / TECHNICAL_DOC_METADATA_FILENAME
+    doc_path.write_text(
+        "# Architecture Documentation: my_partner\n\n"
+        + render_generated_block(_constraints_block())
+        + "\n"
+    )
+    metadata = build_technical_documentation_metadata(
+        bundle=_technical_bundle(addon_root),
+        doc_path=doc_path,
+        metadata_path=metadata_path,
+        generation_options={},
+        source_addon_root=addon_root,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+    doc_path.write_text(
+        doc_path.read_text().replace("manifest depends", "manifest deps")
+    )
+
+    status = inspect_technical_documentation_status(
+        addon_root=addon_root, module="my_partner"
+    )
+
+    assert status.status == "generated_blocks_edited"
+    assert status.edited_generated_blocks == ["arc42.constraints"]
+
+
+def test_status_source_change_reports_stale_generated_block_details(
+    tmp_path: Path,
+) -> None:
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir()
+    doc_path = docs_dir / "architecture.md"
+    metadata_path = docs_dir / TECHNICAL_DOC_METADATA_FILENAME
+    doc_path.write_text(
+        "# Architecture Documentation: my_partner\n\n"
+        + render_generated_block(_constraints_block())
+        + "\n"
+    )
+    metadata = build_technical_documentation_metadata(
+        bundle=_technical_bundle(addon_root),
+        doc_path=doc_path,
+        metadata_path=metadata_path,
+        generation_options={},
+        source_addon_root=addon_root,
+    )
+    write_technical_documentation_metadata(metadata, metadata_path)
+    source_path = addon_root / "models" / "res_partner.py"
+    source_path.write_text(source_path.read_text() + "\n# source change\n")
+
+    status = inspect_technical_documentation_status(
+        addon_root=addon_root, module="my_partner"
+    )
+
+    assert status.status == "generated_blocks_stale"
+    assert "arc42.constraints" in status.stale_generated_blocks

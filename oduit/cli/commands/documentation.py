@@ -1034,6 +1034,135 @@ def technical_documentation_command(
     print(bundle.markdown)
 
 
+def technical_documentation_refresh_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    dry_run: bool,
+    force_edited_blocks: bool,
+    add_missing_blocks: bool,
+    source_only: bool | None,
+    database: str | None,
+    timeout: float,
+    attributes: str | None,
+    types: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    path_prefix: str | None,
+    format_name: str | None,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+    print_command_error_result_fn: Any,
+) -> None:
+    """Refresh managed generated blocks in addon-local technical docs."""
+
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    resolved_format = _resolve_status_format(global_config, format_name)
+    if resolved_format not in {"text", "json"}:
+        raise typer.BadParameter("format must be either 'text' or 'json'")
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    ops = build_odoo_operations_fn(global_config)
+    try:
+        refresh_result = ops.refresh_technical_documentation(
+            target,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            field_attributes=_parse_csv_items(attributes),
+            view_types=_parse_csv_items(types),
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_context.base_dir.as_posix(),
+            path_base_dir=path_context.base_dir.as_posix(),
+            documentation_policy=documentation_policy,
+            overwrite_edited=force_edited_blocks,
+            add_missing=add_missing_blocks,
+            write=not dry_run,
+        )
+    except FileNotFoundError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_refresh",
+            str(exc),
+            error_type="NotFoundError",
+            details={"target": target},
+        )
+        raise typer.Exit(1) from None
+    except DocumentationTargetNotAllowedError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_refresh",
+            str(exc),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": target,
+                "addon_root": exc.addon_root,
+                "allowed_addon_dirs": exc.allowed_dirs,
+            },
+            remediation=[
+                (
+                    "Use an addon under "
+                    "[documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled "
+                    "addon directories."
+                ),
+            ],
+        )
+        raise typer.Exit(1) from None
+    except ValueError as exc:
+        print_command_error_result_fn(
+            global_config,
+            "docs_technical_refresh",
+            str(exc),
+            error_type="ValidationError",
+            details={"target": target},
+        )
+        raise typer.Exit(1) from None
+
+    if resolved_format == "json":
+        payload = output_result_to_json(
+            {
+                "success": True,
+                "operation": "docs_technical_refresh_preview"
+                if dry_run
+                else "docs_technical_refresh",
+                "type": "technical_documentation_refresh",
+                **refresh_result,
+            },
+            result_type="technical_documentation_refresh",
+        )
+        print(json.dumps(payload))
+        return
+
+    doc_path = refresh_result.get("doc_path")
+    updated_blocks = refresh_result.get("updated_blocks", [])
+    if dry_run:
+        if updated_blocks:
+            print(
+                f"Would update {len(updated_blocks)} generated block(s) in {doc_path}:"
+            )
+            for block_id in updated_blocks:
+                print(f"- {block_id}")
+        else:
+            print(f"No generated block updates needed in {doc_path}")
+        if refresh_result.get("warnings"):
+            print("Warnings:")
+            for warning in refresh_result["warnings"]:
+                print(f"- {warning}")
+        return
+
+    print(f"Updated {len(updated_blocks)} generated block(s) in {doc_path}")
+    print(f"Updated metadata {refresh_result.get('metadata_path')}")
+
+
 def technical_documentation_status_command(
     ctx: typer.Context,
     *,

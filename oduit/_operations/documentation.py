@@ -24,6 +24,7 @@ from ..api_models import (
     MultiAddonDocumentation,
     SharedModelDocumentation,
     TechnicalDocumentation,
+    TechnicalDocumentationGeneratedBlock,
 )
 from ..arc42_renderer import build_arc42_addon_sections, render_arc42_addon_markdown
 from ..documentation_policy import DocumentationDirectoryPolicy
@@ -41,6 +42,17 @@ from ..documentation_renderer import (
     render_multi_addon_index_markdown,
     render_shared_model_markdown,
 )
+from ..documentation_tracking import (
+    TECHNICAL_DOC_METADATA_FILENAME,
+    compute_document_snapshot,
+    compute_source_snapshot,
+    inspect_technical_documentation_status,
+    load_technical_documentation_metadata,
+    technical_doc_paths,
+    utc_now_iso,
+    write_technical_documentation_metadata,
+)
+from ..managed_markdown import parse_generated_blocks, refresh_generated_blocks
 from ..source_locator import (
     SourceScanCache,
     list_addon_languages,
@@ -157,6 +169,33 @@ def _apply_path_prefix(value: Any, *, path_prefix: Path | None) -> None:
             )
             continue
         _apply_path_prefix(current, path_prefix=path_prefix)
+
+
+def _generated_blocks_from_markdown(
+    markdown: str,
+) -> list[TechnicalDocumentationGeneratedBlock]:
+    parsed = parse_generated_blocks(markdown)
+    generated: list[TechnicalDocumentationGeneratedBlock] = []
+    for block in parsed:
+        generated.append(
+            TechnicalDocumentationGeneratedBlock(
+                id=block.id,
+                renderer=block.renderer,
+                schema_version=block.schema_version,
+                source_sha256=(
+                    block.metadata.get("source_sha256")
+                    if isinstance(block.metadata.get("source_sha256"), str)
+                    else ""
+                ),
+                content_sha256=(
+                    block.metadata.get("content_sha256")
+                    if isinstance(block.metadata.get("content_sha256"), str)
+                    else ""
+                ),
+                line_count=len(block.body.splitlines()),
+            )
+        )
+    return generated
 
 
 def _filter_extension_inventory(
@@ -511,6 +550,166 @@ class DocumentationOperationsService(OperationsService):
         render_bundle.sections = build_arc42_addon_sections(render_bundle)
         render_bundle.markdown = render_arc42_addon_markdown(render_bundle)
         return render_bundle
+
+    def refresh_technical_documentation(
+        self,
+        target: str,
+        *,
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool | None = None,
+        include_arch: bool | None = None,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+        overwrite_edited: bool = False,
+        add_missing: bool = False,
+        write: bool = False,
+    ) -> dict[str, Any]:
+        """Refresh managed generated blocks in addon-local architecture markdown."""
+
+        resolved_target = resolve_addon_documentation_target(
+            self.operations.env_config,
+            target,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+        )
+        addon_root = Path(resolved_target.addon_root).resolve(strict=False)
+        doc_path, metadata_path = technical_doc_paths(addon_root)
+        metadata, warnings = load_technical_documentation_metadata(metadata_path)
+        if metadata is None:
+            detail = "; ".join(warnings) if warnings else "missing metadata sidecar"
+            raise ValueError(
+                "Technical documentation refresh requires metadata; "
+                f"run docs technical first "
+                f"({TECHNICAL_DOC_METADATA_FILENAME}): {detail}"
+            )
+        if not doc_path.exists():
+            raise FileNotFoundError(f"Technical documentation is missing: {doc_path}")
+        markdown = doc_path.read_text(encoding="utf-8")
+        if "oduit:generated:start" not in markdown:
+            raise ValueError(
+                "Technical documentation has no managed generated blocks; "
+                "regenerate with docs technical --output-in-addon before refresh."
+            )
+
+        generation_options = dict(metadata.generation_options or {})
+        effective_source_only = (
+            bool(generation_options.get("source_only", False))
+            if source_only is None
+            else source_only
+        )
+        effective_include_arch = (
+            bool(generation_options.get("include_arch", False))
+            if include_arch is None
+            else include_arch
+        )
+        effective_field_attributes = (
+            list(field_attributes)
+            if field_attributes is not None
+            else list(generation_options.get("field_attributes", []))
+        )
+        effective_view_types = (
+            list(view_types)
+            if view_types is not None
+            else list(generation_options.get("view_types", []))
+        )
+        effective_path_prefix = path_prefix or generation_options.get("path_prefix")
+        effective_max_models = (
+            max_models
+            if max_models is not None
+            else generation_options.get("max_models")
+        )
+        effective_max_fields_per_model = (
+            max_fields_per_model
+            if max_fields_per_model is not None
+            else generation_options.get("max_fields_per_model")
+        )
+        bundle = self.build_technical_documentation(
+            target,
+            template="arc42",
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=effective_source_only,
+            include_arch=effective_include_arch,
+            field_attributes=effective_field_attributes,
+            view_types=effective_view_types,
+            max_models=effective_max_models,
+            max_fields_per_model=effective_max_fields_per_model,
+            path_prefix=effective_path_prefix,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+            render_markdown=False,
+        )
+        from ..arc42_renderer import build_arc42_generated_blocks
+
+        fresh_blocks = build_arc42_generated_blocks(bundle)
+        refresh_result = refresh_generated_blocks(
+            markdown,
+            fresh_blocks,
+            overwrite_edited=overwrite_edited,
+            add_missing=add_missing,
+            strict_errors=write,
+        )
+        if write and refresh_result.errors:
+            raise ValueError("; ".join(refresh_result.errors))
+        if write and refresh_result.changed:
+            doc_path.write_text(refresh_result.markdown, encoding="utf-8")
+            metadata.document_snapshot = compute_document_snapshot(doc_path)
+            metadata.source_snapshot = compute_source_snapshot(
+                addon_root, module=resolved_target.module
+            )
+            metadata.generated_blocks = _generated_blocks_from_markdown(
+                refresh_result.markdown
+            )
+            metadata.last_refreshed_at = utc_now_iso()
+            metadata.refresh_count = (metadata.refresh_count or 0) + 1
+            metadata.metadata_path = metadata_path.as_posix()
+            metadata.doc_path = doc_path.as_posix()
+            metadata.addon_root = addon_root.as_posix()
+            write_technical_documentation_metadata(metadata, metadata_path)
+        status = inspect_technical_documentation_status(
+            addon_root=addon_root,
+            module=resolved_target.module,
+        )
+        updated_blocks = [
+            change.id for change in refresh_result.changes if change.status == "updated"
+        ]
+        edited_blocks = [
+            change.id for change in refresh_result.changes if change.status == "edited"
+        ]
+        missing_blocks = [
+            change.id for change in refresh_result.changes if change.status == "missing"
+        ]
+        unknown_blocks = [
+            change.id for change in refresh_result.changes if change.status == "unknown"
+        ]
+        return {
+            "module": resolved_target.module,
+            "addon_root": addon_root.as_posix(),
+            "doc_path": doc_path.as_posix(),
+            "metadata_path": metadata_path.as_posix(),
+            "changed": refresh_result.changed,
+            "block_count": len(fresh_blocks),
+            "updated_blocks": updated_blocks,
+            "edited_blocks": edited_blocks,
+            "missing_blocks": missing_blocks,
+            "unknown_blocks": unknown_blocks,
+            "changes": [change.__dict__ for change in refresh_result.changes],
+            "warnings": refresh_result.warnings,
+            "errors": refresh_result.errors,
+            "metadata_summary": {
+                "status": status.status,
+                "generation_count": status.generation_count,
+                "refresh_count": getattr(metadata, "refresh_count", 0),
+            },
+        }
 
     def build_model_documentation(
         self,

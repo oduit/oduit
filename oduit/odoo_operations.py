@@ -651,6 +651,46 @@ class OdooOperations:
             render_markdown=render_markdown,
         )
 
+    def refresh_technical_documentation(
+        self,
+        target: str,
+        *,
+        odoo_series: OdooSeries | None = None,
+        database: str | None = None,
+        timeout: float = 30.0,
+        source_only: bool | None = None,
+        include_arch: bool | None = None,
+        field_attributes: list[str] | tuple[str, ...] | None = None,
+        view_types: list[str] | tuple[str, ...] | None = None,
+        max_models: int | None = None,
+        max_fields_per_model: int | None = None,
+        path_prefix: str | None = None,
+        path_base_dir: str | None = None,
+        documentation_policy: DocumentationDirectoryPolicy | None = None,
+        overwrite_edited: bool = False,
+        add_missing: bool = False,
+        write: bool = False,
+    ) -> dict[str, Any]:
+        """Refresh managed generated blocks in addon-local architecture docs."""
+        return self._documentation_service.refresh_technical_documentation(
+            target,
+            odoo_series=odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            include_arch=include_arch,
+            field_attributes=field_attributes,
+            view_types=view_types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            path_base_dir=path_base_dir,
+            documentation_policy=documentation_policy,
+            overwrite_edited=overwrite_edited,
+            add_missing=add_missing,
+            write=write,
+        )
+
     def build_dependency_graph_documentation(
         self,
         module_names: list[str],

@@ -2102,6 +2102,111 @@ def test_agent_technical_doc_status_reports_source_change(tmp_path: Path) -> Non
     assert statuses[0]["status"] == "source_changed"
 
 
+def test_agent_technical_doc_refresh_dry_run_is_read_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.refresh_technical_documentation.return_value = {
+            "module": "my_partner",
+            "addon_root": str(tmp_path / "addons" / "my_partner"),
+            "doc_path": str(
+                tmp_path / "addons" / "my_partner" / "docs" / "architecture.md"
+            ),
+            "metadata_path": str(
+                tmp_path / "addons" / "my_partner" / "docs" / "architecture.oduit.json"
+            ),
+            "changed": True,
+            "block_count": 1,
+            "updated_blocks": ["arc42.constraints"],
+            "edited_blocks": [],
+            "missing_blocks": [],
+            "unknown_blocks": [],
+            "changes": [],
+            "warnings": [],
+            "errors": [],
+            "metadata_summary": {
+                "status": "generated_blocks_stale",
+                "generation_count": 1,
+            },
+        }
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc-refresh",
+                "my_partner",
+                "--no-progress",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output.splitlines()[-1])
+    assert payload["operation"] == "technical_doc_refresh_preview"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+
+
+def test_agent_technical_doc_refresh_write_requires_allow_mutation(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.refresh_technical_documentation.return_value = {
+            "module": "my_partner",
+            "addon_root": str(tmp_path / "addons" / "my_partner"),
+            "doc_path": str(
+                tmp_path / "addons" / "my_partner" / "docs" / "architecture.md"
+            ),
+            "metadata_path": str(
+                tmp_path / "addons" / "my_partner" / "docs" / "architecture.oduit.json"
+            ),
+            "changed": True,
+            "block_count": 1,
+            "updated_blocks": ["arc42.constraints"],
+            "edited_blocks": [],
+            "missing_blocks": [],
+            "unknown_blocks": [],
+            "changes": [],
+            "warnings": [],
+            "errors": [],
+            "metadata_summary": {"status": "up_to_date", "generation_count": 1},
+        }
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-doc-refresh",
+                "my_partner",
+                "--no-dry-run",
+                "--no-progress",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output.splitlines()[-1])
+    assert payload["operation"] == "technical_doc_refresh_preview"
+    assert payload["read_only"] is True
+
+
 def test_agent_technical_doc_status_include_files_flag_controls_file_lists(
     tmp_path: Path,
 ) -> None:
@@ -2370,11 +2475,16 @@ def test_agent_technical_doc_next_respects_allowed_addon_dirs(tmp_path: Path) ->
     config["documentation"] = {"allowed_addon_dirs": ["./addons"]}
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
-        result = runner.invoke(
-            app,
-            ["--env", "dev", "agent", "technical-doc-next"],
-        )
+    cwd = Path.cwd()
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(
+                app,
+                ["--env", "dev", "agent", "technical-doc-next"],
+            )
+    finally:
+        os.chdir(cwd)
 
     payload = json.loads(result.output)
     data = _payload_data(payload)
@@ -2394,22 +2504,30 @@ def test_agent_technical_doc_write_refuses_disallowed_native_addon(
     config["documentation"] = {"allowed_addon_dirs": ["./addons"]}
     loader = _loader_with_config(config, tmp_path)
 
-    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
-        result = runner.invoke(
-            app,
-            [
-                "--env",
-                "dev",
-                "agent",
-                "technical-doc",
-                "@odoo/addons/account",
-                "--allow-mutation",
-                "--source-only",
-            ],
-        )
+    cwd = Path.cwd()
+    try:
+        os.chdir(tmp_path)
+        with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+            result = runner.invoke(
+                app,
+                [
+                    "--env",
+                    "dev",
+                    "agent",
+                    "technical-doc",
+                    "@odoo/addons/account",
+                    "--path",
+                    str(tmp_path),
+                    "--allow-mutation",
+                    "--source-only",
+                    "--no-progress",
+                ],
+            )
+    finally:
+        os.chdir(cwd)
 
     assert result.exit_code == 1
-    payload = json.loads(result.output)
+    payload = json.loads(result.output.splitlines()[-1])
     assert payload["error_type"] == "DocumentationTargetNotAllowedError"
     assert not (account_root / "docs" / "architecture.md").exists()
 

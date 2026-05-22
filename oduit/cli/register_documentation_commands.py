@@ -16,6 +16,7 @@ from .commands.documentation import (
     technical_documentation_check_command,
     technical_documentation_command,
     technical_documentation_next_command,
+    technical_documentation_refresh_command,
     technical_documentation_status_command,
 )
 from .runtime_context import AppRegistrationContext
@@ -562,5 +563,89 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             format_name=format_name,
             include_files=include_files,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @docs_app.command("technical-refresh")
+    def docs_technical_refresh_command(
+        ctx: typer.Context,
+        target: str = typer.Argument(
+            help="Addon name or addon path, e.g. has_base or @addons/has_base"
+        ),
+        dry_run: bool = typer.Option(
+            True,
+            "--dry-run/--write",
+            help="Preview changes by default; use --write to update files",
+        ),
+        force_edited_blocks: bool = typer.Option(
+            False,
+            "--force-edited-blocks",
+            help="Overwrite managed blocks even when block bodies were edited",
+        ),
+        add_missing_blocks: bool = typer.Option(
+            False,
+            "--add-missing-blocks",
+            help="Attempt to add known managed blocks missing from the document",
+        ),
+        source_only: bool | None = typer.Option(
+            None,
+            "--source-only/--runtime",
+            help="Override refresh generation mode from metadata options",
+        ),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(
+            30.0,
+            "--timeout",
+            help="Runtime query timeout in seconds",
+        ),
+        attributes: str | None = typer.Option(
+            None,
+            "--field-attributes",
+            help="Comma-separated field metadata attributes override",
+        ),
+        types: str | None = typer.Option(
+            None,
+            "--view-types",
+            help="Comma-separated view types such as form,tree,kanban,search",
+        ),
+        max_models: int | None = typer.Option(
+            None,
+            "--max-models",
+            help="Limit the number of per-model sections",
+        ),
+        max_fields_per_model: int | None = typer.Option(
+            None,
+            "--max-fields-per-model",
+            help="Limit the number of runtime fields shown per model",
+        ),
+        path_prefix: str | None = typer.Option(
+            None,
+            "--path",
+            help="Trim this absolute prefix from documented file paths",
+        ),
+        format_name: str | None = typer.Option(
+            None,
+            "--format",
+            help="Output format: text or json",
+        ),
+    ) -> None:
+        """Refresh managed generated blocks in addon-local technical docs."""
+        technical_documentation_refresh_command(
+            ctx,
+            target=target,
+            dry_run=dry_run,
+            force_edited_blocks=force_edited_blocks,
+            add_missing_blocks=add_missing_blocks,
+            source_only=source_only,
+            database=database,
+            timeout=timeout,
+            attributes=attributes,
+            types=types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            format_name=format_name,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
             print_command_error_result_fn=print_command_error_result_fn,
         )

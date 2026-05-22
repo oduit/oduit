@@ -192,6 +192,38 @@ If manual edits were made after generation, either:
 - report `document_edited` as expected, or
 - run `oduit agent technical-doc-accept @addons/<module> --allow-mutation` to accept the reviewed document snapshot.
 
+## Managed block refresh workflow
+
+Use refresh to update only generated evidence blocks while preserving manual prose
+outside managed markers.
+
+Preview (default dry-run):
+
+```bash
+oduit agent technical-doc-refresh @addons/<module>
+oduit docs technical-refresh @addons/<module>
+```
+
+Write refreshed blocks:
+
+```bash
+oduit agent technical-doc-refresh @addons/<module> --allow-mutation
+oduit docs technical-refresh @addons/<module> --write
+```
+
+If a managed block was manually edited, refresh reports it and skips overwrite by
+default. Force replacement only when the user explicitly wants to discard manual
+block edits:
+
+```bash
+oduit agent technical-doc-refresh @addons/<module> \
+  --allow-mutation \
+  --force-edited-blocks
+oduit docs technical-refresh @addons/<module> \
+  --write \
+  --force-edited-blocks
+```
+
 ## Tracking and freshness
 
 When oduit writes `<addon>/docs/architecture.md`, it also writes:

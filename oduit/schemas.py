@@ -74,12 +74,14 @@ SAFE_READ_ONLY_OPERATIONS = {
     "docs_technical_check",
     "docs_technical_next",
     "docs_technical_status",
+    "docs_technical_refresh_preview",
     "docs_technical_accept",
     "addon_doc",
     "technical_doc_preview",
     "technical_doc_check",
     "technical_doc_next",
     "technical_doc_status",
+    "technical_doc_refresh_preview",
     "technical_doc_accept",
 }
 
@@ -103,6 +105,8 @@ CONTROLLED_SOURCE_MUTATION_OPERATIONS = {
     "export_lang_module",
     "export_module_language",
     "write_technical_doc",
+    "refresh_technical_doc",
+    "docs_technical_refresh",
     "technical_doc_accept",
     "docs_technical_accept",
 }
@@ -155,6 +159,7 @@ SAFE_READ_ONLY_TYPES = {
     "model_documentation",
     "dependency_graph_documentation",
     "technical_documentation",
+    "technical_documentation_refresh",
     "technical_documentation_next",
     "technical_documentation_status",
 }

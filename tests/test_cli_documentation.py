@@ -1110,7 +1110,7 @@ def test_docs_technical_check_exits_for_source_change_and_can_be_waived(
         os.chdir(cwd)
 
     assert failing.exit_code == 1
-    assert json.loads(failing.output)["status"]["status"] == "source_changed"
+    assert json.loads(failing.output)["status"]["status"] == "generated_blocks_stale"
     assert passing.exit_code == 0
     assert json.loads(passing.output)["success"] is True
 
@@ -1256,20 +1256,20 @@ def test_docs_technical_refuses_native_addon_write_when_not_allowed(
             result = runner.invoke(
                 app,
                 [
-                    "--json",
                     "docs",
                     "technical",
                     "@odoo/addons/account",
                     "--output-in-addon",
                     "--source-only",
+                    "--format",
+                    "markdown",
                 ],
             )
     finally:
         os.chdir(cwd)
 
     assert result.exit_code == 1
-    payload = json.loads(result.output)
-    assert payload["error_type"] == "DocumentationTargetNotAllowedError"
+    assert "outside [documentation].allowed_addon_dirs" in result.output
     assert not (account_root / "docs" / "architecture.md").exists()
 
 
@@ -1453,4 +1453,98 @@ def test_docs_technical_accept_marks_reviewed_document_as_up_to_date(
 
     assert accept.exit_code == 0
     assert json.loads(check.output)["status"]["status"] == "up_to_date"
-    assert json.loads(stale.output)["status"]["status"] == "source_changed"
+    assert json.loads(stale.output)["status"]["status"] == "generated_blocks_stale"
+
+
+def test_docs_technical_refresh_dry_run_json_reports_changes(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.refresh_technical_documentation.return_value = {
+            "module": "my_partner",
+            "doc_path": "addons/my_partner/docs/architecture.md",
+            "metadata_path": "addons/my_partner/docs/architecture.oduit.json",
+            "changed": True,
+            "block_count": 1,
+            "updated_blocks": ["arc42.constraints"],
+            "edited_blocks": [],
+            "missing_blocks": [],
+            "unknown_blocks": [],
+            "changes": [],
+            "warnings": [],
+            "errors": [],
+            "metadata_summary": {
+                "status": "generated_blocks_stale",
+                "generation_count": 1,
+            },
+        }
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "docs",
+                "technical-refresh",
+                "my_partner",
+                "--format",
+                "json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["type"] == "technical_documentation_refresh"
+    assert payload["operation"] == "docs_technical_refresh_preview"
+    assert payload["updated_blocks"] == ["arc42.constraints"]
+
+
+def test_docs_technical_refresh_write_prints_updated_paths(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = {
+        "db_name": "test_db",
+        "addons_path": str(tmp_path / "addons"),
+        "odoo_bin": "/usr/bin/odoo-bin",
+        "python_bin": "/usr/bin/python3",
+    }
+    loader = MagicMock()
+    loader.load_config.return_value = config
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.refresh_technical_documentation.return_value = {
+            "module": "my_partner",
+            "doc_path": "addons/my_partner/docs/architecture.md",
+            "metadata_path": "addons/my_partner/docs/architecture.oduit.json",
+            "changed": True,
+            "block_count": 1,
+            "updated_blocks": ["arc42.constraints"],
+            "edited_blocks": [],
+            "missing_blocks": [],
+            "unknown_blocks": [],
+            "changes": [],
+            "warnings": [],
+            "errors": [],
+            "metadata_summary": {"status": "up_to_date", "generation_count": 1},
+        }
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app, ["--env", "dev", "docs", "technical-refresh", "my_partner", "--write"]
+        )
+
+    assert result.exit_code == 0
+    assert "Updated 1 generated block(s)" in result.output
+    assert "architecture.oduit.json" in result.output

@@ -70,6 +70,9 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     addon_info_command_impl = context.implementations.addon_info_command_impl
     addon_doc_command_impl = context.implementations.addon_doc_command_impl
     technical_doc_command_impl = context.implementations.technical_doc_command_impl
+    technical_doc_refresh_command_impl = (
+        context.implementations.technical_doc_refresh_command_impl
+    )
     technical_doc_accept_command_impl = (
         context.implementations.technical_doc_accept_command_impl
     )
@@ -389,6 +392,89 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             module_not_found_error_cls=module_not_found_error_cls,
             safe_read_only=safe_read_only,
             controlled_source_mutation=controlled_source_mutation,
+        )
+
+    @agent_app.command("technical-doc-refresh")
+    def agent_technical_doc_refresh(
+        ctx: typer.Context,
+        target: str = typer.Argument(help="Addon name or addon path"),
+        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+        force_edited_blocks: bool = typer.Option(False, "--force-edited-blocks"),
+        add_missing_blocks: bool = typer.Option(False, "--add-missing-blocks"),
+        include_diff: bool = typer.Option(False, "--include-diff"),
+        source_only: bool | None = typer.Option(
+            None,
+            "--source-only/--runtime",
+            help="Override refresh generation mode from metadata options.",
+        ),
+        database: str | None = typer.Option(None, "--database"),
+        timeout: float = typer.Option(
+            30.0, "--timeout", help="Runtime query timeout in seconds"
+        ),
+        progress: bool = typer.Option(
+            True,
+            "--progress/--no-progress",
+            help="Print technical documentation generation progress to stderr.",
+        ),
+        progress_level: str = typer.Option(
+            "compact",
+            "--progress-level",
+            help="Progress verbosity: compact, model, or debug.",
+        ),
+        attributes: str | None = typer.Option(
+            None,
+            "--attributes",
+            help="Comma-separated field metadata attributes override",
+        ),
+        types: str | None = typer.Option(
+            None,
+            "--types",
+            help="Comma-separated view types, e.g. form,tree,kanban,search",
+        ),
+        max_models: int | None = typer.Option(
+            None,
+            "--max-models",
+            help="Limit the number of per-model documentation sections",
+        ),
+        max_fields_per_model: int | None = typer.Option(
+            None,
+            "--max-fields-per-model",
+            help="Limit the number of runtime fields shown per model",
+        ),
+        path_prefix: str | None = typer.Option(
+            None,
+            "--path",
+            help="Trim this absolute prefix from documented file paths",
+        ),
+    ) -> None:
+        """Refresh managed blocks inside addon-local arc42 technical documentation."""
+        technical_doc_refresh_command_impl(
+            ctx,
+            target=target,
+            allow_mutation=allow_mutation,
+            dry_run=dry_run,
+            force_edited_blocks=force_edited_blocks,
+            add_missing_blocks=add_missing_blocks,
+            include_diff=include_diff,
+            source_only=source_only,
+            database=database,
+            timeout=timeout,
+            progress=progress,
+            progress_level=progress_level,
+            attributes=attributes,
+            types=types,
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_prefix,
+            resolve_agent_global_config_fn=resolve_agent_global_config_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_mutation_fn=agent_require_mutation_fn,
+            odoo_operations_cls=get_odoo_operations_cls(),
+            controlled_source_mutation=controlled_source_mutation,
+            safe_read_only=safe_read_only,
         )
 
     @agent_app.command("technical-doc-accept")

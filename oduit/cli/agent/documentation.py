@@ -562,6 +562,172 @@ def agent_technical_doc_command(
     agent_emit_payload_fn(payload)
 
 
+def agent_technical_doc_refresh_command(
+    ctx: typer.Context,
+    *,
+    target: str,
+    allow_mutation: bool,
+    dry_run: bool,
+    force_edited_blocks: bool,
+    add_missing_blocks: bool,
+    include_diff: bool,
+    source_only: bool | None,
+    database: str | None,
+    timeout: float,
+    progress: bool,
+    progress_level: str,
+    attributes: str | None,
+    types: str | None,
+    max_models: int | None,
+    max_fields_per_model: int | None,
+    path_prefix: str | None,
+    resolve_agent_global_config_fn: Any,
+    agent_fail_fn: Any,
+    agent_payload_fn: Any,
+    agent_emit_payload_fn: Any,
+    agent_require_mutation_fn: Any,
+    odoo_operations_cls: Any,
+    controlled_source_mutation: str,
+    safe_read_only: str,
+) -> None:
+    """Refresh managed generated blocks in addon-local arc42 documentation."""
+
+    result_type = "technical_documentation_refresh"
+    preview_operation = "technical_doc_refresh_preview"
+    write_operation = "refresh_technical_doc"
+    global_config = resolve_agent_global_config_fn(ctx, preview_operation, result_type)
+    if global_config.env_config is None:
+        agent_fail_fn(
+            preview_operation, result_type, "No environment configuration available"
+        )
+    assert global_config.env_config is not None
+
+    try:
+        dry_run_source = ctx.get_parameter_source("dry_run")
+    except Exception:
+        dry_run_source = ParameterSource.DEFAULT
+    effective_dry_run = dry_run
+    if not allow_mutation:
+        effective_dry_run = True
+    elif dry_run_source is ParameterSource.DEFAULT:
+        effective_dry_run = False
+
+    normalized_progress_level = _normalize_progress_level(progress_level)
+    progress_cb = _agent_technical_doc_progress(
+        progress, progress_level=normalized_progress_level
+    )
+    path_context = resolve_project_path_context(
+        config_path=global_config.config_path,
+        explicit_base=path_prefix,
+    )
+    documentation_policy = load_documentation_directory_policy(
+        global_config.env_config,
+        path_base_dir=path_context.base_dir,
+    )
+    ops = odoo_operations_cls(global_config.env_config, verbose=False)
+
+    if not effective_dry_run:
+        agent_require_mutation_fn(
+            allow_mutation,
+            write_operation,
+            result_type,
+            "technical documentation refresh",
+            controlled_source_mutation,
+        )
+
+    try:
+        refresh_result = ops.refresh_technical_documentation(
+            target,
+            odoo_series=global_config.odoo_series,
+            database=database,
+            timeout=timeout,
+            source_only=source_only,
+            field_attributes=(
+                sorted({item.strip() for item in attributes.split(",") if item.strip()})
+                if attributes
+                else None
+            ),
+            view_types=(
+                sorted({item.strip() for item in types.split(",") if item.strip()})
+                if types
+                else None
+            ),
+            max_models=max_models,
+            max_fields_per_model=max_fields_per_model,
+            path_prefix=path_context.base_dir.as_posix(),
+            path_base_dir=path_context.base_dir.as_posix(),
+            documentation_policy=documentation_policy,
+            overwrite_edited=force_edited_blocks,
+            add_missing=add_missing_blocks,
+            write=not effective_dry_run,
+        )
+    except FileNotFoundError as exc:
+        agent_fail_fn(
+            preview_operation,
+            result_type,
+            str(exc),
+            error_type="NotFoundError",
+            details={"target": target},
+        )
+    except DocumentationTargetNotAllowedError as exc:
+        agent_fail_fn(
+            preview_operation,
+            result_type,
+            str(exc),
+            error_type="DocumentationTargetNotAllowedError",
+            details={
+                "target": target,
+                "addon_root": exc.addon_root,
+                "allowed_addon_dirs": exc.allowed_dirs,
+            },
+            remediation=[
+                (
+                    "Use an addon under "
+                    "[documentation].allowed_addon_dirs, or "
+                    "update that allowlist only for project-controlled "
+                    "addon directories."
+                ),
+            ],
+        )
+    except ValueError as exc:
+        agent_fail_fn(
+            preview_operation,
+            result_type,
+            str(exc),
+            error_type="ValidationError",
+            details={"target": target},
+            read_only=effective_dry_run,
+            safety_level=safe_read_only
+            if effective_dry_run
+            else controlled_source_mutation,
+        )
+
+    payload_data = dict(refresh_result)
+    payload_data["doc_path"] = path_context.relative(Path(payload_data["doc_path"]))
+    payload_data["metadata_path"] = path_context.relative(
+        Path(payload_data["metadata_path"])
+    )
+    if include_diff:
+        payload_data["diff"] = None
+    payload = agent_payload_fn(
+        preview_operation if effective_dry_run else write_operation,
+        result_type,
+        payload_data,
+        warnings=list(refresh_result.get("warnings", [])),
+        remediation=list(refresh_result.get("errors", [])),
+        read_only=effective_dry_run,
+        safety_level=safe_read_only
+        if effective_dry_run
+        else controlled_source_mutation,
+    )
+    if progress_cb is not None:
+        progress_cb(
+            "render",
+            {"module": payload_data.get("module"), "template": "arc42-refresh"},
+        )
+    agent_emit_payload_fn(payload)
+
+
 def agent_technical_doc_status_command(
     ctx: typer.Context,
     *,

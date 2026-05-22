@@ -22,6 +22,7 @@ from oduit.api_models import (
     TechnicalDocumentation,
 )
 from oduit.arc42_renderer import (
+    build_arc42_generated_blocks,
     inspect_generated_markdown_quality,
     render_arc42_addon_markdown,
 )
@@ -368,6 +369,8 @@ def test_render_arc42_addon_markdown_contains_arc42_sections() -> None:
     assert "## 5. Building Block View" in markdown
     assert "## 11. Risks and Technical Debt" in markdown
     assert "## Appendix A: oduit Evidence" in markdown
+    assert "<!-- oduit:generated:start" in markdown
+    assert "<!-- oduit:generated:end -->" in markdown
 
 
 def test_render_arc42_addon_markdown_marks_unknown_business_context_as_todo() -> None:
@@ -443,3 +446,20 @@ def test_generated_markdown_quality_reports_expected_counts() -> None:
     assert quality["todo_count"] > 0
     assert "formatting_issue_count" in quality
     assert "warnings" in quality
+
+
+def test_build_arc42_generated_blocks_includes_constraints_block() -> None:
+    blocks = build_arc42_generated_blocks(_technical_bundle())
+    assert "arc42.constraints" in blocks
+    assert blocks["arc42.constraints"].renderer == "arc42.constraints.v1"
+    assert "| Constraint | Value | Evidence |" in blocks["arc42.constraints"].body
+
+
+def test_constraints_source_hash_changes_when_dependencies_change() -> None:
+    bundle = _technical_bundle()
+    before = build_arc42_generated_blocks(bundle)["arc42.constraints"].source_sha256
+    assert bundle.addon_documentation is not None
+    assert bundle.addon_documentation.addon_info is not None
+    bundle.addon_documentation.addon_info.depends.append("mail")
+    after = build_arc42_generated_blocks(bundle)["arc42.constraints"].source_sha256
+    assert before != after
