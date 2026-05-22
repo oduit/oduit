@@ -1,7 +1,13 @@
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from oduit.api_models import AddonDocTarget, TechnicalDocumentation
+from oduit._operations.documentation import DocumentationOperationsService
+from oduit.api_models import (
+    AddonDocTarget,
+    TechnicalDocumentation,
+    TechnicalEvidenceMetadata,
+)
 from oduit.documentation_policy import DocumentationDirectoryPolicy
 from oduit.documentation_tracking import (
     TECHNICAL_DOC_METADATA_FILENAME,
@@ -90,6 +96,58 @@ def _constraints_block() -> GeneratedMarkdownBlock:
         ),
         source_payload={"depends": ["base"]},
     )
+
+
+def test_build_technical_report_seed_reuses_existing_evidence(tmp_path: Path) -> None:
+    addon_root = tmp_path / "addons" / "my_partner"
+    _make_addon(addon_root)
+    docs_dir = addon_root / "docs"
+    docs_dir.mkdir(exist_ok=True)
+    evidence_path, metadata_path = technical_evidence_paths(addon_root)
+    evidence_path.write_text(
+        "# Automated Architecture Evidence: my_partner\n\n"
+        + render_generated_block(_constraints_block())
+        + "\n",
+        encoding="utf-8",
+    )
+    metadata = TechnicalEvidenceMetadata(
+        module="my_partner",
+        addon_root=addon_root.as_posix(),
+        evidence_path="docs/architecture.evidence.md",
+        metadata_path="docs/architecture.evidence.oduit.json",
+        evidence_version=2,
+    )
+    write_technical_evidence_metadata(metadata, metadata_path)
+    resolved_target = AddonDocTarget(
+        module="my_partner",
+        addon_root=addon_root.as_posix(),
+        target_kind="module",
+        manifest_path=(addon_root / "__manifest__.py").as_posix(),
+    )
+    operations = MagicMock()
+    operations.env_config = {}
+    service = DocumentationOperationsService(operations)
+
+    with (
+        patch(
+            "oduit._operations.documentation.resolve_addon_documentation_target",
+            return_value=resolved_target,
+        ),
+        patch.object(
+            service,
+            "build_technical_documentation",
+            side_effect=AssertionError("existing evidence path should be reused"),
+        ),
+    ):
+        bundle = service.build_technical_report_seed(
+            "@addons/my_partner",
+            evidence_metadata=metadata,
+            generate_evidence_if_missing=True,
+            path_base_dir=tmp_path.as_posix(),
+        )
+
+    assert bundle.module == "my_partner"
+    assert bool(getattr(bundle, "used_existing_evidence", False)) is True
 
 
 def test_compute_source_snapshot_is_deterministic_across_creation_order(
@@ -531,7 +589,7 @@ def _write_evidence_and_report(addon_root: Path, *, file_inventory: str = "58") 
     evidence_path = docs_dir / TECHNICAL_EVIDENCE_FILENAME
     evidence_metadata_path = docs_dir / TECHNICAL_EVIDENCE_METADATA_FILENAME
     report_path = docs_dir / "architecture.md"
-    body = "| Item | Count |\n" "|---|---|\n" f"| File inventory | {file_inventory} |\n"
+    body = f"| Item | Count |\n|---|---|\n| File inventory | {file_inventory} |\n"
     block = GeneratedMarkdownBlock(
         id="arc42.addon_overview",
         renderer="arc42.addon_overview.v1",

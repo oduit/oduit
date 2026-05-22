@@ -752,6 +752,8 @@ class OdooOperations:
         max_fields_per_model: int | None = None,
         path_base_dir: str | None = None,
         documentation_policy: DocumentationDirectoryPolicy | None = None,
+        progress: Callable[[str, dict[str, Any]], None] | None = None,
+        progress_level: str = "compact",
     ) -> dict[str, Any]:
         """Write split deterministic evidence markdown and sidecar."""
         return self._documentation_service.write_technical_evidence(
@@ -769,6 +771,8 @@ class OdooOperations:
             max_fields_per_model=max_fields_per_model,
             path_base_dir=path_base_dir,
             documentation_policy=documentation_policy,
+            progress=progress,
+            progress_level=progress_level,
         )
 
     def build_technical_report_seed(
@@ -789,6 +793,8 @@ class OdooOperations:
         max_fields_per_model: int | None = None,
         path_base_dir: str | None = None,
         documentation_policy: DocumentationDirectoryPolicy | None = None,
+        progress: Callable[[str, dict[str, Any]], None] | None = None,
+        progress_level: str = "compact",
     ) -> TechnicalDocumentation:
         """Build split LLM/human report seed bundle."""
         return self._documentation_service.build_technical_report_seed(
@@ -807,6 +813,8 @@ class OdooOperations:
             max_fields_per_model=max_fields_per_model,
             path_base_dir=path_base_dir,
             documentation_policy=documentation_policy,
+            progress=progress,
+            progress_level=progress_level,
         )
 
     def diff_technical_report_evidence(

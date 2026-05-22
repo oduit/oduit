@@ -149,9 +149,12 @@ def _progress_stage_visible(stage: str, *, progress_level: str) -> bool:
     if progress_level == "compact":
         return stage in {
             "resolve_target",
+            "loading_evidence",
+            "parsing_evidence",
             "technical_inventory",
             "model_inventory",
             "runtime_metadata_batch",
+            "runtime_metadata_model",
             "render",
             "writing",
             "writing_metadata",
@@ -190,6 +193,9 @@ def _agent_progress_message(
         model_count = data.get("model_count")
         model_count_text = str(model_count) if model_count is not None else "unknown"
         return f"querying runtime metadata: {model_count_text} models"
+    if stage == "runtime_metadata_model" and module and model:
+        suffix = f" ({index}/{total})" if index and total else ""
+        return f"querying runtime metadata: {module}:{model}{suffix}"
     if stage == "dependency_graph" and module:
         return f"collecting dependency graph: {module}"
     if stage == "model_documentation" and module and model:
@@ -209,6 +215,10 @@ def _agent_progress_message(
         return f"collecting test recommendations: {module}"
     if stage == "render" and module:
         return f"rendering arc42 markdown: {module}"
+    if stage == "loading_evidence" and module:
+        return f"loading generated evidence: {module}"
+    if stage == "parsing_evidence" and module:
+        return f"parsing generated evidence: {module}"
     if stage == "writing":
         return f"writing: {data.get('path', '')}".rstrip()
     if stage == "writing_metadata":
@@ -580,6 +590,8 @@ def agent_technical_evidence_command(
     types: str | None,
     max_models: int | None,
     max_fields_per_model: int | None,
+    progress: bool,
+    progress_level: str,
     path_prefix: str | None,
     resolve_agent_global_config_fn: Any,
     agent_fail_fn: Any,
@@ -630,6 +642,11 @@ def agent_technical_evidence_command(
         path_base_dir=path_context.base_dir,
     )
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
+    normalized_progress_level = _normalize_progress_level(progress_level)
+    progress_cb = _agent_technical_doc_progress(
+        progress,
+        progress_level=normalized_progress_level,
+    )
     if effective_dry_run:
         try:
             bundle = ops.build_technical_evidence(
@@ -645,6 +662,8 @@ def agent_technical_evidence_command(
                 max_fields_per_model=max_fields_per_model,
                 path_base_dir=path_context.base_dir.as_posix(),
                 documentation_policy=documentation_policy,
+                progress=progress_cb,
+                progress_level=normalized_progress_level,
             )
         except Exception as exc:
             agent_fail_fn(
@@ -660,6 +679,7 @@ def agent_technical_evidence_command(
             "would_write": path_context.relative(evidence_path),
             "would_write_metadata": path_context.relative(metadata_path),
             "preview": bundle.markdown[:500],
+            "used_existing_evidence": False,
         }
         if include_markdown:
             data["markdown"] = bundle.markdown
@@ -698,6 +718,8 @@ def agent_technical_evidence_command(
             max_fields_per_model=max_fields_per_model,
             path_base_dir=path_context.base_dir.as_posix(),
             documentation_policy=documentation_policy,
+            progress=progress_cb,
+            progress_level=normalized_progress_level,
         )
     except Exception as exc:
         agent_fail_fn(
@@ -741,6 +763,8 @@ def agent_technical_report_command(
     types: str | None,
     max_models: int | None,
     max_fields_per_model: int | None,
+    progress: bool,
+    progress_level: str,
     path_prefix: str | None,
     resolve_agent_global_config_fn: Any,
     agent_fail_fn: Any,
@@ -790,6 +814,11 @@ def agent_technical_report_command(
         path_base_dir=path_context.base_dir,
     )
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
+    normalized_progress_level = _normalize_progress_level(progress_level)
+    progress_cb = _agent_technical_doc_progress(
+        progress,
+        progress_level=normalized_progress_level,
+    )
     if not effective_dry_run:
         agent_require_mutation_fn(
             allow_mutation,
@@ -813,6 +842,8 @@ def agent_technical_report_command(
             path_base_dir=path_context.base_dir.as_posix(),
             documentation_policy=documentation_policy,
             generate_evidence_if_missing=generate_evidence or effective_dry_run,
+            progress=progress_cb,
+            progress_level=normalized_progress_level,
         )
     except FileNotFoundError:
         agent_fail_fn(
@@ -851,6 +882,9 @@ def agent_technical_report_command(
         "would_write": path_context.relative(report_path),
         "would_write_metadata": path_context.relative(metadata_path),
         "preview": bundle.markdown[:500],
+        "used_existing_evidence": bool(
+            getattr(bundle, "used_existing_evidence", False)
+        ),
     }
     if include_markdown:
         data["markdown"] = bundle.markdown
@@ -900,6 +934,9 @@ def agent_technical_report_command(
             "addon_root": bundle.addon_root,
             "report_path": path_context.relative(report_path),
             "metadata_path": path_context.relative(metadata_path),
+            "used_existing_evidence": bool(
+                getattr(bundle, "used_existing_evidence", False)
+            ),
         },
         warnings=warnings + list(bundle.warnings),
         remediation=list(bundle.remediation),

@@ -4296,6 +4296,8 @@ def test_agent_technical_evidence_allow_mutation_writes_sidecar(tmp_path: Path) 
     assert payload["operation"] == "write_technical_evidence"
     assert payload["read_only"] is False
     assert (addon_root / "docs" / "architecture.evidence.oduit.json").exists()
+    assert ops.write_technical_evidence.call_args.kwargs["progress"] is not None
+    assert ops.write_technical_evidence.call_args.kwargs["progress_level"] == "compact"
 
 
 def test_agent_technical_report_preview_is_read_only(tmp_path: Path) -> None:
@@ -4320,6 +4322,70 @@ def test_agent_technical_report_preview_is_read_only(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["operation"] == "technical_report_preview"
     assert payload["read_only"] is True
+
+
+def test_agent_split_commands_accept_progress_and_wire_callback(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addon_root = _make_technical_addon(tmp_path / "addons")
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.write_technical_evidence.return_value = {
+            "module": "my_partner",
+            "addon_root": addon_root.as_posix(),
+            "evidence_path": (
+                addon_root / "docs" / "architecture.evidence.md"
+            ).as_posix(),
+            "metadata_path": (
+                addon_root / "docs" / "architecture.evidence.oduit.json"
+            ).as_posix(),
+            "evidence_version": 1,
+            "generated_block_count": 1,
+            "warnings": [],
+            "remediation": [],
+        }
+        bundle = _technical_documentation_bundle(addon_root)
+        bundle.markdown = "# Architecture Documentation: my_partner\n"
+        ops.build_technical_report_seed.return_value = bundle
+        mock_ops_class.return_value = ops
+
+        evidence_result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-evidence",
+                "my_partner",
+                "--allow-mutation",
+                "--progress",
+            ],
+        )
+        report_result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "technical-report",
+                "my_partner",
+                "--progress",
+            ],
+        )
+
+    assert evidence_result.exit_code == 0
+    assert report_result.exit_code == 0
+    assert ops.write_technical_evidence.call_args.kwargs["progress"] is not None
+    assert ops.write_technical_evidence.call_args.kwargs["progress_level"] == "compact"
+    assert ops.build_technical_report_seed.call_args.kwargs["progress"] is not None
+    assert (
+        ops.build_technical_report_seed.call_args.kwargs["progress_level"] == "compact"
+    )
 
 
 def test_agent_technical_doc_diff_returns_read_only_payload(tmp_path: Path) -> None:

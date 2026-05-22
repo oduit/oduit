@@ -466,6 +466,16 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
         types: str | None = typer.Option(None, "--view-types"),
         max_models: int | None = typer.Option(None, "--max-models"),
         max_fields_per_model: int | None = typer.Option(None, "--max-fields-per-model"),
+        progress: bool = typer.Option(
+            True,
+            "--progress/--no-progress",
+            help="Print technical documentation generation progress to stderr.",
+        ),
+        progress_level: str = typer.Option(
+            "compact",
+            "--progress-level",
+            help="Progress verbosity: compact, model, or debug.",
+        ),
         path_prefix: str | None = typer.Option(None, "--path"),
         output_in_addon: bool = typer.Option(
             False, "--output-in-addon", help="Write addon-local evidence files"
@@ -488,6 +498,8 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             format_name=format_name,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            progress=progress,
+            progress_level=progress_level,
             path_prefix=path_prefix,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
@@ -509,6 +521,16 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
         types: str | None = typer.Option(None, "--view-types"),
         max_models: int | None = typer.Option(None, "--max-models"),
         max_fields_per_model: int | None = typer.Option(None, "--max-fields-per-model"),
+        progress: bool = typer.Option(
+            True,
+            "--progress/--no-progress",
+            help="Print technical documentation generation progress to stderr.",
+        ),
+        progress_level: str = typer.Option(
+            "compact",
+            "--progress-level",
+            help="Progress verbosity: compact, model, or debug.",
+        ),
         path_prefix: str | None = typer.Option(None, "--path"),
         output_in_addon: bool = typer.Option(
             False, "--output-in-addon", help="Write addon-local report seed"
@@ -533,6 +555,8 @@ def register_documentation_commands(context: AppRegistrationContext) -> None:
             format_name=format_name,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            progress=progress,
+            progress_level=progress_level,
             path_prefix=path_prefix,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,

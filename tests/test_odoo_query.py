@@ -1,6 +1,8 @@
 from unittest.mock import MagicMock
 
-from oduit.odoo_query import OdooQuery
+from oduit._operations.query import QueryOperationsService
+from oduit.api_models import QueryModelResult
+from oduit.odoo_query import MAX_QUERY_LIMIT, OdooQuery
 
 
 def _query() -> OdooQuery:
@@ -93,6 +95,74 @@ def test_query_model_rejects_limit_over_cap() -> None:
     assert result["success"] is False
     assert result["error_type"] == "ValidationError"
     assert "less than or equal to 500" in result["error"]
+
+
+def test_get_models_documentation_runtime_uses_query_limit_cap() -> None:
+    operations = MagicMock()
+    service = QueryOperationsService(operations)
+    operations.query_model.side_effect = [
+        QueryModelResult(
+            success=True,
+            operation="query_model",
+            model="ir.model.fields",
+            records=[],
+            limit=MAX_QUERY_LIMIT,
+        ),
+        QueryModelResult(
+            success=True,
+            operation="query_model",
+            model="ir.ui.view",
+            records=[],
+            limit=MAX_QUERY_LIMIT,
+        ),
+    ]
+
+    service.get_models_documentation_runtime(["helpdesk.ticket"])
+
+    limits = [
+        call.kwargs["limit"]
+        for call in operations.query_model.call_args_list
+        if "limit" in call.kwargs
+    ]
+    assert limits
+    assert all(limit <= MAX_QUERY_LIMIT for limit in limits)
+
+
+def test_get_models_documentation_runtime_warns_per_model_when_truncated() -> None:
+    operations = MagicMock()
+    service = QueryOperationsService(operations)
+
+    def _query_side_effect(model: str, **kwargs: object) -> QueryModelResult:
+        domain = kwargs.get("domain")
+        if model == "ir.model.fields" and domain == [
+            ["model", "in", ["helpdesk.ticket"]]
+        ]:
+            return QueryModelResult(
+                success=True,
+                operation="query_model",
+                model=model,
+                records=[],
+                limit=MAX_QUERY_LIMIT,
+                limited=True,
+            )
+        if model == "ir.ui.view" and domain == [["model", "in", ["helpdesk.ticket"]]]:
+            return QueryModelResult(
+                success=True,
+                operation="query_model",
+                model=model,
+                records=[],
+                limit=MAX_QUERY_LIMIT,
+            )
+        raise AssertionError(f"Unexpected query: {model} {domain!r}")
+
+    operations.query_model.side_effect = _query_side_effect
+    inventory = service.get_models_documentation_runtime(["helpdesk.ticket"])
+
+    assert any(
+        "Runtime field metadata for helpdesk.ticket reached the 500 record cap"
+        in warning
+        for warning in inventory.warnings
+    )
 
 
 def test_search_count_happy_path() -> None:

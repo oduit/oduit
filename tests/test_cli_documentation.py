@@ -1017,6 +1017,35 @@ def test_docs_progress_formatter_reports_runtime_batch_in_compact_mode() -> None
     assert message == "querying runtime metadata: 10 models"
 
 
+def test_docs_progress_formatter_reports_runtime_model_in_compact_mode() -> None:
+    message = _format_progress_message(
+        "runtime_metadata_model",
+        {
+            "module": "has_helpdesk",
+            "model": "helpdesk.ticket",
+            "index": 2,
+            "total": 5,
+        },
+        progress_level="compact",
+    )
+    assert message == "querying runtime metadata: has_helpdesk:helpdesk.ticket (2/5)"
+
+
+def test_docs_progress_formatter_reports_loading_and_parsing_evidence() -> None:
+    loading = _format_progress_message(
+        "loading_evidence",
+        {"module": "has_helpdesk"},
+        progress_level="compact",
+    )
+    parsing = _format_progress_message(
+        "parsing_evidence",
+        {"module": "has_helpdesk"},
+        progress_level="compact",
+    )
+    assert loading == "loading generated evidence: has_helpdesk"
+    assert parsing == "parsing generated evidence: has_helpdesk"
+
+
 def test_docs_technical_status_select_dir_relative_addon_path_returns_one_status(
     tmp_path: Path,
 ) -> None:
@@ -1597,11 +1626,14 @@ def test_docs_technical_evidence_writes_only_evidence_files(tmp_path: Path) -> N
                 "technical-evidence",
                 "my_partner",
                 "--output-in-addon",
+                "--progress",
             ],
         )
     assert result.exit_code == 0
     assert (addon_root / "docs" / "architecture.evidence.md").exists()
     assert not (addon_root / "docs" / "architecture.md").exists()
+    assert ops.write_technical_evidence.call_args.kwargs["progress"] is not None
+    assert ops.write_technical_evidence.call_args.kwargs["progress_level"] == "compact"
 
 
 def test_docs_technical_report_writes_report_not_evidence(tmp_path: Path) -> None:
@@ -1641,11 +1673,16 @@ def test_docs_technical_report_writes_report_not_evidence(tmp_path: Path) -> Non
                 "technical-report",
                 "my_partner",
                 "--output-in-addon",
+                "--progress",
             ],
         )
     assert result.exit_code == 0
     assert (docs_dir / "architecture.md").exists()
     assert evidence_path.read_text() == "evidence-before\n"
+    assert ops.build_technical_report_seed.call_args.kwargs["progress"] is not None
+    assert (
+        ops.build_technical_report_seed.call_args.kwargs["progress_level"] == "compact"
+    )
 
 
 def test_docs_technical_diff_json_emits_structured_status(tmp_path: Path) -> None:

@@ -203,8 +203,8 @@ the right place for reviewed prose, project context, and decisions.
 Recommended human CLI workflow:
 
 ```bash
-oduit --env dev docs technical-evidence @addons/has_base --output-in-addon --source-only
-oduit --env dev docs technical-report @addons/has_base --output-in-addon --source-only
+oduit --env dev docs technical-evidence @addons/has_base --output-in-addon --source-only --progress
+oduit --env dev docs technical-report @addons/has_base --output-in-addon --source-only --progress
 oduit --env dev docs technical-diff @addons/has_base --include-diff
 oduit --env dev docs technical-check @addons/has_base --include-files
 oduit --env dev docs technical-next
@@ -214,8 +214,8 @@ oduit --env dev docs technical-status --select-dir addons --only-stale
 Recommended agent workflow:
 
 ```bash
-oduit --env dev agent technical-evidence @addons/has_base --allow-mutation --source-only
-oduit --env dev agent technical-report @addons/has_base --allow-mutation --source-only
+oduit --env dev agent technical-evidence @addons/has_base --allow-mutation --source-only --progress
+oduit --env dev agent technical-report @addons/has_base --allow-mutation --source-only --progress
 oduit --env dev agent technical-doc-diff @addons/has_base --include-diff
 oduit --env dev agent technical-doc-check @addons/has_base --include-files
 oduit --env dev agent technical-doc-next
@@ -232,6 +232,10 @@ current deterministic evidence.
 `docs technical` and `agent technical-doc` remain available for legacy
 monolithic Arc42 files. Prefer `technical-evidence` plus `technical-report` for
 new documentation.
+
+Generate runtime evidence once. `technical-report` consumes
+`docs/architecture.evidence.md` and should not rerun runtime metadata enrichment
+when valid evidence files already exist.
 
 When `[documentation].allowed_addon_dirs` is configured, `technical-next` and
 `technical-status` scan only those addon directories; native addons like

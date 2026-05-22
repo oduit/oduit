@@ -793,9 +793,12 @@ class DocumentationOperationsService(OperationsService):
         max_fields_per_model: int | None = None,
         path_base_dir: str | None = None,
         documentation_policy: DocumentationDirectoryPolicy | None = None,
+        progress: ProgressCallback | None = None,
+        progress_level: str = "compact",
     ) -> dict[str, Any]:
         """Build and write technical evidence markdown + sidecar."""
-
+        progress = progress or (lambda _stage, _data: None)
+        progress("resolve_target", {"target": target})
         resolved_target = resolve_addon_documentation_target(
             self.operations.env_config,
             target,
@@ -828,10 +831,13 @@ class DocumentationOperationsService(OperationsService):
             max_fields_per_model=max_fields_per_model,
             path_base_dir=path_base_dir,
             documentation_policy=documentation_policy,
+            progress=progress,
+            progress_level=progress_level,
             evidence_version=next_version,
         )
         bundle.generated_at = utc_now_iso()
         evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        progress("writing", {"path": evidence_path.as_posix()})
         evidence_path.write_text(bundle.markdown, encoding="utf-8")
         metadata = build_technical_evidence_metadata(
             bundle=bundle,
@@ -853,6 +859,7 @@ class DocumentationOperationsService(OperationsService):
                 bundle.source_addon_root or bundle.addon_root
             ).resolve(strict=False),
         )
+        progress("writing_metadata", {"path": metadata_path.as_posix()})
         write_technical_evidence_metadata(metadata, metadata_path)
         return {
             "module": bundle.module,
@@ -883,40 +890,75 @@ class DocumentationOperationsService(OperationsService):
         max_fields_per_model: int | None = None,
         path_base_dir: str | None = None,
         documentation_policy: DocumentationDirectoryPolicy | None = None,
+        progress: ProgressCallback | None = None,
+        progress_level: str = "compact",
     ) -> TechnicalDocumentation:
         """Build an LLM/human report seed from current evidence snapshots."""
-
-        bundle = self.build_technical_documentation(
+        progress = progress or (lambda _stage, _data: None)
+        progress("resolve_target", {"target": target})
+        resolved_target = resolve_addon_documentation_target(
+            self.operations.env_config,
             target,
-            template=template,
-            odoo_series=odoo_series,
-            database=database,
-            timeout=timeout,
-            source_only=source_only,
-            include_arch=include_arch,
-            field_attributes=field_attributes,
-            view_types=view_types,
-            max_models=max_models,
-            max_fields_per_model=max_fields_per_model,
             path_base_dir=path_base_dir,
             documentation_policy=documentation_policy,
-            render_markdown=False,
         )
-        addon_root = Path(bundle.source_addon_root or bundle.addon_root).resolve(
-            strict=False
-        )
+        addon_root = Path(resolved_target.addon_root).resolve(strict=False)
         evidence_path, evidence_metadata_path = technical_evidence_paths(addon_root)
         evidence_blocks: dict[str, Any]
         metadata = evidence_metadata
+        metadata_warnings: list[str] = []
         if metadata is None:
-            metadata, _warnings = load_technical_evidence_metadata(
+            progress("loading_evidence", {"module": resolved_target.module})
+            metadata, metadata_warnings = load_technical_evidence_metadata(
                 evidence_metadata_path
             )
-        if metadata is None:
+
+        if metadata is not None and evidence_path.exists():
+            progress("parsing_evidence", {"module": resolved_target.module})
+            try:
+                parsed = parse_generated_blocks(
+                    evidence_path.read_text(encoding="utf-8")
+                )
+                evidence_blocks = {block.id: block for block in parsed}
+            except Exception as exc:
+                raise ValueError(
+                    "Failed to parse generated evidence blocks from "
+                    "docs/architecture.evidence.md. Regenerate evidence with "
+                    "docs technical-evidence --output-in-addon --force."
+                ) from exc
+            bundle = TechnicalDocumentation(
+                module=resolved_target.module,
+                addon_root=resolved_target.addon_root,
+                source_addon_root=resolved_target.addon_root,
+                template=template,
+                target=resolved_target,
+                source_only=True,
+                warnings=list(metadata_warnings),
+            )
+            used_existing_evidence = True
+        else:
             if not generate_evidence_if_missing:
                 raise FileNotFoundError(
                     "Technical evidence is missing. Run docs technical-evidence first."
                 )
+            bundle = self.build_technical_documentation(
+                target,
+                template=template,
+                odoo_series=odoo_series,
+                database=database,
+                timeout=timeout,
+                source_only=source_only,
+                include_arch=include_arch,
+                field_attributes=field_attributes,
+                view_types=view_types,
+                max_models=max_models,
+                max_fields_per_model=max_fields_per_model,
+                path_base_dir=path_base_dir,
+                documentation_policy=documentation_policy,
+                progress=progress,
+                progress_level=progress_level,
+                render_markdown=False,
+            )
             evidence_blocks = build_arc42_generated_blocks(bundle)
             metadata = TechnicalEvidenceMetadata(
                 module=bundle.module,
@@ -925,14 +967,9 @@ class DocumentationOperationsService(OperationsService):
                 metadata_path="docs/architecture.evidence.oduit.json",
                 evidence_version=0,
             )
-        else:
-            try:
-                parsed = parse_generated_blocks(
-                    evidence_path.read_text(encoding="utf-8")
-                )
-                evidence_blocks = {block.id: block for block in parsed}
-            except Exception:
-                evidence_blocks = build_arc42_generated_blocks(bundle)
+            used_existing_evidence = False
+
+        progress("render", {"module": bundle.module, "template": template})
         bundle.output_path = "docs/architecture.md"
         bundle.metadata_path = "docs/architecture.oduit.json"
         bundle.markdown = render_arc42_report_seed_markdown(
@@ -941,6 +978,7 @@ class DocumentationOperationsService(OperationsService):
             evidence_blocks=evidence_blocks,
             include_snapshots=True,
         )
+        bundle.used_existing_evidence = used_existing_evidence
         return bundle
 
     def diff_technical_report_evidence(

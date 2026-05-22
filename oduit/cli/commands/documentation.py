@@ -177,9 +177,12 @@ def _format_progress_message(
     if progress_level == "compact" and stage not in {
         "path_base",
         "resolve_target",
+        "loading_evidence",
+        "parsing_evidence",
         "technical_inventory",
         "model_inventory",
         "runtime_metadata_batch",
+        "runtime_metadata_model",
         "render",
         "writing",
         "writing_metadata",
@@ -201,6 +204,7 @@ def _format_progress_message(
     model = data.get("model")
     index = data.get("index")
     total = data.get("total")
+    suffix = f" ({index}/{total})" if index and total else ""
     if stage == "path_base":
         return (
             "resolving project path base: "
@@ -209,35 +213,40 @@ def _format_progress_message(
         )
     if stage == "resolve_target":
         return f"resolving addon target: {data.get('target', '')}".rstrip()
-    if stage == "technical_inventory" and module:
-        return f"collecting source inventory: {module}"
-    if stage == "inspect_addon" and module:
-        return f"inspecting addon: {module}"
-    if stage == "model_inventory" and module:
-        return f"collecting model inventory: {module}"
+    module_prefix = {
+        "technical_inventory": "collecting source inventory: ",
+        "inspect_addon": "inspecting addon: ",
+        "model_inventory": "collecting model inventory: ",
+        "dependency_graph": "collecting dependency graph: ",
+        "recommended_tests": "collecting test recommendations: ",
+        "render": "rendering arc42 markdown: ",
+        "loading_evidence": "loading generated evidence: ",
+        "parsing_evidence": "parsing generated evidence: ",
+    }.get(stage)
+    if module_prefix and module:
+        return f"{module_prefix}{module}"
     if stage == "runtime_metadata_batch":
         model_count = data.get("model_count")
         model_count_text = str(model_count) if model_count is not None else "unknown"
         return f"querying runtime metadata: {model_count_text} models"
-    if stage == "dependency_graph" and module:
-        return f"collecting dependency graph: {module}"
-    if stage == "model_documentation" and module and model:
-        suffix = f" ({index}/{total})" if index and total else ""
-        return f"documenting model: {module}:{model}{suffix}"
-    if stage == "model_source" and model:
-        return f"collecting source evidence: {model}"
-    if stage == "model_runtime_fields" and model:
-        return f"querying runtime fields: {model}"
-    if stage == "model_runtime_views" and model:
-        return f"querying runtime views: {model}"
+    if stage in {"runtime_metadata_model", "model_documentation"} and module and model:
+        prefix = (
+            "querying runtime metadata: "
+            if stage == "runtime_metadata_model"
+            else "documenting model: "
+        )
+        return f"{prefix}{module}:{model}{suffix}"
+    model_prefix = {
+        "model_source": "collecting source evidence: ",
+        "model_runtime_fields": "querying runtime fields: ",
+        "model_runtime_views": "querying runtime views: ",
+    }.get(stage)
+    if model_prefix and model:
+        return f"{model_prefix}{model}"
     if stage == "model_runtime_fields_cached" and model and progress_level == "debug":
         return f"using cached runtime fields: {model}"
     if stage == "model_runtime_views_cached" and model and progress_level == "debug":
         return f"using cached runtime views: {model}"
-    if stage == "recommended_tests" and module:
-        return f"collecting test recommendations: {module}"
-    if stage == "render" and module:
-        return f"rendering arc42 markdown: {module}"
     if stage == "writing":
         return f"writing: {data.get('path', '')}".rstrip()
     if stage == "writing_metadata":
@@ -1052,6 +1061,8 @@ def technical_evidence_command(
     format_name: str | None,
     max_models: int | None,
     max_fields_per_model: int | None,
+    progress: bool,
+    progress_level: str,
     path_prefix: str | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
@@ -1076,6 +1087,12 @@ def technical_evidence_command(
         env_config,
         path_base_dir=path_context.base_dir,
     )
+    normalized_progress_level = _normalize_progress_level(progress_level)
+    progress_cb = _make_docs_progress(
+        global_config,
+        enabled=progress,
+        progress_level=normalized_progress_level,
+    )
     ops = build_odoo_operations_fn(global_config)
     try:
         payload = ops.write_technical_evidence(
@@ -1092,6 +1109,8 @@ def technical_evidence_command(
             max_fields_per_model=max_fields_per_model,
             path_base_dir=path_context.base_dir.as_posix(),
             documentation_policy=documentation_policy,
+            progress=progress_cb,
+            progress_level=normalized_progress_level,
         )
     except FileExistsError as exc:
         print_command_error_result_fn(
@@ -1155,6 +1174,8 @@ def technical_report_command(
     format_name: str | None,
     max_models: int | None,
     max_fields_per_model: int | None,
+    progress: bool,
+    progress_level: str,
     path_prefix: str | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
@@ -1178,6 +1199,12 @@ def technical_report_command(
     documentation_policy = load_documentation_directory_policy(
         env_config,
         path_base_dir=path_context.base_dir,
+    )
+    normalized_progress_level = _normalize_progress_level(progress_level)
+    progress_cb = _make_docs_progress(
+        global_config,
+        enabled=progress,
+        progress_level=normalized_progress_level,
     )
     ops = build_odoo_operations_fn(global_config)
     try:
@@ -1236,6 +1263,8 @@ def technical_report_command(
                 max_fields_per_model=max_fields_per_model,
                 path_base_dir=path_context.base_dir.as_posix(),
                 documentation_policy=documentation_policy,
+                progress=progress_cb,
+                progress_level=normalized_progress_level,
             )
         _check_output_overwrite(report_path, force=force)
         bundle = ops.build_technical_report_seed(
@@ -1252,6 +1281,8 @@ def technical_report_command(
             path_base_dir=path_context.base_dir.as_posix(),
             documentation_policy=documentation_policy,
             generate_evidence_if_missing=generate_evidence,
+            progress=progress_cb,
+            progress_level=normalized_progress_level,
         )
     except FileExistsError as exc:
         print_command_error_result_fn(
@@ -1313,6 +1344,9 @@ def technical_report_command(
                                 report_metadata_path
                             ),
                             "evidence_path": path_context.relative(evidence_path),
+                            "used_existing_evidence": bool(
+                                getattr(bundle, "used_existing_evidence", False)
+                            ),
                         },
                     }
                 ),
@@ -1323,8 +1357,7 @@ def technical_report_command(
         return
     print(f"Wrote markdown documentation to {path_context.relative(report_path)}")
     print(
-        "Wrote documentation metadata to "
-        f"{path_context.relative(report_metadata_path)}"
+        f"Wrote documentation metadata to {path_context.relative(report_metadata_path)}"
     )
 
 

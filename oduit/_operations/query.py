@@ -13,11 +13,117 @@ from ..api_models import (
     RecordReadResult,
     SearchCountResult,
 )
+from ..odoo_query import MAX_QUERY_LIMIT
 from .base import OperationsService
 
 
 class QueryOperationsService(OperationsService):
     """Typed runtime query helpers."""
+
+    def _query_runtime_records_for_docs(
+        self,
+        runtime_model: str,
+        *,
+        selected_models: list[str],
+        query_fields: list[str],
+        warning_label: str,
+        warnings: list[str],
+        remediation: list[str],
+        module_name: str | None,
+        progress: Any | None,
+        database: str | None,
+        timeout: float,
+    ) -> list[dict[str, Any]]:
+        batch_result = self.operations.query_model(
+            runtime_model,
+            domain=[["model", "in", selected_models]],
+            fields=query_fields,
+            limit=MAX_QUERY_LIMIT,
+            include_total_count=True,
+            database=database,
+            timeout=timeout,
+        )
+        if not batch_result.success:
+            if batch_result.error:
+                warnings.append(
+                    f"Failed to query runtime {warning_label} metadata batch: "
+                    f"{batch_result.error}"
+                )
+            remediation.append(
+                f"Verify database access if runtime {warning_label} metadata "
+                "is required."
+            )
+            return []
+
+        if not batch_result.limited or len(selected_models) <= 1:
+            if batch_result.limited:
+                if len(selected_models) == 1:
+                    warnings.append(
+                        f"Runtime {warning_label} metadata for {selected_models[0]} "
+                        f"reached the {MAX_QUERY_LIMIT} record cap; generated docs may "
+                        "omit records for this model."
+                    )
+                else:
+                    warnings.append(
+                        f"Runtime {warning_label} metadata reached the "
+                        f"{MAX_QUERY_LIMIT} record cap; generated docs may "
+                        "omit records."
+                    )
+                remediation.append(
+                    f"Narrow the model selection if full runtime {warning_label} "
+                    "metadata is required."
+                )
+            return list(batch_result.records)
+
+        warnings.append(
+            f"Runtime {warning_label} metadata exceeded the {MAX_QUERY_LIMIT} "
+            "record batch cap; retrying per model."
+        )
+        records: list[dict[str, Any]] = []
+        truncated_models: list[str] = []
+        for index, model_name in enumerate(selected_models, start=1):
+            if progress is not None:
+                progress(
+                    "runtime_metadata_model",
+                    {
+                        "module": module_name,
+                        "model": model_name,
+                        "index": index,
+                        "total": len(selected_models),
+                        "runtime_model": runtime_model,
+                    },
+                )
+            model_result = self.operations.query_model(
+                runtime_model,
+                domain=[["model", "=", model_name]],
+                fields=query_fields,
+                limit=MAX_QUERY_LIMIT,
+                include_total_count=True,
+                database=database,
+                timeout=timeout,
+            )
+            if not model_result.success:
+                if model_result.error:
+                    warnings.append(
+                        f"Failed to query runtime {warning_label} metadata for "
+                        f"{model_name}: {model_result.error}"
+                    )
+                continue
+            records.extend(model_result.records)
+            if model_result.limited:
+                warnings.append(
+                    f"Runtime {warning_label} metadata for {model_name} reached the "
+                    f"{MAX_QUERY_LIMIT} record cap; generated docs may omit records "
+                    "for this model."
+                )
+                truncated_models.append(model_name)
+
+        if truncated_models:
+            remediation.append(
+                "Reduce runtime metadata volume for capped models or document a "
+                "narrowed model subset."
+            )
+        return records
 
     def get_addon_install_state(
         self,
@@ -451,67 +557,48 @@ class QueryOperationsService(OperationsService):
             for item in requested_attributes
             if item and item not in {"model", "name"}
         )
-        field_result = self.operations.query_model(
+        field_records = self._query_runtime_records_for_docs(
             "ir.model.fields",
-            domain=[["model", "in", selected_models]],
-            fields=field_query_fields,
-            limit=10000,
-            include_total_count=True,
+            selected_models=selected_models,
+            query_fields=field_query_fields,
+            warning_label="field",
+            warnings=warnings,
+            remediation=remediation,
+            module_name=module_name,
+            progress=progress,
             database=database,
             timeout=timeout,
         )
-        if not field_result.success:
-            if field_result.error:
-                warnings.append(
-                    "Failed to query runtime field metadata batch: "
-                    f"{field_result.error}"
-                )
-            remediation.append(
-                "Verify database access if runtime field metadata is required."
+        grouped_field_names: dict[str, list[str]] = {
+            model: [] for model in selected_models
+        }
+        grouped_field_defs: dict[str, dict[str, dict[str, Any]]] = {
+            model: {} for model in selected_models
+        }
+        for record in field_records:
+            model_name = record.get("model")
+            field_name = record.get("name")
+            if not isinstance(model_name, str) or model_name not in grouped_field_defs:
+                continue
+            if not isinstance(field_name, str) or not field_name:
+                continue
+            grouped_field_names[model_name].append(field_name)
+            grouped_field_defs[model_name][field_name] = {
+                attribute: record.get(attribute)
+                for attribute in requested_attributes
+                if attribute in record
+            }
+        for model_name in selected_models:
+            unique_names = list(dict.fromkeys(grouped_field_names[model_name]))
+            fields_by_model[model_name] = ModelFieldsResult(
+                success=True,
+                operation="get_model_fields",
+                model=model_name,
+                attributes=requested_attributes or None,
+                field_names=unique_names,
+                field_definitions=grouped_field_defs[model_name],
+                database=database,
             )
-        else:
-            if field_result.limited:
-                warnings.append(
-                    "Runtime field metadata reached the batch limit; generated docs "
-                    "may omit some fields."
-                )
-                remediation.append(
-                    "Increase the metadata query limit or narrow the model selection "
-                    "if full field inventory is required."
-                )
-            grouped_field_names: dict[str, list[str]] = {
-                model: [] for model in selected_models
-            }
-            grouped_field_defs: dict[str, dict[str, dict[str, Any]]] = {
-                model: {} for model in selected_models
-            }
-            for record in field_result.records:
-                model_name = record.get("model")
-                field_name = record.get("name")
-                if (
-                    not isinstance(model_name, str)
-                    or model_name not in grouped_field_defs
-                ):
-                    continue
-                if not isinstance(field_name, str) or not field_name:
-                    continue
-                grouped_field_names[model_name].append(field_name)
-                grouped_field_defs[model_name][field_name] = {
-                    attribute: record.get(attribute)
-                    for attribute in requested_attributes
-                    if attribute in record
-                }
-            for model_name in selected_models:
-                unique_names = list(dict.fromkeys(grouped_field_names[model_name]))
-                fields_by_model[model_name] = ModelFieldsResult(
-                    success=True,
-                    operation="get_model_fields",
-                    model=model_name,
-                    attributes=requested_attributes or None,
-                    field_names=unique_names,
-                    field_definitions=grouped_field_defs[model_name],
-                    database=database,
-                )
 
         view_fields = [
             "id",
@@ -526,121 +613,110 @@ class QueryOperationsService(OperationsService):
         ]
         if include_arch:
             view_fields.append("arch_db")
-        views_result = self.operations.query_model(
+        view_records = self._query_runtime_records_for_docs(
             "ir.ui.view",
-            domain=[["model", "in", selected_models]],
-            fields=view_fields,
-            limit=10000,
-            include_total_count=True,
+            selected_models=selected_models,
+            query_fields=view_fields,
+            warning_label="view",
+            warnings=warnings,
+            remediation=remediation,
+            module_name=module_name,
+            progress=progress,
             database=database,
             timeout=timeout,
         )
-        if not views_result.success:
-            if views_result.error:
-                warnings.append(
-                    f"Failed to query runtime view metadata batch: {views_result.error}"
-                )
-            remediation.append("Verify database access and retry runtime view queries.")
-        else:
-            if views_result.limited:
-                warnings.append(
-                    "Runtime view metadata reached the batch limit; generated docs may "
-                    "omit some views."
-                )
-                remediation.append(
-                    "Increase the metadata query limit or narrow the model selection "
-                    "if complete runtime views are required."
-                )
-            grouped_views: dict[str, list[ModelViewRecord]] = {
-                model: [] for model in selected_models
-            }
-            normalized_types = set(requested_view_types)
-            for record in views_result.records:
-                model_name = record.get("model")
-                raw_type = record.get("type")
-                if not isinstance(model_name, str) or model_name not in grouped_views:
-                    continue
-                if not isinstance(raw_type, str):
-                    continue
-                if normalized_types and raw_type not in normalized_types:
-                    continue
-                raw_inherit_id = record.get("inherit_id")
-                inherit_id = (
-                    list(raw_inherit_id) if isinstance(raw_inherit_id, list) else None
-                )
-                grouped_views[model_name].append(
-                    ModelViewRecord(
-                        id=int(record.get("id", 0) or 0),
-                        name=str(record.get("name", "")),
-                        view_type=raw_type,
-                        mode=str(record["mode"])
+        grouped_views: dict[str, list[ModelViewRecord]] = {
+            model: [] for model in selected_models
+        }
+        normalized_types = set(requested_view_types)
+        for record in view_records:
+            model_name = record.get("model")
+            raw_type = record.get("type")
+            if not isinstance(model_name, str) or model_name not in grouped_views:
+                continue
+            if not isinstance(raw_type, str):
+                continue
+            if normalized_types and raw_type not in normalized_types:
+                continue
+            raw_inherit_id = record.get("inherit_id")
+            inherit_id = (
+                list(raw_inherit_id) if isinstance(raw_inherit_id, list) else None
+            )
+            grouped_views[model_name].append(
+                ModelViewRecord(
+                    id=int(record.get("id", 0) or 0),
+                    name=str(record.get("name", "")),
+                    view_type=raw_type,
+                    mode=(
+                        str(record["mode"])
                         if isinstance(record.get("mode"), str)
-                        else None,
-                        priority=(
-                            int(record["priority"])
-                            if isinstance(record.get("priority"), int)
-                            and not isinstance(record.get("priority"), bool)
-                            else None
-                        ),
-                        inherit_id=inherit_id,
-                        key=str(record["key"])
-                        if isinstance(record.get("key"), str)
-                        else None,
-                        active=(
-                            bool(record["active"])
-                            if isinstance(record.get("active"), bool)
-                            else None
-                        ),
-                        arch_db=(
-                            str(record["arch_db"])
-                            if isinstance(record.get("arch_db"), str)
-                            else None
-                        ),
-                    )
-                )
-            for model_name in selected_models:
-                model_records = grouped_views[model_name]
-                model_records.sort(
-                    key=lambda item: (
-                        item.view_type,
-                        0 if item.mode == "primary" and not item.inherit_id else 1,
-                        item.priority if item.priority is not None else 9999,
-                        item.id,
-                    )
-                )
-                primary_views = [
-                    record
-                    for record in model_records
-                    if record.mode == "primary" and not record.inherit_id
-                ]
-                extension_views = [
-                    record for record in model_records if record not in primary_views
-                ]
-                view_counts = {
-                    "total": len(model_records),
-                    "primary": len(primary_views),
-                    "extension": len(extension_views),
-                }
-                for view_type in sorted(
-                    {record.view_type for record in model_records} | normalized_types
-                ):
-                    view_counts[view_type] = sum(
-                        1 for record in model_records if record.view_type == view_type
-                    )
-                views_by_model[model_name] = ModelViewInventory(
-                    model=model_name,
-                    requested_types=requested_view_types,
-                    primary_views=primary_views,
-                    extension_views=extension_views,
-                    view_counts=view_counts,
-                    database=database,
-                    warnings=[],
-                    remediation=(
-                        ["No views were found for the model in the selected database."]
-                        if not model_records
-                        else []
+                        else None
+                    ),
+                    priority=(
+                        int(record["priority"])
+                        if isinstance(record.get("priority"), int)
+                        and not isinstance(record.get("priority"), bool)
+                        else None
+                    ),
+                    inherit_id=inherit_id,
+                    key=str(record["key"])
+                    if isinstance(record.get("key"), str)
+                    else None,
+                    active=(
+                        bool(record["active"])
+                        if isinstance(record.get("active"), bool)
+                        else None
+                    ),
+                    arch_db=(
+                        str(record["arch_db"])
+                        if isinstance(record.get("arch_db"), str)
+                        else None
                     ),
                 )
+            )
+        for model_name in selected_models:
+            model_records = grouped_views[model_name]
+            model_records.sort(
+                key=lambda item: (
+                    item.view_type,
+                    0 if item.mode == "primary" and not item.inherit_id else 1,
+                    item.priority if item.priority is not None else 9999,
+                    item.id,
+                )
+            )
+            primary_views = [
+                record
+                for record in model_records
+                if record.mode == "primary" and not record.inherit_id
+            ]
+            extension_views = [
+                record for record in model_records if record not in primary_views
+            ]
+            view_counts = {
+                "total": len(model_records),
+                "primary": len(primary_views),
+                "extension": len(extension_views),
+            }
+            for view_type in sorted(
+                {record.view_type for record in model_records} | normalized_types
+            ):
+                view_counts[view_type] = sum(
+                    1 for record in model_records if record.view_type == view_type
+                )
+            views_by_model[model_name] = ModelViewInventory(
+                model=model_name,
+                requested_types=requested_view_types,
+                primary_views=primary_views,
+                extension_views=extension_views,
+                view_counts=view_counts,
+                database=database,
+                warnings=[],
+                remediation=(
+                    ["No views were found for the model in the selected database."]
+                    if not model_records
+                    else []
+                ),
+            )
 
         return DocumentationRuntimeInventory(
             models=fields_by_model,

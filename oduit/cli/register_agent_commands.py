@@ -426,6 +426,16 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
         types: str | None = typer.Option(None, "--types"),
         max_models: int | None = typer.Option(None, "--max-models"),
         max_fields_per_model: int | None = typer.Option(None, "--max-fields-per-model"),
+        progress: bool = typer.Option(
+            False,
+            "--progress/--no-progress",
+            help="Print technical documentation generation progress to stderr.",
+        ),
+        progress_level: str = typer.Option(
+            "compact",
+            "--progress-level",
+            help="Progress verbosity: compact, model, or debug.",
+        ),
         path_prefix: str | None = typer.Option(None, "--path"),
     ) -> None:
         """Create or preview split deterministic technical evidence."""
@@ -444,6 +454,8 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             types=types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            progress=progress,
+            progress_level=progress_level,
             path_prefix=path_prefix,
             resolve_agent_global_config_fn=resolve_agent_global_config_fn,
             agent_fail_fn=agent_fail_fn,
@@ -479,6 +491,16 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
         types: str | None = typer.Option(None, "--types"),
         max_models: int | None = typer.Option(None, "--max-models"),
         max_fields_per_model: int | None = typer.Option(None, "--max-fields-per-model"),
+        progress: bool = typer.Option(
+            False,
+            "--progress/--no-progress",
+            help="Print technical documentation generation progress to stderr.",
+        ),
+        progress_level: str = typer.Option(
+            "compact",
+            "--progress-level",
+            help="Progress verbosity: compact, model, or debug.",
+        ),
         path_prefix: str | None = typer.Option(None, "--path"),
     ) -> None:
         """Create or preview split LLM/human architecture report seed."""
@@ -498,6 +520,8 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             types=types,
             max_models=max_models,
             max_fields_per_model=max_fields_per_model,
+            progress=progress,
+            progress_level=progress_level,
             path_prefix=path_prefix,
             resolve_agent_global_config_fn=resolve_agent_global_config_fn,
             agent_fail_fn=agent_fail_fn,

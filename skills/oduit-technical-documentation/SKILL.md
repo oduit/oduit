@@ -55,8 +55,8 @@ Never emit internal reasoning markers such as `Thought:` or `Thinking:` in user-
 Do this:
 
 ```bash
-oduit agent technical-evidence @addons/<module> --allow-mutation --source-only
-oduit agent technical-report @addons/<module> --allow-mutation --source-only
+oduit agent technical-evidence @addons/<module> --allow-mutation --source-only --progress
+oduit agent technical-report @addons/<module> --allow-mutation --source-only --progress
 oduit agent technical-doc-diff @addons/<module> --include-diff
 oduit agent technical-doc-check @addons/<module> --include-files
 ```
@@ -64,8 +64,8 @@ oduit agent technical-doc-check @addons/<module> --include-files
 or, for the human CLI fallback:
 
 ```bash
-oduit docs technical-evidence @addons/<module> --output-in-addon --source-only
-oduit docs technical-report @addons/<module> --output-in-addon --source-only
+oduit docs technical-evidence @addons/<module> --output-in-addon --source-only --progress
+oduit docs technical-report @addons/<module> --output-in-addon --source-only --progress
 oduit docs technical-diff @addons/<module> --include-diff
 oduit docs technical-check @addons/<module> --include-files
 ```
@@ -125,8 +125,8 @@ If addon resolution fails, stop and report the configured `addons_path` issue. D
 Use this when the user asks to review, plan, or preview documentation.
 
 ```bash
-oduit agent technical-evidence @addons/<module>
-oduit agent technical-report @addons/<module>
+oduit agent technical-evidence @addons/<module> --progress
+oduit agent technical-report @addons/<module> --progress
 oduit agent technical-doc-diff @addons/<module> --include-diff
 oduit agent technical-doc-check @addons/<module> --include-files
 ```
@@ -136,7 +136,8 @@ Write evidence:
 ```bash
 oduit agent technical-evidence @addons/<module> \
   --allow-mutation \
-  --source-only
+  --source-only \
+  --progress
 ```
 
 Write report seed:
@@ -144,12 +145,16 @@ Write report seed:
 ```bash
 oduit agent technical-report @addons/<module> \
   --allow-mutation \
-  --source-only
+  --source-only \
+  --progress
 ```
 
 Expected behavior:
 
 Never manually edit `docs/architecture.evidence.md`. LLM/human edits belong in `docs/architecture.md`.
+Generate runtime evidence once. `technical-report` must consume
+`docs/architecture.evidence.md` and must not rerun runtime metadata enrichment
+when valid evidence exists.
 
 If files already exist and the user asked to update/replace them:
 
@@ -158,17 +163,37 @@ If files already exist and the user asked to update/replace them:
 oduit agent technical-evidence @addons/<module> \
   --allow-mutation \
   --source-only \
+  --progress \
   --force
 
 # Replace report seed.
 oduit agent technical-report @addons/<module> \
   --allow-mutation \
   --source-only \
+  --progress \
   --force
 ```
 
 Use `technical-report --force` only when replacement is explicitly requested and
 useful human-written content in `docs/architecture.md` has been preserved.
+
+Runtime mode (safe dev/test DB only):
+
+```bash
+oduit agent technical-evidence @addons/<module> \
+  --allow-mutation \
+  --runtime \
+  --force \
+  --progress \
+  --max-models 40 \
+  --max-fields-per-model 120 \
+  --types form,tree,kanban,search
+
+oduit agent technical-report @addons/<module> \
+  --allow-mutation \
+  --force \
+  --progress
+```
 
 After writing, always read the generated file before finalizing:
 
@@ -485,8 +510,8 @@ If `<addon>/docs/architecture.md` already exists:
 4. Use `--force` only when the user asked to update or replace files:
 
    ```bash
-   oduit agent technical-evidence @addons/<module> --allow-mutation --source-only --force
-   oduit agent technical-report @addons/<module> --allow-mutation --source-only --force
+   oduit agent technical-evidence @addons/<module> --allow-mutation --source-only --force --progress
+   oduit agent technical-report @addons/<module> --allow-mutation --source-only --force --progress
    ```
 
 Do not overwrite existing architecture documentation silently.
@@ -496,10 +521,10 @@ Do not overwrite existing architecture documentation silently.
 For several related addons, still generate one addon-local Arc42 file per addon:
 
 ```bash
-oduit agent technical-evidence @addons/<module_a> --allow-mutation --source-only
-oduit agent technical-report @addons/<module_a> --allow-mutation --source-only
-oduit agent technical-evidence @addons/<module_b> --allow-mutation --source-only
-oduit agent technical-report @addons/<module_b> --allow-mutation --source-only
+oduit agent technical-evidence @addons/<module_a> --allow-mutation --source-only --progress
+oduit agent technical-report @addons/<module_a> --allow-mutation --source-only --progress
+oduit agent technical-evidence @addons/<module_b> --allow-mutation --source-only --progress
+oduit agent technical-report @addons/<module_b> --allow-mutation --source-only --progress
 ```
 
 Then optionally generate supplemental bundle/dependency docs if useful:
@@ -536,8 +561,8 @@ Report the missing addon or incorrect `addons_path`. Do not fabricate a path.
 Use an explicit addon path:
 
 ```bash
-oduit agent technical-evidence @addons/<module> --allow-mutation --source-only
-oduit agent technical-report @addons/<module> --allow-mutation --source-only
+oduit agent technical-evidence @addons/<module> --allow-mutation --source-only --progress
+oduit agent technical-report @addons/<module> --allow-mutation --source-only --progress
 ```
 
 Do not write by bare module name when multiple candidate roots exist.
@@ -547,8 +572,8 @@ Do not write by bare module name when multiple candidate roots exist.
 Regenerate source-only:
 
 ```bash
-oduit agent technical-evidence @addons/<module> --source-only --allow-mutation
-oduit agent technical-report @addons/<module> --source-only --allow-mutation
+oduit agent technical-evidence @addons/<module> --source-only --allow-mutation --progress
+oduit agent technical-report @addons/<module> --source-only --allow-mutation --progress
 ```
 
 State in the document that runtime enrichment was unavailable.
@@ -561,10 +586,11 @@ Regenerate with limits:
 oduit agent technical-evidence @addons/<module> \
   --allow-mutation \
   --source-only \
+  --progress \
   --max-models 30 \
   --max-fields-per-model 80 \
   --types form,tree,search
-oduit agent technical-report @addons/<module> --allow-mutation --source-only
+oduit agent technical-report @addons/<module> --allow-mutation --source-only --progress
 ```
 
 ### Existing file
@@ -572,8 +598,8 @@ oduit agent technical-report @addons/<module> --allow-mutation --source-only
 Use `--force` only after confirming replacement/update is intended:
 
 ```bash
-oduit agent technical-evidence @addons/<module> --allow-mutation --source-only --force
-oduit agent technical-report @addons/<module> --allow-mutation --source-only --force
+oduit agent technical-evidence @addons/<module> --allow-mutation --source-only --force --progress
+oduit agent technical-report @addons/<module> --allow-mutation --source-only --force --progress
 ```
 
 ## Safety rules
