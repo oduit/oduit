@@ -190,6 +190,9 @@ class DatabaseOperationsService(OperationsService):
         extension: str | None = None,
         raise_on_error: bool = False,
         db_user: str | None = None,
+        with_demo: bool = False,
+        country: str | None = None,
+        language: str | None = None,
     ) -> dict:
         """Create database and return operation result
 
@@ -201,6 +204,9 @@ class DatabaseOperationsService(OperationsService):
             extension: Create extension in database (e.g., 'postgis')
             raise_on_error: Raise exception on failure instead of returning error
             db_user: Database user for role operations (optional)
+            with_demo: Initialize with demo data
+            country: Country ISO code for main company
+            language: Default language for initialization
 
         Returns:
             Dictionary with operation result including success status and command.
@@ -212,6 +218,7 @@ class DatabaseOperationsService(OperationsService):
         db_name = self.operations.config.get_optional("db_name", "unknown")
 
         create_result = None
+        init_result = None
         cmd_role = None
         cmd_alter = None
         cmd_extension = None
@@ -235,6 +242,15 @@ class DatabaseOperationsService(OperationsService):
 
         builder = DatabaseCommandBuilder(self.operations.config, with_sudo=with_sudo)
         create_operation = builder.create_command().build_operation()
+        init_command = (
+            DatabaseCommandBuilder(self.operations.config, with_sudo=False)
+            .init_command(
+                with_demo=with_demo,
+                country=country,
+                language=language,
+            )
+            .build()
+        )
 
         try:
             if self.operations.verbose and not suppress_output:
@@ -281,10 +297,24 @@ class DatabaseOperationsService(OperationsService):
             create_return_code = (
                 create_result.get("return_code", 1) if create_result else 1
             )
+            if create_success:
+                init_result = self.operations.process_manager.run_command(
+                    init_command,
+                    verbose=self.operations.verbose,
+                    suppress_output=suppress_output,
+                )
+
+            init_success = init_result.get("success", False) if init_result else True
+            init_return_code = init_result.get("return_code", 1) if init_result else 0
             final_result = {
-                "success": create_success,
-                "return_code": create_return_code,
+                "success": create_success and init_success,
+                "return_code": (
+                    init_return_code
+                    if create_success and init_result
+                    else create_return_code
+                ),
                 "command": create_operation.command,
+                "init_command": init_command,
                 "operation": "create_database",
                 "database": db_name,
             }
@@ -295,6 +325,12 @@ class DatabaseOperationsService(OperationsService):
                         "stdout": create_result.get("stdout", ""),
                         "stderr": create_result.get("stderr", ""),
                     }
+                )
+            if init_result:
+                final_result["init_stdout"] = init_result.get("stdout", "")
+                final_result["init_stderr"] = init_result.get("stderr", "")
+                final_result["stdout"] = (
+                    f"{final_result.get('stdout', '')}{init_result.get('stdout', '')}"
                 )
 
         except ConfigError as e:

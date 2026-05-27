@@ -608,6 +608,45 @@ class TestCLICommands(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         mock_ops_instance.db_exists.assert_called_once()
         mock_ops_instance.create_db.assert_called_once()
+        _args, kwargs = mock_ops_instance.create_db.call_args
+        self.assertFalse(kwargs.get("with_demo"))
+        self.assertIsNone(kwargs.get("country"))
+        self.assertIsNone(kwargs.get("language"))
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("builtins.input")
+    def test_create_db_with_init_flags(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
+        """Test create-db forwards db init flags."""
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+        mock_input.return_value = "y"
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "create-db",
+                "--with-demo",
+                "--country",
+                "DE",
+                "--language",
+                "de_DE",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        _args, kwargs = mock_ops_instance.create_db.call_args
+        self.assertTrue(kwargs.get("with_demo"))
+        self.assertEqual(kwargs.get("country"), "DE")
+        self.assertEqual(kwargs.get("language"), "de_DE")
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")

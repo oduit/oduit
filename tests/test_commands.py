@@ -121,6 +121,46 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
         ]
         self.assertEqual(result_no_user, expected_no_user)
 
+    def test_build_init_command(self):
+        """Test the db init command with optional flags."""
+        env_config = {
+            "python_bin": "/usr/bin/python3",
+            "odoo_bin": "/opt/odoo/odoo-bin",
+            "db_name": "test_db",
+            "db_user": "test_user",
+            "db_host": "localhost",
+            "db_port": 5432,
+            "db_password": "secret",
+        }
+        config_provider = ConfigProvider(env_config)
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+
+        result = builder.init_command(
+            with_demo=True, country="DE", language="de_DE"
+        ).build()
+
+        expected = [
+            "/usr/bin/python3",
+            "/opt/odoo/odoo-bin",
+            "db",
+            "init",
+            "test_db",
+            "--with-demo",
+            "--country",
+            "DE",
+            "--language",
+            "de_DE",
+            "--db_host",
+            "localhost",
+            "--db_port",
+            "5432",
+            "--db_user",
+            "test_user",
+            "--db_password",
+            "secret",
+        ]
+        self.assertEqual(result, expected)
+
     def test_create_build_role_command(self):
         """Test the build_role_command method."""
         env_config = {

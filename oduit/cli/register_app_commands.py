@@ -442,6 +442,17 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--db-user",
             help="Specify the database user (overrides config setting)",
         ),
+        with_demo: bool = typer.Option(
+            False,
+            "--with-demo",
+            help="Initialize the database with demo data",
+        ),
+        country: str | None = typer.Option(
+            None,
+            "--country",
+            help="Country ISO code for the main company (for example: DE, US)",
+        ),
+        language: str | None = language_option,
     ) -> None:
         """Create database."""
         create_db_command_impl(
@@ -453,6 +464,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             non_interactive=non_interactive,
             allow_mutation=allow_mutation,
             db_user=db_user,
+            with_demo=with_demo,
+            country=country,
+            language=language,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,

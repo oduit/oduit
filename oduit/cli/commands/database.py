@@ -26,6 +26,9 @@ def create_db_command(
     non_interactive: bool,
     allow_mutation: bool,
     db_user: str | None,
+    with_demo: bool,
+    country: str | None,
+    language: str | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
@@ -118,6 +121,9 @@ def create_db_command(
             alter_role=alter_role,
             with_sudo=with_sudo,
             db_user=db_user,
+            with_demo=with_demo,
+            country=country,
+            language=language,
         )
     else:
         print_info("Database creation cancelled.")

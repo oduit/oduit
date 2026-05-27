@@ -264,6 +264,9 @@ class OdooOperations:
         extension: str | None = None,
         raise_on_error: bool = False,
         db_user: str | None = None,
+        with_demo: bool = False,
+        country: str | None = None,
+        language: str | None = None,
     ) -> dict:
         """Create database and return operation result"""
         return self._database_service.create_db(
@@ -274,6 +277,9 @@ class OdooOperations:
             extension=extension,
             raise_on_error=raise_on_error,
             db_user=db_user,
+            with_demo=with_demo,
+            country=country,
+            language=language,
         )
 
     def list_db(
