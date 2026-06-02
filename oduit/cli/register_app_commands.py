@@ -67,6 +67,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     update_command_impl = context.implementations.update_command_impl
     uninstall_command_impl = context.implementations.uninstall_command_impl
     test_command_impl = context.implementations.test_command_impl
+    apply_command_impl = context.implementations.apply_command_impl
     create_db_command_impl = context.implementations.create_db_command_impl
     list_db_command_impl = context.implementations.list_db_command_impl
     list_env_command_impl = context.implementations.list_env_command_impl
@@ -192,6 +193,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         include_stdout: bool = typer.Option(
             False, "--include-stdout", help="Include stdout in result JSON"
         ),
+        operation_set: str | None = typer.Option(
+            None,
+            "--set",
+            help="Operation set TOML file or short name from .oduit/sets",
+        ),
     ) -> None:
         """Install module."""
         install_command_impl(
@@ -206,6 +212,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             compact=compact,
             include_command=include_command,
             include_stdout=include_stdout,
+            operation_set=operation_set,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
@@ -251,6 +258,17 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--compact",
             help="Suppress INFO logs at startup for cleaner output",
         ),
+        include_command: bool = typer.Option(
+            False, "--include-command", help="Include executed command in result JSON"
+        ),
+        include_stdout: bool = typer.Option(
+            False, "--include-stdout", help="Include stdout in result JSON"
+        ),
+        operation_set: str | None = typer.Option(
+            None,
+            "--set",
+            help="Operation set TOML file or short name from .oduit/sets",
+        ),
     ) -> None:
         """Update module."""
         update_command_impl(
@@ -263,6 +281,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             log_level=log_level,
             allow_mutation=allow_mutation,
             compact=compact,
+            include_command=include_command,
+            include_stdout=include_stdout,
+            operation_set=operation_set,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
@@ -370,6 +391,19 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         include_stdout: bool = typer.Option(
             False, "--include-stdout", help="Include stdout in result JSON"
         ),
+        operation_set: str | None = typer.Option(
+            None,
+            "--set",
+            help="Operation set TOML file or short name from .oduit/sets",
+        ),
+        allow_missing_test_files: bool = typer.Option(
+            False,
+            "--allow-missing-test-files",
+            help=(
+                "Allow test_files entries in an operation set even when "
+                "they do not exist"
+            ),
+        ),
     ) -> None:
         """Run module tests with various options.
 
@@ -392,6 +426,54 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             compact=compact,
             log_level=log_level,
             allow_mutation=allow_mutation,
+            include_command=include_command,
+            include_stdout=include_stdout,
+            operation_set=operation_set,
+            allow_missing_test_files=allow_missing_test_files,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @app.command("apply")
+    def apply(
+        ctx: typer.Context,
+        operation_set: str = typer.Argument(
+            ...,
+            help="Operation set TOML file or short name from .oduit/sets",
+        ),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag "
+                "protection is enabled"
+            ),
+        ),
+        allow_missing_test_files: bool = typer.Option(
+            False,
+            "--allow-missing-test-files",
+            help="Allow test_files entries even when they do not exist",
+        ),
+        include_command: bool = typer.Option(
+            False,
+            "--include-command",
+            help="Include executed commands in result JSON",
+        ),
+        include_stdout: bool = typer.Option(
+            False,
+            "--include-stdout",
+            help="Include stdout in result JSON",
+        ),
+    ) -> None:
+        """Run an operation set: install, update, then test in order."""
+        apply_command_impl(
+            ctx,
+            operation_set=operation_set,
+            allow_mutation=allow_mutation,
+            allow_missing_test_files=allow_missing_test_files,
             include_command=include_command,
             include_stdout=include_stdout,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
@@ -447,12 +529,27 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--with-demo",
             help="Initialize the database with demo data",
         ),
+        without_demo: bool = typer.Option(
+            False,
+            "--without-demo",
+            help="Initialize the database without demo data",
+        ),
         country: str | None = typer.Option(
             None,
             "--country",
             help="Country ISO code for the main company (for example: DE, US)",
         ),
         language: str | None = language_option,
+        username: str = typer.Option(
+            "admin",
+            "--username",
+            help="Username for the new database admin user",
+        ),
+        password: str = typer.Option(
+            "admin",
+            "--password",
+            help="Password for the new database admin user",
+        ),
     ) -> None:
         """Create database."""
         create_db_command_impl(
@@ -465,8 +562,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             allow_mutation=allow_mutation,
             db_user=db_user,
             with_demo=with_demo,
+            without_demo=without_demo,
             country=country,
             language=language,
+            username=username,
+            password=password,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,

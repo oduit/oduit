@@ -279,6 +279,35 @@ When using arbitrary execution:
 - pass `--commit` only when mutation is intended and approved
 - in Python API use, pass `allow_unsafe=True` explicitly where required
 
+## Operation sets
+
+Use operation sets when a repository has repeated install/update/test plans under
+`.oduit/sets/`.
+
+Prefer explicit `--set` syntax:
+
+```bash
+oduit install --set base
+oduit update --set dev
+oduit test --set helpdesk_tests
+oduit apply dev
+```
+
+Operation sets are execution plans, not environment configs. Do not edit
+`.oduit.toml` to encode one-off module batches. Keep `.oduit.toml` for binaries,
+database, addons path, mutation policy, and runtime parameters.
+
+Before running a set, inspect it like any other source file. Confirm the target
+environment and mutation policy with:
+
+```bash
+oduit doctor
+oduit agent resolve-config
+```
+
+If the environment requires explicit mutation confirmation, pass
+`--allow-mutation` only after reviewing the set.
+
 ## Python API
 
 Prefer the CLI agent surface for external coding-agent workflows. Use the

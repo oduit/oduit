@@ -230,6 +230,8 @@ def output_result_to_json(
         "source_addon_candidates",
         "runtime_source_modules",
         "source_candidates",
+        "executed_operations",
+        "skipped_operations",
     }
     output = {
         k: v for k, v in output.items() if v != [] or k in meaningful_empty_fields

@@ -245,6 +245,7 @@ from .commands.dependencies import (
 )
 from .commands.dependencies import list_depends_command as _list_depends_command_impl
 from .commands.dependencies import list_missing_command as _list_missing_command_impl
+from .commands.runtime import apply_command as _apply_command_impl
 from .commands.runtime import doctor_command as _doctor_command_impl
 from .commands.runtime import export_lang_command as _export_lang_command_impl
 from .commands.runtime import (
@@ -517,6 +518,7 @@ _app_registration_context = AppRegistrationContext(
         update_command_impl=_update_command_impl,
         uninstall_command_impl=_uninstall_command_impl,
         test_command_impl=_test_command_impl,
+        apply_command_impl=_apply_command_impl,
         create_db_command_impl=_create_db_command_impl,
         list_db_command_impl=_list_db_command_impl,
         list_env_command_impl=_list_env_command_impl,

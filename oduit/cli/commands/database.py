@@ -27,8 +27,11 @@ def create_db_command(
     allow_mutation: bool,
     db_user: str | None,
     with_demo: bool,
+    without_demo: bool,
     country: str | None,
     language: str | None,
+    username: str,
+    password: str,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
@@ -36,6 +39,11 @@ def create_db_command(
     confirmation_required_error_fn: Any,
 ) -> None:
     """Create the configured database."""
+    if with_demo and without_demo:
+        raise typer.BadParameter(
+            "--with-demo and --without-demo are mutually exclusive"
+        )
+
     global_config, env_config = resolve_command_env_config_fn(ctx)
     require_cli_runtime_db_mutation_fn(
         global_config=global_config,
@@ -122,8 +130,12 @@ def create_db_command(
             with_sudo=with_sudo,
             db_user=db_user,
             with_demo=with_demo,
+            without_demo=without_demo,
             country=country,
             language=language,
+            username=username,
+            password=password,
+            odoo_series=global_config.odoo_series,
         )
     else:
         print_info("Database creation cancelled.")

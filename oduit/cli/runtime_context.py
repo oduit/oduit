@@ -87,6 +87,7 @@ class AppCommandImplementations:
     update_command_impl: Any
     uninstall_command_impl: Any
     test_command_impl: Any
+    apply_command_impl: Any
     create_db_command_impl: Any
     list_db_command_impl: Any
     list_env_command_impl: Any

@@ -169,6 +169,71 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
         self.assertIn("--without-demo=all", result)
         self.assertNotIn("--with-demo", result)
 
+    def test_build_legacy_init_base_command_conflicting_demo_flags(self):
+        env_config = {
+            "python_bin": "/usr/bin/python3",
+            "odoo_bin": "/opt/odoo/odoo-bin",
+            "db_name": "test_db",
+        }
+        config_provider = ConfigProvider(env_config)
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+
+        with self.assertRaises(ValueError):
+            builder.legacy_init_base_command(with_demo=True, without_demo=True)
+
+    def test_build_native_db_init_command(self):
+        env_config = {
+            "python_bin": "/usr/bin/python3",
+            "odoo_bin": "/opt/odoo/odoo-bin",
+            "db_name": "test_db",
+            "db_user": "test_user",
+            "db_password": "secret",
+            "db_host": "localhost",
+            "db_port": 5432,
+        }
+        config_provider = ConfigProvider(env_config)
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+
+        result = builder.native_db_init_command(
+            with_demo=True,
+            country="DE",
+            language="de_DE",
+            username="root",
+            password="secret",
+        ).build()
+
+        self.assertEqual(result[0], "/usr/bin/python3")
+        self.assertEqual(result[1], "/opt/odoo/odoo-bin")
+        self.assertEqual(result[2], "db")
+        self.assertIn("--db_user=test_user", result)
+        self.assertIn("--db_password=secret", result)
+        self.assertIn("--db_host=localhost", result)
+        self.assertIn("--db_port=5432", result)
+        self.assertIn("init", result)
+        self.assertIn("test_db", result)
+        self.assertIn("--with-demo", result)
+        self.assertIn("--country", result)
+        self.assertIn("DE", result)
+        self.assertIn("--language", result)
+        self.assertIn("de_DE", result)
+        self.assertIn("--username", result)
+        self.assertIn("root", result)
+        self.assertIn("--password", result)
+
+    def test_build_native_db_init_command_without_demo_flag_not_forwarded(self):
+        env_config = {
+            "python_bin": "/usr/bin/python3",
+            "odoo_bin": "/opt/odoo/odoo-bin",
+            "db_name": "test_db",
+        }
+        config_provider = ConfigProvider(env_config)
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+
+        result = builder.native_db_init_command(without_demo=True).build()
+
+        self.assertNotIn("--with-demo", result)
+        self.assertNotIn("--without-demo=all", result)
+
     def test_create_build_role_command(self):
         """Test the build_role_command method."""
         env_config = {

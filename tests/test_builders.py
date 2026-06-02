@@ -459,3 +459,45 @@ class TestDatabaseCommandBuilder:
 
         assert "--without-demo=all" in cmd
         assert "--with-demo" not in cmd
+
+    def test_legacy_init_base_command_rejects_conflicting_demo_flags(
+        self, config_provider
+    ):
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        with pytest.raises(ValueError):
+            builder.legacy_init_base_command(with_demo=True, without_demo=True)
+
+    def test_native_db_init_command_with_flags(self, config_provider):
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        cmd = builder.native_db_init_command(
+            with_demo=True,
+            country="DE",
+            language="de_DE",
+            username="root",
+            password="secret",
+        ).build()
+
+        assert cmd[0] == "/usr/bin/python3"
+        assert cmd[1] == "/opt/odoo/odoo-bin"
+        assert "db" in cmd
+        assert "init" in cmd
+        init_index = cmd.index("init")
+        assert cmd[init_index + 1] == "test_db"
+        assert "--with-demo" in cmd
+        assert "--country" in cmd
+        assert "DE" in cmd
+        assert "--language" in cmd
+        assert "de_DE" in cmd
+        assert "--username" in cmd
+        assert "root" in cmd
+        assert "--password" in cmd
+        assert "secret" in cmd
+
+    def test_native_db_init_command_without_demo_has_no_demo_flags(
+        self, config_provider
+    ):
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        cmd = builder.native_db_init_command(without_demo=True).build()
+
+        assert "--with-demo" not in cmd
+        assert "--without-demo=all" not in cmd

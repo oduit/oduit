@@ -97,6 +97,10 @@ CONTROLLED_RUNTIME_MUTATION_OPERATIONS = {
     "drop_db",
     "run_odoo",
     "run_shell",
+    "operation_set_install",
+    "operation_set_update",
+    "operation_set_test",
+    "operation_set_apply",
 }
 
 CONTROLLED_SOURCE_MUTATION_OPERATIONS = {

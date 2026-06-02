@@ -265,8 +265,12 @@ class OdooOperations:
         raise_on_error: bool = False,
         db_user: str | None = None,
         with_demo: bool = False,
+        without_demo: bool = False,
         country: str | None = None,
         language: str | None = None,
+        username: str = "admin",
+        password: str = "admin",
+        odoo_series: OdooSeries | None = None,
     ) -> dict:
         """Create database and return operation result"""
         return self._database_service.create_db(
@@ -278,8 +282,12 @@ class OdooOperations:
             raise_on_error=raise_on_error,
             db_user=db_user,
             with_demo=with_demo,
+            without_demo=without_demo,
             country=country,
             language=language,
+            username=username,
+            password=password,
+            odoo_series=odoo_series,
         )
 
     def list_db(

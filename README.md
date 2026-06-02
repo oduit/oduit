@@ -108,6 +108,61 @@ oduit --env dev run
 oduit --env dev test --test-tags /sale
 ```
 
+### Operation sets
+
+Use operation sets for repeatable install, update, and test plans. They are not
+environment configuration; `.oduit.toml` still defines the active Odoo environment.
+
+Store project sets under `.oduit/sets/`:
+
+```text
+.oduit/
+  sets/
+    base.toml
+    helpdesk_tests.toml
+```
+
+Example set file:
+
+```toml
+name = "helpdesk test set"
+description = "Install/update helpdesk addons and run focused tests"
+
+[test]
+install = ["has_base", "has_helpdesk"]
+update = ["has_helpdesk"]
+test_tags = ["/has_helpdesk", "/has_helpdesk:TestTicketFlow"]
+test_files = [
+  "addons/has_helpdesk/tests/test_ticket_flow.py",
+  "addons/has_helpdesk/tests/test_portal.py",
+]
+coverage = "has_helpdesk"
+compact = true
+stop_on_error = true
+```
+
+Run a specific section:
+
+```bash
+oduit install --set base
+oduit update --set dev
+oduit test --set helpdesk_tests
+```
+
+Run a mixed workflow in order:
+
+```bash
+oduit apply dev
+```
+
+Short names resolve as:
+
+1. the exact file path provided
+2. `.oduit/sets/<name>.toml`
+3. `.oduit/sets/<name>`
+
+Paths inside `test_files` are resolved relative to the set file.
+
 ## CLI Highlights
 
 ```bash
@@ -181,9 +236,22 @@ oduit --env dev uninstall sale --allow-uninstall
 oduit --env dev test --test-tags /sale
 oduit --env dev shell
 oduit --env dev --non-interactive create-db
+oduit --env dev create-db --without-demo --country DE --language de_DE
+oduit --env dev create-db --with-demo --username admin --password admin
 oduit --env dev create-addon my_custom_module --allow-mutation
 oduit --env dev export-lang sale --allow-mutation --language de_DE
+
+# Operation sets
+oduit --env dev install --set base
+oduit --env dev test --set helpdesk_tests
+oduit --env dev apply dev
+oduit --env dev --json apply dev
 ```
+
+`create-db` exposes Odoo 19-style initialization flags across supported Odoo
+series. On Odoo 19+, oduit uses native `odoo-bin db init`. On older Odoo
+versions, oduit emulates equivalent behavior with `createdb` plus
+`-i base --stop-after-init` and post-init updates.
 
 ## Split addon technical documentation
 
