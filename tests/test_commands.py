@@ -121,8 +121,8 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
         ]
         self.assertEqual(result_no_user, expected_no_user)
 
-    def test_build_init_command(self):
-        """Test the db init command with optional flags."""
+    def test_build_legacy_init_base_command(self):
+        """Test the legacy base init command with optional flags."""
         env_config = {
             "python_bin": "/usr/bin/python3",
             "odoo_bin": "/opt/odoo/odoo-bin",
@@ -135,31 +135,39 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
         config_provider = ConfigProvider(env_config)
         builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
 
-        result = builder.init_command(
-            with_demo=True, country="DE", language="de_DE"
+        result = builder.legacy_init_base_command(
+            with_demo=True, language="de_DE"
         ).build()
 
-        expected = [
-            "/usr/bin/python3",
-            "/opt/odoo/odoo-bin",
-            "db",
-            "init",
-            "test_db",
-            "--with-demo",
-            "--country",
-            "DE",
-            "--language",
-            "de_DE",
-            "--db_host",
-            "localhost",
-            "--db_port",
-            "5432",
-            "--db_user",
-            "test_user",
-            "--db_password",
-            "secret",
-        ]
-        self.assertEqual(result, expected)
+        self.assertEqual(result[0], "/usr/bin/python3")
+        self.assertEqual(result[1], "/opt/odoo/odoo-bin")
+        self.assertNotIn("db", result)
+        self.assertIn("-i", result)
+        self.assertIn("base", result)
+        self.assertIn("--stop-after-init", result)
+        self.assertIn("--no-http", result)
+        self.assertIn("--load-language=de_DE", result)
+        self.assertIn("--with-demo", result)
+        self.assertIn("--database=test_db", result)
+        self.assertIn("--db_host=localhost", result)
+        self.assertIn("--db_port=5432", result)
+        self.assertIn("--db_user=test_user", result)
+        self.assertIn("--db_password=secret", result)
+
+    def test_build_legacy_init_base_command_without_demo(self):
+        """Test the legacy base init command defaults to without demo."""
+        env_config = {
+            "python_bin": "/usr/bin/python3",
+            "odoo_bin": "/opt/odoo/odoo-bin",
+            "db_name": "test_db",
+        }
+        config_provider = ConfigProvider(env_config)
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+
+        result = builder.legacy_init_base_command().build()
+
+        self.assertIn("--without-demo=all", result)
+        self.assertNotIn("--with-demo", result)
 
     def test_create_build_role_command(self):
         """Test the build_role_command method."""

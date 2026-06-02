@@ -1,7 +1,10 @@
 # Project-local taskledger configuration.
 # This file lives in the source project root.
 config_version = 1
-taskledger_dir = '.taskledger'
+taskledger_dir = '../taskledger-state/oduit'
+
+# Stable project identity. Commit this with your source tree.
+project_uuid = "4d0e8d35-0a39-4183-92d8-7863d7e7de14"
 
 # Project-local taskledger overrides.
 # The source-budget settings below are the active composition defaults.
@@ -22,5 +25,5 @@ taskledger_dir = '.taskledger'
 # Taskledger branch-scoped state. This block is intentionally safe to commit.
 ledger_ref = "main"
 ledger_parent_ref = ""
-ledger_next_task_number = 17
+ledger_next_task_number = 18
 ledger_branch_guard = "off"

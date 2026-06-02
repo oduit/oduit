@@ -973,6 +973,55 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
             self._set_value(f"{db_name}")
         return self
 
+    def legacy_init_base_command(
+        self,
+        *,
+        with_demo: bool = False,
+        language: str | None = None,
+    ) -> "DatabaseCommandBuilder":
+        """Build legacy-compatible Odoo server init command for base installation."""
+        self.config.validate_keys(["odoo_bin", "db_name"], "database base init command")
+
+        if python_bin := self.config.get_optional("python_bin"):
+            self._set_command(str(python_bin))
+        self._set_command(self.config.get_required("odoo_bin"))
+
+        if config_file := self.config.get_optional("config_file"):
+            self._set_parameter("config", str(config_file))
+        if addons_path := self.config.get_optional("addons_path"):
+            expanded_path = BaseOdooCommandBuilder(self.config)._expand_addons_path(
+                str(addons_path)
+            )
+            self._set_parameter("addons-path", expanded_path)
+        if data_dir := self.config.get_optional("data_dir"):
+            self._set_parameter("data-dir", str(data_dir))
+
+        if db_user := self.config.get_optional("db_user"):
+            self._set_parameter("db_user", str(db_user))
+        if db_password := self.config.get_optional("db_password"):
+            self._set_parameter("db_password", str(db_password))
+        if db_host := self.config.get_optional("db_host"):
+            self._set_parameter("db_host", str(db_host))
+        if db_port := self.config.get_optional("db_port"):
+            self._set_parameter("db_port", str(db_port))
+        if db_sslmode := self.config.get_optional("db_sslmode"):
+            self._set_parameter("db_sslmode", str(db_sslmode))
+
+        self._set_parameter("database", str(self.config.get_required("db_name")))
+        self._set_parameter("i", "base", prefix="-", sep=" ")
+        self._set_flag("stop-after-init")
+        self._set_flag("no-http")
+
+        if language:
+            self._set_parameter("load-language", str(language))
+
+        if with_demo:
+            self._set_flag("with-demo")
+        else:
+            self._set_parameter("without-demo", "all")
+
+        return self
+
     def init_command(
         self,
         *,
@@ -980,35 +1029,12 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         country: str | None = None,
         language: str | None = None,
     ) -> "DatabaseCommandBuilder":
-        """Build Odoo database initialization command."""
-        self.config.validate_keys(
-            ["python_bin", "odoo_bin", "db_name"], "db init command"
+        """Backward-compatible wrapper for legacy base initialization."""
+        _ = country
+        self.legacy_init_base_command(
+            with_demo=with_demo,
+            language=language,
         )
-        tokens = [
-            self.config.get_required("python_bin"),
-            self.config.get_required("odoo_bin"),
-            "db",
-            "init",
-            self.config.get_required("db_name"),
-        ]
-
-        if with_demo:
-            tokens.append("--with-demo")
-        if country:
-            tokens.extend(["--country", country])
-        if language:
-            tokens.extend(["--language", language])
-
-        if db_host := self.config.get_optional("db_host"):
-            tokens.extend(["--db_host", str(db_host)])
-        if db_port := self.config.get_optional("db_port"):
-            tokens.extend(["--db_port", str(db_port)])
-        if db_user := self.config.get_optional("db_user"):
-            tokens.extend(["--db_user", str(db_user)])
-        if db_password := self.config.get_optional("db_password"):
-            tokens.extend(["--db_password", str(db_password)])
-
-        self._append_raw_tokens(tokens)
         return self
 
     def list_db_command(self, db_user: str | None = None) -> "DatabaseCommandBuilder":

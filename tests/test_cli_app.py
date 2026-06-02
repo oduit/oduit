@@ -619,7 +619,7 @@ class TestCLICommands(unittest.TestCase):
     def test_create_db_with_init_flags(
         self, mock_input, mock_config_loader_class, mock_odoo_ops
     ):
-        """Test create-db forwards db init flags."""
+        """Test create-db forwards initialization flags."""
         mock_loader_instance = MagicMock()
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance

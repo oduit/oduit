@@ -435,3 +435,27 @@ class TestDatabaseCommandBuilder:
         cmd = builder.list_db_command(db_user="custom_user").build()
 
         assert cmd == ["psql", "-l", "-U", "custom_user"]
+
+    def test_legacy_init_base_command_with_demo_and_language(self, config_provider):
+        """Test legacy init command includes expected server init flags."""
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        cmd = builder.legacy_init_base_command(with_demo=True, language="de_DE").build()
+
+        assert cmd[0] == "/usr/bin/python3"
+        assert cmd[1] == "/opt/odoo/odoo-bin"
+        assert "db" not in cmd
+        assert "-i" in cmd
+        assert "base" in cmd
+        assert "--stop-after-init" in cmd
+        assert "--no-http" in cmd
+        assert "--load-language=de_DE" in cmd
+        assert "--with-demo" in cmd
+        assert "--without-demo=all" not in cmd
+
+    def test_legacy_init_base_command_without_demo(self, config_provider):
+        """Test legacy init command defaults to --without-demo=all."""
+        builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+        cmd = builder.legacy_init_base_command(with_demo=False).build()
+
+        assert "--without-demo=all" in cmd
+        assert "--with-demo" not in cmd

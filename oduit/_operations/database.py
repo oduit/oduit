@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from textwrap import dedent
+
 from .. import output as _output_module
 from ..builders import DatabaseCommandBuilder
 from ..exceptions import ConfigError, DatabaseOperationError
@@ -9,6 +11,69 @@ from .base import OperationsService
 
 class DatabaseOperationsService(OperationsService):
     """Database command helpers."""
+
+    @staticmethod
+    def _country_update_code(country: str) -> str:
+        country_code = country.strip().upper()
+        return dedent(
+            f"""
+            _oduit_country_code = {country_code!r}
+            _oduit_country = env["res.country"].search(
+                [("code", "=", _oduit_country_code)],
+                limit=1,
+            )
+            if not _oduit_country:
+                raise ValueError(
+                    f"Country {{_oduit_country_code!r}} not found in res.country"
+                )
+            _oduit_company = env.company or env["res.company"].search([], limit=1)
+            if not _oduit_company:
+                raise ValueError("No main company found")
+            _oduit_company.country_id = _oduit_country.id
+            if _oduit_company.partner_id:
+                _oduit_company.partner_id.country_id = _oduit_country.id
+            {{
+                "country_code": _oduit_country_code,
+                "company_id": _oduit_company.id,
+                "partner_id": _oduit_company.partner_id.id
+                    if _oduit_company.partner_id else None,
+            }}
+            """
+        ).strip()
+
+    def _run_country_post_init_update(self, country: str) -> dict:
+        return self.operations.execute_code(
+            self._country_update_code(country),
+            commit=True,
+        )
+
+    @staticmethod
+    def _resolve_create_db_return_code(
+        *,
+        create_success: bool,
+        init_result: dict | None,
+        create_return_code: int,
+        init_return_code: int,
+        country_result: dict | None,
+        country_success: bool,
+    ) -> int:
+        if create_success and init_result and country_result and not country_success:
+            return 1
+        if create_success and init_result:
+            return init_return_code
+        return create_return_code
+
+    def _run_optional_command(self, command: list[str] | None, warning: str) -> None:
+        if not command:
+            return
+        command_result = self.operations.process_manager.run_command(
+            command,
+            verbose=self.operations.verbose,
+        )
+        if command_result and not command_result.get("success", False):
+            print_error(
+                f"Warning: {warning}: {command_result.get('stderr', '').strip()}"
+            )
 
     def db_exists(
         self,
@@ -241,12 +306,11 @@ class DatabaseOperationsService(OperationsService):
             cmd_extension = builder.create_extension_command(extension).build()
 
         builder = DatabaseCommandBuilder(self.operations.config, with_sudo=with_sudo)
-        create_operation = builder.create_command().build_operation()
+        create_operation = builder.create_command(db_user=db_user).build_operation()
         init_command = (
             DatabaseCommandBuilder(self.operations.config, with_sudo=False)
-            .init_command(
+            .legacy_init_base_command(
                 with_demo=with_demo,
-                country=country,
                 language=language,
             )
             .build()
@@ -256,33 +320,12 @@ class DatabaseOperationsService(OperationsService):
             if self.operations.verbose and not suppress_output:
                 print_info(f"Creating database: {db_name}")
 
-            if cmd_role:
-                role_result = self.operations.process_manager.run_command(
-                    cmd_role, verbose=self.operations.verbose
-                )
-                if role_result and not role_result.get("success", False):
-                    print_error(
-                        f"Warning: Role creation command failed: "
-                        f"{role_result.get('stderr', '').strip()}"
-                    )
-            if cmd_alter:
-                alter_result = self.operations.process_manager.run_command(
-                    cmd_alter, verbose=self.operations.verbose
-                )
-                if alter_result and not alter_result.get("success", False):
-                    print_error(
-                        f"Warning: Role alteration command failed: "
-                        f"{alter_result.get('stderr', '').strip()}"
-                    )
-            if cmd_extension:
-                extension_result = self.operations.process_manager.run_command(
-                    cmd_extension, verbose=self.operations.verbose
-                )
-                if extension_result and not extension_result.get("success", False):
-                    print_error(
-                        f"Warning: Extension creation command failed: "
-                        f"{extension_result.get('stderr', '').strip()}"
-                    )
+            self._run_optional_command(cmd_role, "Role creation command failed")
+            self._run_optional_command(cmd_alter, "Role alteration command failed")
+            self._run_optional_command(
+                cmd_extension,
+                "Extension creation command failed",
+            )
 
             create_result = self.operations.process_manager.run_operation(
                 create_operation,
@@ -306,12 +349,21 @@ class DatabaseOperationsService(OperationsService):
 
             init_success = init_result.get("success", False) if init_result else True
             init_return_code = init_result.get("return_code", 1) if init_result else 0
+            country_result = None
+            if create_success and init_success and country:
+                country_result = self._run_country_post_init_update(country)
+            country_success = (
+                country_result.get("success", False) if country_result else True
+            )
             final_result = {
-                "success": create_success and init_success,
-                "return_code": (
-                    init_return_code
-                    if create_success and init_result
-                    else create_return_code
+                "success": create_success and init_success and country_success,
+                "return_code": self._resolve_create_db_return_code(
+                    create_success=create_success,
+                    init_result=init_result,
+                    create_return_code=create_return_code,
+                    init_return_code=init_return_code,
+                    country_result=country_result,
+                    country_success=country_success,
                 ),
                 "command": create_operation.command,
                 "init_command": init_command,
@@ -332,6 +384,12 @@ class DatabaseOperationsService(OperationsService):
                 final_result["stdout"] = (
                     f"{final_result.get('stdout', '')}{init_result.get('stdout', '')}"
                 )
+            if country_result:
+                final_result["country_result"] = country_result
+                if not country_result.get("success", False):
+                    final_result["error"] = country_result.get(
+                        "error", "Country update failed after database initialization"
+                    )
 
         except ConfigError as e:
             final_result = {
