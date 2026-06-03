@@ -8,6 +8,46 @@ Unreleased
 Added
 ~~~~~~~~~~~~~~~~~~~~~
 
+- Add missing parameter to db-create (with_demo, country and language)
+
+- Update init command and fix it for odoo < 19
+
+- Introduce sets for installing, updating or testing multiple addons at once
+
+- Improve set command group, set kind to set a role, allow to fill sets from commands
+
+- Allow to assure that each addon is process in sets
+
+
+
+Fixed
+~~~~~~~~~~~~~~~~~~~~~
+
+- Demo process manager and pytest
+
+- Pytest
+
+- Pytest fix
+
+- Windows pytest fix
+
+
+
+Documentation
+~~~~~~~~~~~~~~~~~~~~~
+
+- Update changelog
+
+- Update docs regarding new set commands
+
+
+0.4.6
+----------
+
+
+Added
+~~~~~~~~~~~~~~~~~~~~~
+
 - Add technical documentation schema
 
 - Update skills
