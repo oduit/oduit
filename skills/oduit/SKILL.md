@@ -299,9 +299,6 @@ For large or fragile install/update sets, prefer `--retry-missing 1` or
 `--one-by-one`. These modes use `--verify-state` by default, which queries
 the runtime module state instead of trusting only Odoo process logs.
 
-Do not use `oduit install --set`, `oduit update --set`, `oduit test --set`, or
-root-level `oduit apply` unless those commands have been explicitly implemented.
-
 Operation sets are execution plans, not environment configs. Keep `.oduit.toml`
 for binaries, database, addons path, mutation policy, and runtime parameters.
 

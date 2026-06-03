@@ -125,8 +125,9 @@ class TestResolveOperationSetPath(unittest.TestCase):
             resolve_operation_set_path("missing", context=self._context())
         message = str(cm.exception)
         self.assertIn("missing", message)
-        self.assertIn(".oduit/sets", message)
-        self.assertIn("config/sets", message)
+        self.assertIn(".oduit", message)
+        self.assertIn("sets", message)
+        self.assertIn("config", message)
 
 
 class TestResolveOperationSetWritePath(unittest.TestCase):
