@@ -25,5 +25,5 @@ project_uuid = "4d0e8d35-0a39-4183-92d8-7863d7e7de14"
 # Taskledger branch-scoped state. This block is intentionally safe to commit.
 ledger_ref = "main"
 ledger_parent_ref = ""
-ledger_next_task_number = 22
+ledger_next_task_number = 23
 ledger_branch_guard = "off"

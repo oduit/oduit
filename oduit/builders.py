@@ -22,6 +22,10 @@ from .module_manager import ModuleManager
 _logger = logging.getLogger(__name__)
 
 
+def _split_module_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 @dataclass
 class CommandOperation:
     """Structured command operation containing both command and metadata."""
@@ -749,15 +753,16 @@ class UpdateCommandBuilder(BaseOdooCommandBuilder):
         self.update_module(module)
 
     def build_operation(self) -> CommandOperation:
+        split_modules = _split_module_csv(self._module)
         return CommandOperation(
             command=self.build(),
             operation_type="update",
             database=self.config.get_optional("db_name"),
-            modules=[self._module],
+            modules=split_modules,
             is_odoo_command=True,
             expected_result_fields={
                 "database": self.config.get_optional("db_name"),
-                "modules_updated": [self._module],
+                "modules_updated": split_modules,
             },
             result_parsers=["install"],  # Update operations use install parser
         )
@@ -779,15 +784,16 @@ class InstallCommandBuilder(BaseOdooCommandBuilder):
         self.install_module(module)
 
     def build_operation(self) -> CommandOperation:
+        split_modules = _split_module_csv(self._module)
         return CommandOperation(
             command=self.build(),
             operation_type="install",
             database=self.config.get_optional("db_name"),
-            modules=[self._module],
+            modules=split_modules,
             is_odoo_command=True,
             expected_result_fields={
                 "database": self.config.get_optional("db_name"),
-                "modules_installed": [self._module],
+                "modules_installed": split_modules,
             },
             result_parsers=["install"],
         )

@@ -371,5 +371,135 @@ class TestAddonValidation(unittest.TestCase):
         self.assertIn("has_missing", str(cm.exception))
 
 
+class TestExecutionPolicyParsing(unittest.TestCase):
+    """Tests for execution-policy fields in operation-set sections."""
+
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp())
+
+    def test_install_section_accepts_execution_policy_keys(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "install"\n'
+            "[install]\n"
+            'addons = ["has_base"]\n'
+            "verify_state = false\n"
+            "retry_missing = 2\n"
+            "one_by_one = true\n"
+            "stop_on_error = false\n"
+            "skip_installed = false\n",
+        )
+        op_set = load_operation_set(str(path))
+        assert op_set.install is not None
+        self.assertFalse(op_set.install.verify_state)
+        self.assertEqual(op_set.install.retry_missing, 2)
+        self.assertTrue(op_set.install.one_by_one)
+        self.assertFalse(op_set.install.stop_on_error)
+        self.assertFalse(op_set.install.skip_installed)
+
+    def test_install_section_defaults(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "install"\n[install]\naddons = ["has_base"]\n',
+        )
+        op_set = load_operation_set(str(path))
+        assert op_set.install is not None
+        self.assertTrue(op_set.install.verify_state)
+        self.assertEqual(op_set.install.retry_missing, 0)
+        self.assertFalse(op_set.install.one_by_one)
+        self.assertTrue(op_set.install.stop_on_error)
+        self.assertTrue(op_set.install.skip_installed)
+
+    def test_update_section_accepts_execution_policy_keys(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "update"\n'
+            "[update]\n"
+            'addons = ["has_base"]\n'
+            "verify_state = false\n"
+            "retry_missing = 3\n"
+            "one_by_one = true\n"
+            "stop_on_error = false\n"
+            "require_installed = false\n",
+        )
+        op_set = load_operation_set(str(path))
+        assert op_set.update is not None
+        self.assertFalse(op_set.update.verify_state)
+        self.assertEqual(op_set.update.retry_missing, 3)
+        self.assertTrue(op_set.update.one_by_one)
+        self.assertFalse(op_set.update.stop_on_error)
+        self.assertFalse(op_set.update.require_installed)
+
+    def test_update_section_defaults(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "update"\n[update]\naddons = ["has_base"]\n',
+        )
+        op_set = load_operation_set(str(path))
+        assert op_set.update is not None
+        self.assertTrue(op_set.update.verify_state)
+        self.assertEqual(op_set.update.retry_missing, 0)
+        self.assertFalse(op_set.update.one_by_one)
+        self.assertTrue(op_set.update.stop_on_error)
+        self.assertTrue(op_set.update.require_installed)
+
+    def test_test_section_accepts_execution_policy_keys(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "test"\n'
+            "[test]\n"
+            'test_tags = ["/has_base"]\n'
+            "verify_state = false\n"
+            "retry_missing = 1\n"
+            "one_by_one = true\n"
+            "retry_failed_tests = 2\n",
+        )
+        op_set = load_operation_set(str(path))
+        assert op_set.test is not None
+        self.assertFalse(op_set.test.verify_state)
+        self.assertEqual(op_set.test.retry_missing, 1)
+        self.assertTrue(op_set.test.one_by_one)
+        self.assertEqual(op_set.test.retry_failed_tests, 2)
+
+    def test_test_section_defaults(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "test"\n[test]\ntest_tags = ["/has_base"]\n',
+        )
+        op_set = load_operation_set(str(path))
+        assert op_set.test is not None
+        self.assertTrue(op_set.test.verify_state)
+        self.assertEqual(op_set.test.retry_missing, 0)
+        self.assertFalse(op_set.test.one_by_one)
+        self.assertEqual(op_set.test.retry_failed_tests, 0)
+
+    def test_negative_retry_missing_raises(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "install"\n[install]\naddons = ["has_base"]\nretry_missing = -1\n',
+        )
+        with self.assertRaises(ConfigError) as cm:
+            load_operation_set(str(path))
+        self.assertIn("non-negative", str(cm.exception))
+
+    def test_negative_retry_failed_tests_raises(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "test"\n[test]\ntest_tags = ["/a"]\nretry_failed_tests = -1\n',
+        )
+        with self.assertRaises(ConfigError) as cm:
+            load_operation_set(str(path))
+        self.assertIn("non-negative", str(cm.exception))
+
+    def test_unknown_execution_control_typo_raises(self):
+        path = _write_file(
+            self.tmp_dir / "set.toml",
+            'kind = "install"\n[install]\naddons = ["has_base"]\nretry_mising = 1\n',
+        )
+        with self.assertRaises(ConfigError) as cm:
+            load_operation_set(str(path))
+        self.assertIn("retry_mising", str(cm.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

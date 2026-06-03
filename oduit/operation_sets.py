@@ -8,14 +8,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from .exceptions import ConfigError
 
 OperationSetKind = Literal["install", "update", "test"]
 
 _DEFAULT_SCHEMA_VERSION = 2
-_DEFAULT_EMPTY_MAPPING = MappingProxyType({})
+_DEFAULT_EMPTY_MAPPING: MappingProxyType[str, Any] = MappingProxyType({})
 _NAME_SEPARATOR_RE = re.compile(r"[\s,]+")
 _VALID_KINDS = {"install", "update", "test"}
 _VALID_TOP_LEVEL_KEYS = {
@@ -37,6 +37,11 @@ _VALID_INSTALL_KEYS = {
     "max_cron_threads",
     "compact",
     "log_level",
+    "verify_state",
+    "retry_missing",
+    "one_by_one",
+    "stop_on_error",
+    "skip_installed",
 }
 _VALID_UPDATE_KEYS = {
     "addons",
@@ -46,6 +51,11 @@ _VALID_UPDATE_KEYS = {
     "max_cron_threads",
     "compact",
     "log_level",
+    "verify_state",
+    "retry_missing",
+    "one_by_one",
+    "stop_on_error",
+    "require_installed",
 }
 _VALID_TEST_KEYS = {
     "install",
@@ -56,6 +66,10 @@ _VALID_TEST_KEYS = {
     "compact",
     "stop_on_error",
     "log_level",
+    "verify_state",
+    "retry_missing",
+    "one_by_one",
+    "retry_failed_tests",
 }
 
 
@@ -178,6 +192,14 @@ def _optional_bool(value: Any) -> bool:
     raise ConfigError("Expected a boolean value.")
 
 
+def _default_true_bool(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    raise ConfigError("Expected a boolean value.")
+
+
 def _optional_str(value: Any) -> str | None:
     if value is None:
         return None
@@ -192,6 +214,15 @@ def _optional_int(value: Any) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     raise ConfigError("Expected an integer value.")
+
+
+def _optional_non_negative_int(value: Any, *, key: str) -> int:
+    parsed = _optional_int(value)
+    if parsed is None:
+        return 0
+    if parsed < 0:
+        raise ConfigError(f"`{key}` must be a non-negative integer, got {parsed}.")
+    return parsed
 
 
 def _mapping_section(value: Any, *, key: str) -> Mapping[str, Any]:
@@ -231,7 +262,7 @@ def _normalize_kind(value: Any, *, reference: str) -> OperationSetKind:
             f"Operation set '{reference}' is invalid: "
             "kind must be one of install, update, test."
         )
-    return value
+    return cast(OperationSetKind, value)
 
 
 def _validate_kind_sections(
@@ -378,6 +409,11 @@ class InstallSetSection:
     max_cron_threads: int | None = None
     compact: bool = False
     log_level: str | None = None
+    verify_state: bool = True
+    retry_missing: int = 0
+    one_by_one: bool = False
+    stop_on_error: bool = True
+    skip_installed: bool = True
 
 
 @dataclass(frozen=True)
@@ -389,6 +425,11 @@ class UpdateSetSection:
     max_cron_threads: int | None = None
     compact: bool = False
     log_level: str | None = None
+    verify_state: bool = True
+    retry_missing: int = 0
+    one_by_one: bool = False
+    stop_on_error: bool = True
+    require_installed: bool = True
 
 
 @dataclass(frozen=True)
@@ -402,6 +443,10 @@ class TestSetSection:
     compact: bool = False
     stop_on_error: bool = False
     log_level: str | None = None
+    verify_state: bool = True
+    retry_missing: int = 0
+    one_by_one: bool = False
+    retry_failed_tests: int = 0
 
 
 @dataclass(frozen=True)
@@ -600,6 +645,13 @@ def _parse_install_section(
         max_cron_threads=_optional_int(data.get("max_cron_threads")),
         compact=_optional_bool(data.get("compact")),
         log_level=_optional_str(data.get("log_level")),
+        verify_state=_default_true_bool(data.get("verify_state")),
+        retry_missing=_optional_non_negative_int(
+            data.get("retry_missing"), key="retry_missing"
+        ),
+        one_by_one=_optional_bool(data.get("one_by_one")),
+        stop_on_error=_default_true_bool(data.get("stop_on_error")),
+        skip_installed=_default_true_bool(data.get("skip_installed")),
     )
 
 
@@ -613,6 +665,13 @@ def _parse_update_section(data: dict[str, Any], *, reference: str) -> UpdateSetS
         max_cron_threads=_optional_int(data.get("max_cron_threads")),
         compact=_optional_bool(data.get("compact")),
         log_level=_optional_str(data.get("log_level")),
+        verify_state=_default_true_bool(data.get("verify_state")),
+        retry_missing=_optional_non_negative_int(
+            data.get("retry_missing"), key="retry_missing"
+        ),
+        one_by_one=_optional_bool(data.get("one_by_one")),
+        stop_on_error=_default_true_bool(data.get("stop_on_error")),
+        require_installed=_default_true_bool(data.get("require_installed")),
     )
 
 
@@ -640,6 +699,14 @@ def _parse_test_section(
         compact=_optional_bool(data.get("compact")),
         stop_on_error=_optional_bool(data.get("stop_on_error")),
         log_level=_optional_str(data.get("log_level")),
+        verify_state=_default_true_bool(data.get("verify_state")),
+        retry_missing=_optional_non_negative_int(
+            data.get("retry_missing"), key="retry_missing"
+        ),
+        one_by_one=_optional_bool(data.get("one_by_one")),
+        retry_failed_tests=_optional_non_negative_int(
+            data.get("retry_failed_tests"), key="retry_failed_tests"
+        ),
     )
 
 
@@ -924,6 +991,18 @@ def build_operation_set_result(
     )
     duration = time.time() - started_at
     kind = operation_set.kind
+    # Compute enriched summary fields from results
+    total_skipped = sum(len(r.get("skipped_addons", [])) for r in results)
+    total_retried = sum(max(0, len(r.get("attempts", [])) - 1) for r in results)
+    total_missing = sum(len(r.get("missing_addons", [])) for r in results)
+    execution_modes = {r.get("execution_mode", "batch") for r in results}
+    if len(execution_modes) > 1:
+        execution_mode = "mixed"
+    elif execution_modes:
+        execution_mode = execution_modes.pop()
+    else:
+        execution_mode = "batch"
+
     return {
         "success": not any_failure,
         "operation": f"operation_set_{kind}",
@@ -939,7 +1018,15 @@ def build_operation_set_result(
             "addon_count": _operation_set_addon_count(operation_set),
             "executed": len(results),
             "failed": len(failures),
-            "skipped": 0,
+            "skipped": total_skipped,
+            "retried": total_retried,
+            "missing": total_missing,
+            "verification_enabled": any(
+                r.get("verification", {}).get("enabled", False)
+                or r.get("execution_mode") == "one_by_one"
+                for r in results
+            ),
+            "execution_mode": execution_mode,
         },
         "duration": round(duration, 2),
     }

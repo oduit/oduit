@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 import typer
 
@@ -45,7 +45,7 @@ def normalize_operation_set_kind(
     if value not in {"install", "update", "test"}:
         print_error("--set-kind must be one of: install, update, test.")
         raise typer.Exit(1) from None
-    return value
+    return cast(OperationSetKind, value)
 
 
 def save_addon_list_as_operation_set(

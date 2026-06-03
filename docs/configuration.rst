@@ -162,6 +162,20 @@ then ``~/.config/oduit/sets/``.
 
 Paths in ``[test].test_files`` resolve relative to the set file, not necessarily cwd.
 
+Execution controls
+~~~~~~~~~~~~~~~~~~
+
+Operation sets may define execution controls inside their matching section.
+``verify_state`` enables database state verification after install/update steps.
+``retry_missing`` retries addons that are still not installed after verification.
+``one_by_one`` executes addon operations individually.
+``retry_failed_tests`` applies to test tags and files in test sets.
+``stop_on_error`` controls whether execution stops on the first failure.
+``skip_installed`` (install only) skips already-installed addons.
+``require_installed`` (update only) fails precheck for uninstalled addons.
+
+Equivalent CLI options: ``--verify-state``, ``--retry-missing``, ``--one-by-one``.
+CLI options override set-file keys for each invocation.
 Important Keys
 --------------
 

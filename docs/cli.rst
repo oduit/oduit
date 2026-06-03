@@ -375,6 +375,21 @@ Apply a set according to its declared ``kind``:
 
    oduit set apply base --allow-mutation
 
+Robust operation-set application
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+   oduit set inspect base
+   oduit set apply install --allow-mutation --retry-missing 1
+   oduit set apply install --allow-mutation --one-by-one
+   oduit set apply tests --allow-mutation --one-by-one --retry-failed-tests 1
+
+By default, install and update set operations verify the requested addons in the
+active database after each mutation step. Use ``--retry-missing`` to retry only
+addons that are still not in ``installed`` state. Use ``--one-by-one`` to install
+or update a single addon, verify it, and only then continue with the next addon.
+
 List discoverable sets:
 
 .. code-block:: bash
@@ -387,6 +402,14 @@ then ``~/.config/oduit/sets/``. Explicit file paths are loaded directly.
 Install and update sets mutate the runtime database and may require
 ``--allow-mutation``. Test sets only require ``--allow-mutation`` when they have
 ``[test].install`` or ``[test].update``.
+
+**set apply options:**
+
+- ``--verify-state / --no-verify-state``: Verify addon state after install/update (default: enabled)
+- ``--retry-missing INTEGER``: Retry addons not in installed state after verification
+- ``--one-by-one``: Apply and verify one addon at a time
+- ``--retry-failed-tests INTEGER``: Retry failed test tags/files in test sets
+- ``--continue-on-error``: In one-by-one mode, continue after a failure
 
 Use ``--include-command`` and ``--include-stdout`` with ``--json set apply`` to
 opt into verbose/sensitive fields.

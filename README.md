@@ -160,7 +160,8 @@ compact = true
 ```
 
 Valid `[update]` keys: `addons`, `without_demo`, `language`, `i18n_overwrite`,
-`max_cron_threads`, `compact`, `log_level`.
+`max_cron_threads`, `compact`, `log_level`, `verify_state`, `retry_missing`,
+`one_by_one`, `stop_on_error`, `require_installed`.
 
 Test set:
 
@@ -183,7 +184,8 @@ stop_on_error = true
 ```
 
 Valid `[test]` keys: `install`, `update`, `test_tags`, `test_files`, `coverage`,
-`compact`, `stop_on_error`, `log_level`.
+`compact`, `stop_on_error`, `log_level`, `verify_state`, `retry_missing`,
+`one_by_one`, `retry_failed_tests`.
 Paths inside `test_files` are resolved relative to the set file.
 
 #### Applying sets
@@ -197,6 +199,37 @@ oduit set list
 `oduit set apply` uses the set's `kind`. Install and update sets mutate the
 runtime database. Test sets only require `--allow-mutation` when they have
 `[test].install` or `[test].update`.
+
+#### Robust set application
+
+`oduit set apply` verifies addon state after install and update operations
+by default. The verification reads the active database's module registry and
+requires every requested addon to end in `installed` state.
+
+For large sets, retry only missing addons after the first batch:
+
+```bash
+oduit set apply install.toml --allow-mutation --retry-missing 1
+```
+
+For the safest execution mode, apply one addon at a time:
+
+```bash
+oduit set apply install.toml --allow-mutation --one-by-one
+oduit set apply install.toml --allow-mutation --one-by-one --retry-missing 1
+```
+
+For test sets, the same install/update verification is used for
+`[test].install` and `[test].update`. Use `--one-by-one` to run test tags
+separately and `--retry-failed-tests` to retry failed test units:
+
+```bash
+oduit set apply helpdesk_tests --allow-mutation --one-by-one --retry-failed-tests 1
+```
+
+Use `--no-verify-state` (the inverse of `--verify-state`) only when runtime
+state queries are unavailable
+and you explicitly want the older process-result-only behavior.
 
 #### Saving sets from addon-list commands
 
@@ -315,7 +348,8 @@ oduit --env dev create-addon my_custom_module --allow-mutation
 oduit --env dev export-lang sale --allow-mutation --language de_DE
 
 # Operation sets
-oduit --env dev set apply base --allow-mutation
+oduit --env dev set apply base --allow-mutation --retry-missing 1
+oduit --env dev set apply base --allow-mutation --one-by-one
 oduit --env dev set inspect helpdesk_tests
 oduit --env dev list-installed-addons --save-set snapshot --set-kind install
 oduit --env dev install-order --from-set snapshot --save-set ordered_snapshot

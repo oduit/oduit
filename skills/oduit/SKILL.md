@@ -288,11 +288,16 @@ Current CLI surface:
 
 ```bash
 oduit set inspect base
-oduit set apply base --allow-mutation
+oduit set apply base --allow-mutation --retry-missing 1
+oduit set apply base --allow-mutation --one-by-one
 oduit set list
 oduit install-order --from-set base --save-set base_ordered
 oduit list-installed-addons --save-set snapshot --set-kind install
 ```
+
+For large or fragile install/update sets, prefer `--retry-missing 1` or
+`--one-by-one`. These modes use `--verify-state` by default, which queries
+the runtime module state instead of trusting only Odoo process logs.
 
 Do not use `oduit install --set`, `oduit update --set`, `oduit test --set`, or
 root-level `oduit apply` unless those commands have been explicitly implemented.

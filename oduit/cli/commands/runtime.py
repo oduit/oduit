@@ -537,94 +537,485 @@ def get_odoo_version_command(
     raise typer.Exit(1)
 
 
-def _execute_install_section(
+_RUNTIME_MODULE_STATES = [
+    "installed",
+    "uninstalled",
+    "to install",
+    "to upgrade",
+    "to remove",
+]
+
+
+def _query_requested_addon_states(
     odoo_operations: Any,
-    section: InstallSetSection,
+    addons: list[str],
+    *,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    unique_addons = list(dict.fromkeys(addons))
+    if not unique_addons:
+        return {"success": True, "states": {}, "missing": []}
+
+    inventory = odoo_operations.list_installed_addons(
+        modules=unique_addons,
+        states=_RUNTIME_MODULE_STATES,
+        timeout=timeout,
+    )
+    if not getattr(inventory, "success", False):
+        return {
+            "success": False,
+            "states": {},
+            "missing": unique_addons,
+            "error": getattr(inventory, "error", None) or "Runtime state query failed",
+            "error_type": getattr(inventory, "error_type", None),
+        }
+
+    records = getattr(inventory, "addons", []) or []
+    states = {addon: "uninstalled" for addon in unique_addons}
+    for record in records:
+        module = getattr(record, "module", None) or record.get("module")
+        state = getattr(record, "state", None) or record.get("state")
+        if module in states:
+            states[module] = state or "uninstalled"
+
+    missing = [addon for addon, state in states.items() if state != "installed"]
+    return {"success": True, "states": states, "missing": missing}
+
+
+def _call_install_module(
+    odoo_operations: Any,
+    addons_csv: str,
+    section: Any,
     global_config: Any,
     suppress_output: bool,
+    without_demo_arg: bool | str,
+) -> Any:
+    return odoo_operations.install_module(
+        addons_csv,
+        no_http=global_config.no_http,
+        max_cron_threads=getattr(section, "max_cron_threads", None),
+        without_demo=without_demo_arg,
+        with_demo=getattr(section, "with_demo", False),
+        language=getattr(section, "language", None),
+        compact=getattr(section, "compact", False),
+        log_level=getattr(section, "log_level", None),
+        suppress_output=suppress_output,
+    )
+
+
+def _call_update_module(
+    odoo_operations: Any,
+    addons_csv: str,
+    section: Any,
+    global_config: Any,
+    suppress_output: bool,
+    without_demo_arg: bool | str,
+) -> Any:
+    return odoo_operations.update_module(
+        addons_csv,
+        no_http=global_config.no_http,
+        max_cron_threads=getattr(section, "max_cron_threads", None),
+        without_demo=without_demo_arg,
+        language=getattr(section, "language", None),
+        i18n_overwrite=getattr(section, "i18n_overwrite", False),
+        compact=getattr(section, "compact", False),
+        log_level=getattr(section, "log_level", None),
+        suppress_output=suppress_output,
+    )
+
+
+def _make_install_section(
+    addons: tuple[str, ...] | list[str],
+    base_section: InstallSetSection | Any,
+) -> InstallSetSection:
+    return InstallSetSection(
+        addons=tuple(addons),
+        with_demo=getattr(base_section, "with_demo", False),
+        without_demo=getattr(base_section, "without_demo", False),
+        language=getattr(base_section, "language", None),
+        max_cron_threads=getattr(base_section, "max_cron_threads", None),
+        compact=getattr(base_section, "compact", False),
+        log_level=getattr(base_section, "log_level", None),
+    )
+
+
+def _make_update_section(
+    addons: tuple[str, ...] | list[str],
+    base_section: UpdateSetSection | Any,
+) -> UpdateSetSection:
+    return UpdateSetSection(
+        addons=tuple(addons),
+        without_demo=getattr(base_section, "without_demo", False),
+        language=getattr(base_section, "language", None),
+        i18n_overwrite=getattr(base_section, "i18n_overwrite", False),
+        max_cron_threads=getattr(base_section, "max_cron_threads", None),
+        compact=getattr(base_section, "compact", False),
+        log_level=getattr(base_section, "log_level", None),
+    )
+
+
+def _execute_addon_action(
+    *,
+    odoo_operations: Any,
+    action: str,
+    addons: tuple[str, ...],
+    section: Any,
+    global_config: Any,
+    suppress_output: bool,
+    policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Execute an install set section."""
-    addons_csv = ",".join(section.addons)
-    if not addons_csv:
+    """Execute install or update for a list of addons with verification and retry."""
+    if policy is None:
+        policy = {}
+
+    original_addons = list(dict.fromkeys(addons))
+    if not original_addons:
         return {
             "success": True,
-            "operation": "install",
-            "section": "install",
+            "operation": action,
+            "section": action,
             "note": "empty",
         }
 
-    without_demo_arg: bool | str = section.without_demo
-    if without_demo_arg is True:
-        without_demo_arg = addons_csv
-
-    result: Any = odoo_operations.install_module(
-        addons_csv,
-        no_http=global_config.no_http,
-        max_cron_threads=section.max_cron_threads,
-        without_demo=without_demo_arg,
-        with_demo=section.with_demo,
-        language=section.language,
-        compact=section.compact,
-        log_level=section.log_level,
-        suppress_output=suppress_output,
+    verify_state = policy.get("verify_state", getattr(section, "verify_state", True))
+    retry_missing = max(
+        policy.get("retry_missing", getattr(section, "retry_missing", 0)), 0
     )
-    return result  # type: ignore[no-any-return]
+    one_by_one = policy.get("one_by_one", getattr(section, "one_by_one", False))
+    section_stop = getattr(section, "stop_on_error", True)
+    continue_on_error = policy.get("continue_on_error", False)
+    stop_on_error = not continue_on_error and section_stop
+
+    if one_by_one:
+        return _execute_addon_action_one_by_one(
+            odoo_operations=odoo_operations,
+            action=action,
+            addons=original_addons,
+            section=section,
+            global_config=global_config,
+            suppress_output=suppress_output,
+            verify_state=verify_state,
+            retry_missing=retry_missing,
+            stop_on_error=stop_on_error,
+        )
+    else:
+        return _execute_addon_action_batch(
+            odoo_operations=odoo_operations,
+            action=action,
+            addons=original_addons,
+            section=section,
+            global_config=global_config,
+            suppress_output=suppress_output,
+            verify_state=verify_state,
+            retry_missing=retry_missing,
+        )
 
 
-def _execute_update_section(
+def _run_addon_mutation(
     odoo_operations: Any,
-    section: UpdateSetSection,
+    action: str,
+    addons_csv: str,
+    section: Any,
     global_config: Any,
     suppress_output: bool,
-) -> dict[str, Any]:
-    """Execute an update set section."""
-    addons_csv = ",".join(section.addons)
-    if not addons_csv:
-        return {
-            "success": True,
-            "operation": "update",
-            "section": "update",
-            "note": "empty",
-        }
-
-    without_demo_arg: bool | str = section.without_demo
+) -> Any:
+    without_demo_arg: bool | str = getattr(section, "without_demo", False)
     if without_demo_arg is True:
         without_demo_arg = addons_csv
 
-    result: Any = odoo_operations.update_module(
+    if action == "install":
+        return _call_install_module(
+            odoo_operations,
+            addons_csv,
+            section,
+            global_config,
+            suppress_output,
+            without_demo_arg,
+        )
+    else:
+        return _call_update_module(
+            odoo_operations,
+            addons_csv,
+            section,
+            global_config,
+            suppress_output,
+            without_demo_arg,
+        )
+
+
+def _execute_addon_action_batch(
+    *,
+    odoo_operations: Any,
+    action: str,
+    addons: list[str],
+    section: Any,
+    global_config: Any,
+    suppress_output: bool,
+    verify_state: bool,
+    retry_missing: int,
+) -> dict[str, Any]:
+    skipped_addons: list[str] = []
+    addons_to_run = list(addons)
+
+    # Pre-flight checks
+    if action == "install" and getattr(section, "skip_installed", True):
+        precheck = _query_requested_addon_states(odoo_operations, addons_to_run)
+        if precheck["success"]:
+            skipped_addons = [
+                a for a, s in precheck["states"].items() if s == "installed"
+            ]
+            addons_to_run = [a for a in addons_to_run if a not in skipped_addons]
+    elif action == "update" and getattr(section, "require_installed", True):
+        precheck = _query_requested_addon_states(odoo_operations, addons_to_run)
+        if precheck["success"]:
+            not_installed = [
+                a for a, s in precheck["states"].items() if s != "installed"
+            ]
+            if not_installed:
+                return {
+                    "success": False,
+                    "operation": action,
+                    "section": action,
+                    "execution_mode": "batch",
+                    "addons": addons,
+                    "skipped_addons": skipped_addons,
+                    "error": (
+                        f"Update precheck failed: addons not installed: "
+                        f"{', '.join(not_installed)}"
+                    ),
+                    "error_type": "precheck_failed",
+                    "precheck_missing": not_installed,
+                }
+
+    if not addons_to_run:
+        return {
+            "success": True,
+            "operation": action,
+            "section": action,
+            "execution_mode": "batch",
+            "addons": addons,
+            "skipped_addons": skipped_addons,
+            "note": "all_skipped",
+        }
+
+    addons_csv = ",".join(addons_to_run)
+    result: Any = _run_addon_mutation(
+        odoo_operations,
+        action,
         addons_csv,
-        no_http=global_config.no_http,
-        max_cron_threads=section.max_cron_threads,
-        without_demo=without_demo_arg,
-        language=section.language,
-        i18n_overwrite=section.i18n_overwrite,
-        compact=section.compact,
-        log_level=section.log_level,
-        suppress_output=suppress_output,
+        section,
+        global_config,
+        suppress_output,
     )
-    return result  # type: ignore[no-any-return]
+    process_success = (
+        result.get("success", False) if isinstance(result, dict) else False
+    )
+
+    attempts: list[dict[str, Any]] = [
+        {"attempt": 1, "addons": addons_to_run, "success": process_success}
+    ]
+
+    verification: dict[str, Any] | None = None
+    if verify_state:
+        v = _query_requested_addon_states(odoo_operations, addons_to_run)
+        verification = {
+            "enabled": True,
+            "states": v.get("states", {}),
+            "missing": v.get("missing", []),
+        }
+        attempts[0]["verification"] = verification
+        missing = v.get("missing", [])
+        if missing and retry_missing > 0:
+            for attempt_num in range(1, retry_missing + 1):
+                retry_csv = ",".join(missing)
+                retry_result: Any = _run_addon_mutation(
+                    odoo_operations,
+                    action,
+                    retry_csv,
+                    section,
+                    global_config,
+                    suppress_output,
+                )
+                retry_success = (
+                    retry_result.get("success", False)
+                    if isinstance(retry_result, dict)
+                    else False
+                )
+                rv = _query_requested_addon_states(odoo_operations, missing)
+                retry_verification = {
+                    "enabled": True,
+                    "states": rv.get("states", {}),
+                    "missing": rv.get("missing", []),
+                }
+                attempts.append(
+                    {
+                        "attempt": attempt_num + 1,
+                        "addons": missing,
+                        "success": retry_success,
+                        "verification": retry_verification,
+                    }
+                )
+                missing = rv.get("missing", [])
+                verification = retry_verification
+                if not missing:
+                    break
+
+    final_missing = []
+    if verification:
+        final_missing = verification.get("missing", [])
+
+    overall_success = process_success and not final_missing
+    return {
+        "success": overall_success,
+        "operation": action,
+        "section": action,
+        "execution_mode": "batch",
+        "addons": addons,
+        "skipped_addons": skipped_addons,
+        "attempts": attempts,
+        "verification": verification,
+        "missing_addons": final_missing,
+        "process_success": process_success,
+    }
 
 
-def _execute_test_section(
+def _execute_addon_action_one_by_one(
+    *,
+    odoo_operations: Any,
+    action: str,
+    addons: list[str],
+    section: Any,
+    global_config: Any,
+    suppress_output: bool,
+    verify_state: bool,
+    retry_missing: int,
+    stop_on_error: bool,
+) -> dict[str, Any]:
+    succeeded_addons: list[str] = []
+    failed_addons: list[str] = []
+    skipped_addons: list[str] = []
+    attempts: list[dict[str, Any]] = []
+
+    for addon in addons:
+        # Pre-flight per addon
+        if action == "install" and getattr(section, "skip_installed", True):
+            pre = _query_requested_addon_states(odoo_operations, [addon])
+            if pre["success"] and pre["states"].get(addon) == "installed":
+                skipped_addons.append(addon)
+                succeeded_addons.append(addon)
+                continue
+        elif action == "update" and getattr(section, "require_installed", True):
+            pre = _query_requested_addon_states(odoo_operations, [addon])
+            if not pre["success"] or pre["states"].get(addon) != "installed":
+                failed_addons.append(addon)
+                attempts.append(
+                    {
+                        "attempt": 1,
+                        "addon": addon,
+                        "success": False,
+                        "error": (
+                            f"Update precheck failed: addon not installed: {addon}"
+                        ),
+                        "error_type": "precheck_failed",
+                    }
+                )
+                if stop_on_error:
+                    break
+                continue
+
+        addon_success = False
+        for attempt_num in range(1, retry_missing + 2):
+            result: Any = _run_addon_mutation(
+                odoo_operations,
+                action,
+                addon,
+                section,
+                global_config,
+                suppress_output,
+            )
+            process_success = (
+                result.get("success", False) if isinstance(result, dict) else False
+            )
+            attempt_info: dict[str, Any] = {
+                "attempt": attempt_num,
+                "addon": addon,
+                "success": process_success,
+            }
+            if verify_state:
+                v = _query_requested_addon_states(odoo_operations, [addon])
+                attempt_info["verification"] = {
+                    "enabled": True,
+                    "states": v.get("states", {}),
+                    "missing": v.get("missing", []),
+                }
+                installed = (
+                    v.get("success") and v.get("states", {}).get(addon) == "installed"
+                )
+                addon_success = bool(process_success and installed)
+            else:
+                addon_success = process_success
+            attempts.append(attempt_info)
+            if addon_success:
+                break
+            if attempt_num > retry_missing:
+                break
+
+        if addon_success:
+            succeeded_addons.append(addon)
+        else:
+            failed_addons.append(addon)
+            if stop_on_error:
+                break
+
+    return {
+        "success": len(failed_addons) == 0,
+        "operation": action,
+        "section": action,
+        "execution_mode": "one_by_one",
+        "addons": addons,
+        "succeeded_addons": succeeded_addons,
+        "failed_addons": failed_addons,
+        "skipped_addons": skipped_addons,
+        "attempts": attempts,
+        "missing_addons": failed_addons,
+    }
+
+
+def _execute_test_section(  # noqa: C901
     odoo_operations: Any,
     section: TestSetSection,
     global_config: Any,
     suppress_output: bool,
+    policy: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Execute a test set section, returning one result per operation."""
+    if policy is None:
+        policy = {}
     results: list[dict[str, Any]] = []
+
+    # Derive effective execution controls from policy and section
+    effective_policy = {
+        "verify_state": policy.get(
+            "verify_state", getattr(section, "verify_state", True)
+        ),
+        "retry_missing": policy.get(
+            "retry_missing", getattr(section, "retry_missing", 0)
+        ),
+        "one_by_one": policy.get("one_by_one", getattr(section, "one_by_one", False)),
+        "continue_on_error": policy.get("continue_on_error", False),
+    }
 
     # Pre-test install
     if section.install:
-        install_csv = ",".join(section.install)
-        without_demo_arg: bool | str = True
-        install_result = odoo_operations.install_module(
-            install_csv,
-            no_http=global_config.no_http,
-            without_demo=without_demo_arg,
-            compact=section.compact,
-            log_level=section.log_level,
+        install_section = _make_install_section(section.install, section)
+        install_result = _execute_addon_action(
+            odoo_operations=odoo_operations,
+            action="install",
+            addons=section.install,
+            section=install_section,
+            global_config=global_config,
             suppress_output=suppress_output,
+            policy=effective_policy,
         )
         results.append(
             {
@@ -640,15 +1031,15 @@ def _execute_test_section(
 
     # Pre-test update
     if section.update:
-        update_csv = ",".join(section.update)
-        without_demo_arg = True
-        update_result = odoo_operations.update_module(
-            update_csv,
-            no_http=global_config.no_http,
-            without_demo=without_demo_arg,
-            compact=section.compact,
-            log_level=section.log_level,
+        update_section = _make_update_section(section.update, section)
+        update_result = _execute_addon_action(
+            odoo_operations=odoo_operations,
+            action="update",
+            addons=section.update,
+            section=update_section,
+            global_config=global_config,
             suppress_output=suppress_output,
+            policy=effective_policy,
         )
         results.append(
             {
@@ -663,28 +1054,80 @@ def _execute_test_section(
             return results
 
     # Test by tags
+    retry_failed_tests = max(
+        policy.get("retry_failed_tests", getattr(section, "retry_failed_tests", 0)), 0
+    )
+    one_by_one = effective_policy["one_by_one"]
     if section.test_tags:
-        combined_tags = ",".join(section.test_tags)
-        test_result = odoo_operations.run_tests(
-            None,
-            stop_on_error=section.stop_on_error,
-            coverage=section.coverage,
-            test_tags=combined_tags,
-            compact=section.compact,
-            log_level=section.log_level,
-            suppress_output=suppress_output,
-        )
-        results.append(
-            {
-                "section": "test",
-                "operation": "test",
-                "test_tags": list(section.test_tags),
-                "success": test_result.get("success", False),
-                **test_result,
-            }
-        )
-        if not test_result.get("success", False) and section.stop_on_error:
-            return results
+        if one_by_one:
+            for tag in section.test_tags:
+                tag_result = None
+                for attempt in range(1, retry_failed_tests + 2):
+                    test_result = odoo_operations.run_tests(
+                        None,
+                        stop_on_error=section.stop_on_error,
+                        coverage=section.coverage,
+                        test_tags=tag,
+                        compact=section.compact,
+                        log_level=section.log_level,
+                        suppress_output=suppress_output,
+                    )
+                    test_success = (
+                        test_result.get("success", False)
+                        if isinstance(test_result, dict)
+                        else False
+                    )
+                    tag_result = {
+                        "section": "test",
+                        "operation": "test",
+                        "test_tags": [tag],
+                        "attempt": attempt,
+                        "success": test_success,
+                        **test_result,
+                    }
+                    if test_success or attempt > retry_failed_tests:
+                        break
+                    if section.stop_on_error:
+                        results.append(tag_result)
+                        return results
+                if tag_result is not None:
+                    results.append(tag_result)
+        else:
+            combined_tags = ",".join(section.test_tags)
+            batch_result = None
+            for attempt in range(1, retry_failed_tests + 2):
+                test_result = odoo_operations.run_tests(
+                    None,
+                    stop_on_error=section.stop_on_error,
+                    coverage=section.coverage,
+                    test_tags=combined_tags,
+                    compact=section.compact,
+                    log_level=section.log_level,
+                    suppress_output=suppress_output,
+                )
+                test_success = (
+                    test_result.get("success", False)
+                    if isinstance(test_result, dict)
+                    else False
+                )
+                batch_result = {
+                    "section": "test",
+                    "operation": "test",
+                    "test_tags": list(section.test_tags),
+                    "attempt": attempt,
+                    "success": test_success,
+                    **test_result,
+                }
+                if test_success or attempt > retry_failed_tests:
+                    break
+            if batch_result is not None:
+                results.append(batch_result)
+            if (
+                results
+                and not results[-1].get("success", False)
+                and section.stop_on_error
+            ):
+                return results
 
     # Test by files
     for i, resolved_path in enumerate(section.test_files):
@@ -693,26 +1136,38 @@ def _execute_test_section(
             if i < len(section.test_file_inputs)
             else str(resolved_path)
         )
-        test_result = odoo_operations.run_tests(
-            None,
-            stop_on_error=section.stop_on_error,
-            coverage=section.coverage if not section.test_tags else None,
-            test_file=str(resolved_path),
-            compact=section.compact,
-            log_level=section.log_level,
-            suppress_output=suppress_output,
-        )
-        results.append(
-            {
+        file_result = None
+        for attempt in range(1, retry_failed_tests + 2):
+            test_result = odoo_operations.run_tests(
+                None,
+                stop_on_error=section.stop_on_error,
+                coverage=section.coverage if not section.test_tags else None,
+                test_file=str(resolved_path),
+                compact=section.compact,
+                log_level=section.log_level,
+                suppress_output=suppress_output,
+            )
+            test_success = (
+                test_result.get("success", False)
+                if isinstance(test_result, dict)
+                else False
+            )
+            file_result = {
                 "section": "test",
                 "operation": "test",
                 "test_file": original_input,
-                "success": test_result.get("success", False),
+                "attempt": attempt,
+                "success": test_success,
                 **test_result,
             }
-        )
-        if not test_result.get("success", False) and section.stop_on_error:
-            return results
+            if test_success or attempt > retry_failed_tests:
+                break
+            if section.stop_on_error:
+                if file_result is not None:
+                    results.append(file_result)
+                return results
+        if file_result is not None:
+            results.append(file_result)
 
     # If no tags and no files but coverage is set, run generic test
     if not section.test_tags and not section.test_files and section.coverage:
@@ -737,6 +1192,42 @@ def _execute_test_section(
     return results
 
 
+def _execute_install_section(
+    odoo_operations: Any,
+    section: InstallSetSection,
+    global_config: Any,
+    suppress_output: bool,
+    policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return _execute_addon_action(
+        odoo_operations=odoo_operations,
+        action="install",
+        addons=section.addons,
+        section=section,
+        global_config=global_config,
+        suppress_output=suppress_output,
+        policy=policy,
+    )
+
+
+def _execute_update_section(
+    odoo_operations: Any,
+    section: UpdateSetSection,
+    global_config: Any,
+    suppress_output: bool,
+    policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return _execute_addon_action(
+        odoo_operations=odoo_operations,
+        action="update",
+        addons=section.addons,
+        section=section,
+        global_config=global_config,
+        suppress_output=suppress_output,
+        policy=policy,
+    )
+
+
 def _run_sections(
     sections: list[tuple[str, Any]],
     odoo_operations: Any,
@@ -744,6 +1235,7 @@ def _run_sections(
     suppress_output: bool,
     include_command: bool,
     include_stdout: bool,
+    policy: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Execute sections and return (results, failures)."""
     results: list[dict[str, Any]] = []
@@ -757,6 +1249,7 @@ def _run_sections(
                     section,
                     global_config,
                     suppress_output,
+                    policy=policy,
                 )
             else:
                 result = _execute_update_section(
@@ -764,6 +1257,7 @@ def _run_sections(
                     section,
                     global_config,
                     suppress_output,
+                    policy=policy,
                 )
             sanitized = sanitize_operation_result(
                 result,
@@ -782,6 +1276,7 @@ def _run_sections(
                 section,
                 global_config,
                 suppress_output,
+                policy=policy,
             )
             for tr in test_results:
                 sanitized = sanitize_operation_result(
@@ -845,7 +1340,7 @@ def _set_sections(op_set: Any) -> list[tuple[str, Any]]:
 
 
 def _set_label(op_set: Any) -> str:
-    return op_set.name or op_set.requested_value
+    return str(op_set.name or op_set.requested_value)
 
 
 def _print_set_inspection_text(inspection: dict[str, Any]) -> None:
@@ -884,6 +1379,7 @@ def set_apply_command(
     allow_missing_test_files: bool,
     include_command: bool,
     include_stdout: bool,
+    apply_policy: dict[str, Any] | None = None,
     config_loader_cls: Any,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
@@ -893,6 +1389,9 @@ def set_apply_command(
 ) -> None:
     """Execute an operation set by its declared kind."""
     import time as _time
+
+    if apply_policy is None:
+        apply_policy = {}
 
     global_config, env_config = resolve_command_env_config_fn(ctx)
     suppress_output = global_config.format == OutputFormat.JSON
@@ -938,6 +1437,7 @@ def set_apply_command(
         suppress_output,
         include_command,
         include_stdout,
+        policy=apply_policy,
     )
 
     aggregate = build_operation_set_result(

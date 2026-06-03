@@ -444,8 +444,52 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--include-stdout",
             help="Include stdout in result JSON",
         ),
+        verify_state: bool = typer.Option(
+            True,
+            "--verify-state/--no-verify-state",
+            help=(
+                "Verify requested addon states after " "install/update set operations"
+            ),
+        ),
+        retry_missing: int = typer.Option(
+            0,
+            "--retry-missing",
+            min=0,
+            help=(
+                "Retry addons that are still not installed " "after state verification"
+            ),
+        ),
+        one_by_one: bool = typer.Option(
+            False,
+            "--one-by-one",
+            help=(
+                "Apply addon operations one by one with "
+                "verification after each addon"
+            ),
+        ),
+        retry_failed_tests: int = typer.Option(
+            0,
+            "--retry-failed-tests",
+            min=0,
+            help="Retry failed test tags/files in test sets",
+        ),
+        continue_on_error: bool = typer.Option(
+            False,
+            "--continue-on-error",
+            help=(
+                "In one-by-one mode, continue with later "
+                "addons/tests after a failure"
+            ),
+        ),
     ) -> None:
         """Apply an operation set by its declared kind."""
+        apply_policy = {
+            "verify_state": verify_state,
+            "retry_missing": retry_missing,
+            "one_by_one": one_by_one,
+            "retry_failed_tests": retry_failed_tests,
+            "continue_on_error": continue_on_error,
+        }
         set_apply_command_impl(
             ctx,
             operation_set=operation_set,
@@ -453,6 +497,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             allow_missing_test_files=allow_missing_test_files,
             include_command=include_command,
             include_stdout=include_stdout,
+            apply_policy=apply_policy,
             config_loader_cls=get_config_loader_cls(),
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,

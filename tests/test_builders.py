@@ -328,6 +328,16 @@ class TestUpdateCommandBuilder:
         assert "-u" in cmd
         assert "sale" in cmd
 
+    def test_update_command_csv_module_metadata_split(self, config_provider):
+        """UpdateCommandBuilder should split CSV module strings into a list."""
+        builder = UpdateCommandBuilder(config_provider, "has_base,has_looma")
+        operation = builder.build_operation()
+        assert operation.modules == ["has_base", "has_looma"]
+        assert operation.expected_result_fields["modules_updated"] == [
+            "has_base",
+            "has_looma",
+        ]
+
 
 class TestInstallCommandBuilder:
     """Tests for InstallCommandBuilder"""
@@ -339,6 +349,16 @@ class TestInstallCommandBuilder:
 
         assert "-i" in cmd
         assert "sale" in cmd
+
+    def test_install_command_csv_module_metadata_split(self, config_provider):
+        """InstallCommandBuilder should split CSV module strings into a list."""
+        builder = InstallCommandBuilder(config_provider, "has_base,has_looma")
+        operation = builder.build_operation()
+        assert operation.modules == ["has_base", "has_looma"]
+        assert operation.expected_result_fields["modules_installed"] == [
+            "has_base",
+            "has_looma",
+        ]
 
 
 class TestLanguageCommandBuilder:

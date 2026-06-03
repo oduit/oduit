@@ -360,6 +360,9 @@ def test_operation_set_docs_cover_current_cli_surface() -> None:
         "install-order --from-set",
         ".oduit/sets",
         "~/.config/oduit/sets",
+        "--retry-missing",
+        "--one-by-one",
+        "--verify-state",
     ]
 
     for path in targets:

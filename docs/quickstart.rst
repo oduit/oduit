@@ -161,8 +161,14 @@ Inspect and apply it:
 .. code-block:: bash
 
    oduit set inspect base
-   oduit set apply base --allow-mutation
+   oduit set apply base --allow-mutation --retry-missing 1
+   oduit set apply base --allow-mutation --one-by-one
    oduit set list
+
+For large install plans, ``--retry-missing`` first applies the set as a batch,
+then checks the database and retries only addons that are still not installed.
+For fragile plans, ``--one-by-one`` applies and verifies one addon at a time.
+Both options imply ``--verify-state`` by default.
 
 Snapshot installed addons from a database and turn them into an ordered set:
 

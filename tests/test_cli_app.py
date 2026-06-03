@@ -3464,6 +3464,21 @@ class TestOperationSetCLI(unittest.TestCase):
     def _result_stdout(result) -> str:
         return getattr(result, "stdout", result.output)
 
+    @staticmethod
+    def _mock_installed_inventory(modules=None, *, installed=True):
+        """Create a mock InstalledAddonInventory for state verification."""
+        addons = []
+        for mod in modules or []:
+            record = MagicMock()
+            record.module = mod
+            record.state = "installed" if installed else "uninstalled"
+            record.get = lambda key, _r=record: getattr(_r, key)
+            addons.append(record)
+        inventory = MagicMock()
+        inventory.success = True
+        inventory.addons = addons
+        return inventory
+
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("oduit.cli.app.configure_output")
@@ -3475,6 +3490,12 @@ class TestOperationSetCLI(unittest.TestCase):
 
         mock_ops = MagicMock()
         mock_ops.install_module.return_value = {"success": True}
+        # First call (pre-flight skip_installed check): not installed.
+        # Second call (post-flight verification): installed.
+        mock_ops.list_installed_addons.side_effect = [
+            self._mock_installed_inventory(["has_base"], installed=False),
+            self._mock_installed_inventory(["has_base"], installed=True),
+        ]
         mock_ops_cls.return_value = mock_ops
 
         set_path = self.sets_dir / "base.toml"
@@ -3926,6 +3947,9 @@ class TestOperationSetCLI(unittest.TestCase):
 
         mock_ops = MagicMock()
         mock_ops.install_module.return_value = {"success": True}
+        mock_ops.list_installed_addons.return_value = self._mock_installed_inventory(
+            ["has_base"]
+        )
         mock_ops_cls.return_value = mock_ops
 
         set_path = self.sets_dir / "base.toml"
@@ -3959,6 +3983,356 @@ class TestOperationSetCLI(unittest.TestCase):
         self.assertIn("set_path", payload)
         self.assertIn("executed_operations", payload)
         self.assertIn("failures", payload)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_install_verifies_state_and_fails_when_missing(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_loader = self._make_loader()
+        mock_config_loader.return_value = mock_loader
+
+        mock_ops = MagicMock()
+        mock_ops.install_module.return_value = {"success": True}
+        # Pre-flight: not installed. Post-flight: still not installed.
+        mock_ops.list_installed_addons.side_effect = [
+            self._mock_installed_inventory(["has_base"], installed=False),
+            self._mock_installed_inventory(["has_base"], installed=False),
+        ]
+        mock_ops_cls.return_value = mock_ops
+
+        set_path = self.sets_dir / "base.toml"
+        set_path.write_text('kind = "install"\n[install]\naddons = ["has_base"]\n')
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "set",
+                "apply",
+                str(set_path),
+                "--allow-mutation",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertFalse(payload["success"])
+        ops = payload["executed_operations"]
+        self.assertEqual(ops[0]["missing_addons"], ["has_base"])
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_retry_missing_installs_only_missing_addons(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_loader = self._make_loader()
+        mock_config_loader.return_value = mock_loader
+
+        mock_ops = MagicMock()
+        mock_ops.install_module.return_value = {"success": True}
+        # Pre-flight: not installed. Post-check 1: has_base ok, has_helpdesk missing.
+        # Post-check 2 after retry: both installed.
+        mock_ops.list_installed_addons.side_effect = [
+            self._mock_installed_inventory(
+                ["has_base", "has_helpdesk"], installed=False
+            ),
+            self._mock_installed_inventory(["has_base"], installed=True),
+            self._mock_installed_inventory(["has_helpdesk"], installed=True),
+        ]
+        mock_ops_cls.return_value = mock_ops
+
+        set_path = self.sets_dir / "base.toml"
+        set_path.write_text(
+            'kind = "install"\n[install]\naddons = ["has_base", "has_helpdesk"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "set",
+                "apply",
+                str(set_path),
+                "--allow-mutation",
+                "--retry-missing",
+                "1",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        # First call: batch with both. Second call: retry with has_helpdesk only.
+        calls = mock_ops.install_module.call_args_list
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertIn("has_base,has_helpdesk", calls[0][0][0])
+        self.assertIn("has_helpdesk", calls[1][0][0])
+        self.assertNotIn("has_base", calls[1][0][0])
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_one_by_one_installs_and_verifies_before_next(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_loader = self._make_loader()
+        mock_config_loader.return_value = mock_loader
+
+        mock_ops = MagicMock()
+        mock_ops.install_module.return_value = {"success": True}
+        # Pre-flight per addon + post-flight per addon
+        mock_ops.list_installed_addons.side_effect = [
+            # has_base pre-flight: not installed
+            self._mock_installed_inventory(["has_base"], installed=False),
+            # has_base post-flight: installed
+            self._mock_installed_inventory(["has_base"], installed=True),
+            # has_helpdesk pre-flight: not installed
+            self._mock_installed_inventory(["has_helpdesk"], installed=False),
+            # has_helpdesk post-flight: installed
+            self._mock_installed_inventory(["has_helpdesk"], installed=True),
+        ]
+        mock_ops_cls.return_value = mock_ops
+
+        set_path = self.sets_dir / "base.toml"
+        set_path.write_text(
+            'kind = "install"\n[install]\naddons = ["has_base", "has_helpdesk"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "set",
+                "apply",
+                str(set_path),
+                "--allow-mutation",
+                "--one-by-one",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        # Two separate install_module calls, one per addon
+        calls = mock_ops.install_module.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertIn("has_base", calls[0][0][0])
+        self.assertIn("has_helpdesk", calls[1][0][0])
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_one_by_one_stops_on_failed_addon_by_default(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_loader = self._make_loader()
+        mock_config_loader.return_value = mock_loader
+
+        mock_ops = MagicMock()
+        mock_ops.install_module.return_value = {"success": True}
+        # has_base pre-flight: not installed. has_base post-flight: still not installed.
+        # has_helpdesk never reached.
+        mock_ops.list_installed_addons.side_effect = [
+            self._mock_installed_inventory(["has_base"], installed=False),
+            self._mock_installed_inventory(["has_base"], installed=False),
+        ]
+        mock_ops_cls.return_value = mock_ops
+
+        set_path = self.sets_dir / "base.toml"
+        set_path.write_text(
+            'kind = "install"\n[install]\naddons = ["has_base", "has_helpdesk"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "set",
+                "apply",
+                str(set_path),
+                "--allow-mutation",
+                "--one-by-one",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 1)
+        # Only has_base was attempted, has_helpdesk was not
+        calls = mock_ops.install_module.call_args_list
+        self.assertEqual(len(calls), 1)
+        self.assertIn("has_base", calls[0][0][0])
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_one_by_one_continue_on_error_attempts_later_addons(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_loader = self._make_loader()
+        mock_config_loader.return_value = mock_loader
+
+        mock_ops = MagicMock()
+        mock_ops.install_module.return_value = {"success": True}
+        # has_base: pre-flight not installed, post-flight still not installed.
+        # has_helpdesk: pre-flight not installed, post-flight installed.
+        mock_ops.list_installed_addons.side_effect = [
+            self._mock_installed_inventory(["has_base"], installed=False),
+            self._mock_installed_inventory(["has_base"], installed=False),
+            self._mock_installed_inventory(["has_helpdesk"], installed=False),
+            self._mock_installed_inventory(["has_helpdesk"], installed=True),
+        ]
+        mock_ops_cls.return_value = mock_ops
+
+        set_path = self.sets_dir / "base.toml"
+        set_path.write_text(
+            'kind = "install"\n[install]\naddons = ["has_base", "has_helpdesk"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "set",
+                "apply",
+                str(set_path),
+                "--allow-mutation",
+                "--one-by-one",
+                "--continue-on-error",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 1)
+        # Both addons attempted despite has_base failing
+        calls = mock_ops.install_module.call_args_list
+        self.assertEqual(len(calls), 2)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_update_requires_installed_precheck(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_loader = self._make_loader()
+        mock_config_loader.return_value = mock_loader
+
+        mock_ops = MagicMock()
+        mock_ops.list_installed_addons.return_value = self._mock_installed_inventory(
+            ["has_base"], installed=False
+        )
+        mock_ops_cls.return_value = mock_ops
+
+        set_path = self.sets_dir / "base.toml"
+        set_path.write_text('kind = "update"\n[update]\naddons = ["has_base"]\n')
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "set",
+                "apply",
+                str(set_path),
+                "--allow-mutation",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 1)
+        # update_module should not be called
+        mock_ops.update_module.assert_not_called()
+        payload = json.loads(result.output)
+        self.assertIn("precheck", payload["executed_operations"][0].get("error", ""))
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_test_preinstall_uses_retry_missing(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_loader = self._make_loader()
+        mock_config_loader.return_value = mock_loader
+
+        mock_ops = MagicMock()
+        mock_ops.install_module.return_value = {"success": True}
+        mock_ops.run_tests.return_value = {"success": True}
+        # Pre-flight: not installed. Post-check: installed.
+        mock_ops.list_installed_addons.side_effect = [
+            self._mock_installed_inventory(["has_base"], installed=False),
+            self._mock_installed_inventory(["has_base"], installed=True),
+        ]
+        mock_ops_cls.return_value = mock_ops
+
+        set_path = self.sets_dir / "tests.toml"
+        set_path.write_text(
+            'kind = "test"\n[test]\ninstall = ["has_base"]\n'
+            'test_tags = ["/has_base"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "set",
+                "apply",
+                str(set_path),
+                "--allow-mutation",
+                "--retry-missing",
+                "1",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        # Pre-test install should have been called
+        mock_ops.install_module.assert_called()
+        # Tests should have been called after install succeeded
+        mock_ops.run_tests.assert_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_test_tags_one_by_one_and_retry_failed_tests(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_loader = self._make_loader()
+        mock_config_loader.return_value = mock_loader
+
+        mock_ops = MagicMock()
+        mock_ops.run_tests.side_effect = [
+            {"success": False},  # /has_base first attempt
+            {"success": True},  # /has_base retry
+            {"success": True},  # /has_helpdesk first attempt
+        ]
+        mock_ops_cls.return_value = mock_ops
+
+        set_path = self.sets_dir / "tests.toml"
+        set_path.write_text(
+            'kind = "test"\n[test]\ntest_tags = ["/has_base", "/has_helpdesk"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "set",
+                "apply",
+                str(set_path),
+                "--one-by-one",
+                "--retry-failed-tests",
+                "1",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        calls = mock_ops.run_tests.call_args_list
+        self.assertGreaterEqual(len(calls), 3)
 
 
 if __name__ == "__main__":
