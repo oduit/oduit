@@ -6,6 +6,7 @@ from typing import Any
 
 import typer
 
+from ...cli.bootstrap_support import resolve_operation_set_location_context
 from ...cli_types import (
     DevFeature,
     LogLevel,
@@ -16,19 +17,20 @@ from ...exceptions import ConfigError
 from ...module_manager import ModuleManager
 from ...operation_sets import (
     InstallSetSection,
-    OperationSetMode,
     TestSetSection,
     UpdateSetSection,
     build_operation_set_result,
+    inspect_operation_set,
+    list_operation_sets,
     load_operation_set,
-    require_section,
     sanitize_operation_result,
     validate_operation_set_addons,
 )
 from ...output import print_error, print_info, print_warning
-from ...schemas import CONTROLLED_RUNTIME_MUTATION
+from ...schemas import CONTROLLED_RUNTIME_MUTATION, SAFE_READ_ONLY
 from ...utils import build_json_payload, output_result_to_json
 from .module_input import resolve_module_argument, resolve_module_names
+from .operation_set_cli import save_addon_list_as_operation_set
 
 
 def _config_flag_enabled(value: Any) -> bool:
@@ -70,6 +72,12 @@ def list_installed_addons_command(
     state: list[str],
     separator: str | None,
     include_state: bool,
+    save_set: str | None,
+    set_kind: str | None,
+    set_name: str | None,
+    set_description: str | None,
+    overwrite: bool,
+    config_loader_cls: Any,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
 ) -> None:
@@ -82,11 +90,39 @@ def list_installed_addons_command(
         states=state or None,
     )
 
+    saved_set = None
+    if result.success and save_set:
+        saved_set = save_addon_list_as_operation_set(
+            global_config=global_config,
+            config_loader_cls=config_loader_cls,
+            save_set=save_set,
+            addons=[addon.module for addon in result.addons],
+            set_kind=set_kind,
+            default_kind="install",
+            overwrite=overwrite,
+            set_name=set_name,
+            set_description=set_description,
+            source={
+                "command": "list-installed-addons",
+                "state": list(state or ["installed"]),
+                "env": global_config.env_name,
+                "config_source": global_config.config_source,
+                "config_path": global_config.config_path,
+            },
+        )
+
     if global_config.format == OutputFormat.JSON:
+        payload_data = result.to_dict()
+        if saved_set is not None:
+            payload_data["saved_set"] = {
+                "path": str(saved_set.path),
+                "kind": saved_set.kind,
+                "addon_count": saved_set.addon_count,
+            }
         print(
             json.dumps(
                 output_result_to_json(
-                    result.to_dict(),
+                    payload_data,
                     result_type="installed_addon_inventory",
                 )
             )
@@ -101,6 +137,8 @@ def list_installed_addons_command(
         else:
             for item in output_items:
                 print(item)
+        if saved_set is not None:
+            typer.echo(f"Saved {saved_set.kind} set: {saved_set.path}", err=True)
     else:
         print_error(result.error or "Runtime installed-addon query failed")
 
@@ -160,29 +198,12 @@ def install_command(
     compact: bool,
     include_command: bool,
     include_stdout: bool,
-    operation_set: str | None = None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
 ) -> None:
-    """Install a module."""
-    if operation_set:
-        return operation_set_command(
-            ctx,
-            mode="install",
-            operation_set=operation_set,
-            allow_mutation=allow_mutation,
-            allow_missing_test_files=False,
-            include_command=include_command,
-            include_stdout=include_stdout,
-            resolve_command_env_config_fn=resolve_command_env_config_fn,
-            build_odoo_operations_fn=build_odoo_operations_fn,
-            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
-            confirmation_required_error_fn=confirmation_required_error_fn,
-            print_command_error_result_fn=print_command_error_result_fn,
-        )
     """Install a module."""
     module, _ = resolve_module_argument(module)
     if not module:
@@ -245,29 +266,12 @@ def update_command(
     compact: bool,
     include_command: bool = False,
     include_stdout: bool = False,
-    operation_set: str | None = None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
 ) -> None:
-    """Update a module."""
-    if operation_set:
-        return operation_set_command(
-            ctx,
-            mode="update",
-            operation_set=operation_set,
-            allow_mutation=allow_mutation,
-            allow_missing_test_files=False,
-            include_command=include_command,
-            include_stdout=include_stdout,
-            resolve_command_env_config_fn=resolve_command_env_config_fn,
-            build_odoo_operations_fn=build_odoo_operations_fn,
-            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
-            confirmation_required_error_fn=confirmation_required_error_fn,
-            print_command_error_result_fn=print_command_error_result_fn,
-        )
     """Update a module."""
     module, _ = resolve_module_argument(module)
     if not module:
@@ -408,30 +412,12 @@ def test_command(
     allow_mutation: bool,
     include_command: bool,
     include_stdout: bool,
-    operation_set: str | None = None,
-    allow_missing_test_files: bool = False,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
 ) -> None:
-    """Run module tests."""
-    if operation_set:
-        return operation_set_command(
-            ctx,
-            mode="test",
-            operation_set=operation_set,
-            allow_mutation=allow_mutation,
-            allow_missing_test_files=allow_missing_test_files,
-            include_command=include_command,
-            include_stdout=include_stdout,
-            resolve_command_env_config_fn=resolve_command_env_config_fn,
-            build_odoo_operations_fn=build_odoo_operations_fn,
-            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
-            confirmation_required_error_fn=confirmation_required_error_fn,
-            print_command_error_result_fn=print_command_error_result_fn,
-        )
     """Run module tests."""
     global_config, env_config = resolve_command_env_config_fn(ctx)
     is_runtime_db_mutation = bool(install or update)
@@ -751,33 +737,6 @@ def _execute_test_section(
     return results
 
 
-def _build_section_list(
-    op_set: Any, mode: OperationSetMode
-) -> tuple[list[tuple[str, Any]], list[dict[str, Any]]]:
-    """Build (sections, skipped) lists for the given mode."""
-    sections: list[tuple[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
-
-    if mode == "apply":
-        for name, sec in [
-            ("install", op_set.install),
-            ("update", op_set.update),
-            ("test", op_set.test),
-        ]:
-            if sec:
-                sections.append((name, sec))
-            else:
-                skipped.append({"section": name, "reason": "section_absent"})
-    elif mode == "install":
-        sections.append(("install", op_set.install))
-    elif mode == "update":
-        sections.append(("update", op_set.update))
-    elif mode == "test":
-        sections.append(("test", op_set.test))
-
-    return sections, skipped
-
-
 def _run_sections(
     sections: list[tuple[str, Any]],
     odoo_operations: Any,
@@ -841,54 +800,114 @@ def _run_sections(
     return results, failures
 
 
-def operation_set_command(
+def _operation_set_context(
+    global_config: Any,
+    *,
+    config_loader_cls: Any,
+) -> Any:
+    return resolve_operation_set_location_context(
+        global_config,
+        config_loader_cls=config_loader_cls,
+    )
+
+
+def _load_runtime_operation_set(
+    operation_set: str,
+    *,
+    global_config: Any,
+    config_loader_cls: Any,
+    allow_missing_test_files: bool,
+) -> Any:
+    context = _operation_set_context(
+        global_config,
+        config_loader_cls=config_loader_cls,
+    )
+    return load_operation_set(
+        operation_set,
+        context=context,
+        allow_missing_test_files=allow_missing_test_files,
+    )
+
+
+def _set_requires_mutation(op_set: Any) -> bool:
+    if op_set.kind in {"install", "update"}:
+        return True
+    assert op_set.test is not None
+    return bool(op_set.test.install or op_set.test.update)
+
+
+def _set_sections(op_set: Any) -> list[tuple[str, Any]]:
+    if op_set.kind == "install":
+        return [("install", op_set.install)]
+    if op_set.kind == "update":
+        return [("update", op_set.update)]
+    return [("test", op_set.test)]
+
+
+def _set_label(op_set: Any) -> str:
+    return op_set.name or op_set.requested_value
+
+
+def _print_set_inspection_text(inspection: dict[str, Any]) -> None:
+    print(f"Set: {inspection['reference']}")
+    print(f"Kind: {inspection['kind']}")
+    print(f"Path: {inspection['path']}")
+    print(f"Resolution: {inspection.get('resolution_source') or '-'}")
+
+    addons_by_role = inspection.get("addons_by_role", {})
+    if addons_by_role:
+        for role, addons in addons_by_role.items():
+            print("")
+            print(f"{role} ({len(addons)}):")
+            for addon in addons:
+                print(f"  {addon}")
+
+    print("")
+    print("Validation:")
+    print(f"  addons_path: {inspection.get('addons_path_status')}")
+    missing = inspection.get("missing_addons", [])
+    print(f"  missing addons: {', '.join(missing) if missing else '-'}")
+
+    test_files = inspection.get("test_files", [])
+    if test_files:
+        print("  test files:")
+        for item in test_files:
+            suffix = "ok" if item.get("exists") else "missing"
+            print(f"    {item['input']} ({suffix})")
+
+
+def set_apply_command(
     ctx: typer.Context,
     *,
-    mode: OperationSetMode,
     operation_set: str,
     allow_mutation: bool,
     allow_missing_test_files: bool,
     include_command: bool,
     include_stdout: bool,
+    config_loader_cls: Any,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
 ) -> None:
-    """Execute an operation set for a single mode (install, update, or test)."""
+    """Execute an operation set by its declared kind."""
     import time as _time
 
     global_config, env_config = resolve_command_env_config_fn(ctx)
     suppress_output = global_config.format == OutputFormat.JSON
 
-    operation = f"operation_set_{mode}"
-    require_cli_runtime_db_mutation_fn(
-        global_config=global_config,
-        env_config=env_config,
-        allow_mutation=allow_mutation,
-        operation=operation,
-        action=f"operation set {mode}",
-        print_command_error_result_fn=print_command_error_result_fn,
-        confirmation_required_error_fn=confirmation_required_error_fn,
-    )
-
     started_at = _time.time()
     try:
-        op_set = load_operation_set(
+        op_set = _load_runtime_operation_set(
             operation_set,
+            global_config=global_config,
+            config_loader_cls=config_loader_cls,
             allow_missing_test_files=allow_missing_test_files,
         )
     except ConfigError as exc:
         print_error(str(exc))
         raise typer.Exit(1) from None
-
-    if mode != "apply":
-        try:
-            require_section(op_set, mode)
-        except ConfigError as exc:
-            print_error(str(exc))
-            raise typer.Exit(1) from None
 
     try:
         validate_operation_set_addons(op_set, addons_path=env_config["addons_path"])
@@ -896,20 +915,24 @@ def operation_set_command(
         print_error(str(exc))
         raise typer.Exit(1) from None
 
+    if _set_requires_mutation(op_set):
+        require_cli_runtime_db_mutation_fn(
+            global_config=global_config,
+            env_config=env_config,
+            allow_mutation=allow_mutation,
+            operation=f"operation_set_{op_set.kind}",
+            action=f"operation set {op_set.kind}",
+            print_command_error_result_fn=print_command_error_result_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+        )
+
     odoo_operations = build_odoo_operations_fn(global_config)
 
     if not suppress_output:
-        label = op_set.name or op_set.requested_value
-        print_info(f"Applying operation set: {label} ({op_set.path})")
-
-    sections, skipped = _build_section_list(op_set, mode)
-
-    if mode == "apply" and not sections:
-        print_error("Operation set has no sections to execute.")
-        raise typer.Exit(1) from None
+        print_info(f"Applying operation set: {_set_label(op_set)} ({op_set.path})")
 
     results, failures = _run_sections(
-        sections,
+        _set_sections(op_set),
         odoo_operations,
         global_config,
         suppress_output,
@@ -919,9 +942,7 @@ def operation_set_command(
 
     aggregate = build_operation_set_result(
         op_set,
-        mode=mode,
         results=results,
-        skipped_operations=skipped,
         failures=failures,
         started_at=started_at,
     )
@@ -933,56 +954,109 @@ def operation_set_command(
             success=aggregate["success"],
             flatten_data=True,
         )
-        payload["read_only"] = False
-        payload["safety_level"] = CONTROLLED_RUNTIME_MUTATION
+        payload["read_only"] = not _set_requires_mutation(op_set)
+        payload["safety_level"] = (
+            SAFE_READ_ONLY
+            if not _set_requires_mutation(op_set)
+            else CONTROLLED_RUNTIME_MUTATION
+        )
         print(json.dumps(payload))
     else:
         summary = aggregate["summary"]
         if aggregate["success"]:
             print_info(
                 f"Operation set succeeded: "
+                f"{summary['kind']} set, "
+                f"{summary['addon_count']} addons, "
                 f"{summary['executed']} executed, "
-                f"{summary['failed']} failed, "
-                f"{summary['skipped']} skipped"
+                f"{summary['failed']} failed"
             )
         else:
             print_error(
                 f"Operation set failed: "
+                f"{summary['kind']} set, "
+                f"{summary['addon_count']} addons, "
                 f"{summary['executed']} executed, "
-                f"{summary['failed']} failed, "
-                f"{summary['skipped']} skipped"
+                f"{summary['failed']} failed"
             )
 
     if not aggregate["success"]:
         raise typer.Exit(1)
 
 
-def apply_command(
+def set_inspect_command(
     ctx: typer.Context,
     *,
     operation_set: str,
-    allow_mutation: bool,
     allow_missing_test_files: bool,
-    include_command: bool,
-    include_stdout: bool,
+    config_loader_cls: Any,
     resolve_command_env_config_fn: Any,
-    build_odoo_operations_fn: Any,
-    require_cli_runtime_db_mutation_fn: Any,
-    confirmation_required_error_fn: Any,
-    print_command_error_result_fn: Any,
 ) -> None:
-    """Run an operation set in apply mode (install, update, test in order)."""
-    operation_set_command(
-        ctx,
-        mode="apply",
-        operation_set=operation_set,
-        allow_mutation=allow_mutation,
-        allow_missing_test_files=allow_missing_test_files,
-        include_command=include_command,
-        include_stdout=include_stdout,
-        resolve_command_env_config_fn=resolve_command_env_config_fn,
-        build_odoo_operations_fn=build_odoo_operations_fn,
-        require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
-        confirmation_required_error_fn=confirmation_required_error_fn,
-        print_command_error_result_fn=print_command_error_result_fn,
-    )
+    """Inspect an operation set without mutating anything."""
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    try:
+        op_set = _load_runtime_operation_set(
+            operation_set,
+            global_config=global_config,
+            config_loader_cls=config_loader_cls,
+            allow_missing_test_files=allow_missing_test_files,
+        )
+    except ConfigError as exc:
+        print_error(str(exc))
+        raise typer.Exit(1) from None
+
+    inspection = inspect_operation_set(op_set, addons_path=env_config["addons_path"])
+    inspection["operation"] = "operation_set_inspect"
+
+    if global_config.format == OutputFormat.JSON:
+        payload = build_json_payload(
+            "operation_set_inspection",
+            inspection,
+            success=True,
+            flatten_data=True,
+        )
+        payload["read_only"] = True
+        payload["safety_level"] = SAFE_READ_ONLY
+        print(json.dumps(payload))
+        return
+
+    _print_set_inspection_text(inspection)
+
+
+def set_list_command(
+    ctx: typer.Context,
+    *,
+    config_loader_cls: Any,
+    resolve_command_global_config_fn: Any,
+) -> None:
+    """List discoverable operation sets from the active lookup locations."""
+    global_config = resolve_command_global_config_fn(ctx)
+    context = _operation_set_context(global_config, config_loader_cls=config_loader_cls)
+    results = list_operation_sets(context=context)
+
+    data = {
+        "operation": "operation_set_list",
+        "sets": [
+            {
+                "reference": item.reference,
+                "path": str(item.path),
+                "source": item.source,
+            }
+            for item in results
+        ],
+    }
+
+    if global_config.format == OutputFormat.JSON:
+        payload = build_json_payload(
+            "operation_set_list",
+            data,
+            success=True,
+            flatten_data=True,
+        )
+        payload["read_only"] = True
+        payload["safety_level"] = SAFE_READ_ONLY
+        print(json.dumps(payload))
+        return
+
+    for item in results:
+        print(f"{item.reference}\t{item.source}\t{item.path}")

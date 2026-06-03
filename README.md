@@ -125,6 +125,7 @@ Store project sets under `.oduit/sets/`:
 Example set file:
 
 ```toml
+kind = "test"
 name = "helpdesk test set"
 description = "Install/update helpdesk addons and run focused tests"
 
@@ -141,25 +142,28 @@ compact = true
 stop_on_error = true
 ```
 
-Run a specific section:
+Apply, inspect, and list sets:
 
 ```bash
-oduit install --set base
-oduit update --set dev
-oduit test --set helpdesk_tests
+oduit set apply base --allow-mutation
+oduit set inspect helpdesk_tests
+oduit set list
 ```
 
-Run a mixed workflow in order:
+Save addon selections back into reusable sets:
 
 ```bash
-oduit apply dev
+oduit list-installed-addons --save-set snapshot --set-kind install
+oduit list-addons --save-set custom_update --set-kind update
+oduit install-order --from-set snapshot --save-set ordered_snapshot
 ```
 
 Short names resolve as:
 
 1. the exact file path provided
-2. `.oduit/sets/<name>.toml`
-3. `.oduit/sets/<name>`
+2. the active config set store
+3. `.oduit/sets/<name>.toml`
+4. the global config `sets/` directory
 
 Paths inside `test_files` are resolved relative to the set file.
 
@@ -242,10 +246,10 @@ oduit --env dev create-addon my_custom_module --allow-mutation
 oduit --env dev export-lang sale --allow-mutation --language de_DE
 
 # Operation sets
-oduit --env dev install --set base
-oduit --env dev test --set helpdesk_tests
-oduit --env dev apply dev
-oduit --env dev --json apply dev
+oduit --env dev set apply base --allow-mutation
+oduit --env dev set inspect helpdesk_tests
+oduit --env dev list-installed-addons --save-set snapshot --set-kind install
+oduit --env dev install-order --from-set snapshot --save-set ordered_snapshot
 ```
 
 `create-db` exposes Odoo 19-style initialization flags across supported Odoo

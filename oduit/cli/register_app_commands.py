@@ -67,7 +67,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     update_command_impl = context.implementations.update_command_impl
     uninstall_command_impl = context.implementations.uninstall_command_impl
     test_command_impl = context.implementations.test_command_impl
-    apply_command_impl = context.implementations.apply_command_impl
+    set_apply_command_impl = context.implementations.set_apply_command_impl
+    set_inspect_command_impl = context.implementations.set_inspect_command_impl
+    set_list_command_impl = context.implementations.set_list_command_impl
     create_db_command_impl = context.implementations.create_db_command_impl
     list_db_command_impl = context.implementations.list_db_command_impl
     list_env_command_impl = context.implementations.list_env_command_impl
@@ -99,6 +101,8 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     get_odoo_version_command_impl = (
         context.implementations.get_odoo_version_command_impl
     )
+    set_app = typer.Typer(help="Manage operation sets")
+    app.add_typer(set_app, name="set")
 
     @app.command()
     def doctor(ctx: typer.Context) -> None:
@@ -193,11 +197,6 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         include_stdout: bool = typer.Option(
             False, "--include-stdout", help="Include stdout in result JSON"
         ),
-        operation_set: str | None = typer.Option(
-            None,
-            "--set",
-            help="Operation set TOML file or short name from .oduit/sets",
-        ),
     ) -> None:
         """Install module."""
         install_command_impl(
@@ -212,7 +211,6 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             compact=compact,
             include_command=include_command,
             include_stdout=include_stdout,
-            operation_set=operation_set,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
@@ -264,11 +262,6 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         include_stdout: bool = typer.Option(
             False, "--include-stdout", help="Include stdout in result JSON"
         ),
-        operation_set: str | None = typer.Option(
-            None,
-            "--set",
-            help="Operation set TOML file or short name from .oduit/sets",
-        ),
     ) -> None:
         """Update module."""
         update_command_impl(
@@ -283,7 +276,6 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             compact=compact,
             include_command=include_command,
             include_stdout=include_stdout,
-            operation_set=operation_set,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
@@ -391,19 +383,6 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         include_stdout: bool = typer.Option(
             False, "--include-stdout", help="Include stdout in result JSON"
         ),
-        operation_set: str | None = typer.Option(
-            None,
-            "--set",
-            help="Operation set TOML file or short name from .oduit/sets",
-        ),
-        allow_missing_test_files: bool = typer.Option(
-            False,
-            "--allow-missing-test-files",
-            help=(
-                "Allow test_files entries in an operation set even when "
-                "they do not exist"
-            ),
-        ),
     ) -> None:
         """Run module tests with various options.
 
@@ -428,8 +407,6 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             allow_mutation=allow_mutation,
             include_command=include_command,
             include_stdout=include_stdout,
-            operation_set=operation_set,
-            allow_missing_test_files=allow_missing_test_files,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
@@ -437,8 +414,8 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             print_command_error_result_fn=print_command_error_result_fn,
         )
 
-    @app.command("apply")
-    def apply(
+    @set_app.command("apply")
+    def set_apply(
         ctx: typer.Context,
         operation_set: str = typer.Argument(
             ...,
@@ -468,19 +445,51 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             help="Include stdout in result JSON",
         ),
     ) -> None:
-        """Run an operation set: install, update, then test in order."""
-        apply_command_impl(
+        """Apply an operation set by its declared kind."""
+        set_apply_command_impl(
             ctx,
             operation_set=operation_set,
             allow_mutation=allow_mutation,
             allow_missing_test_files=allow_missing_test_files,
             include_command=include_command,
             include_stdout=include_stdout,
+            config_loader_cls=get_config_loader_cls(),
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
             print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @set_app.command("inspect")
+    def set_inspect(
+        ctx: typer.Context,
+        operation_set: str = typer.Argument(
+            ...,
+            help="Operation set TOML file or short name from configured set stores",
+        ),
+        allow_missing_test_files: bool = typer.Option(
+            True,
+            "--allow-missing-test-files/--strict-test-files",
+            help="Inspect test sets even when referenced test files are missing",
+        ),
+    ) -> None:
+        """Inspect an operation set without mutating anything."""
+        set_inspect_command_impl(
+            ctx,
+            operation_set=operation_set,
+            allow_missing_test_files=allow_missing_test_files,
+            config_loader_cls=get_config_loader_cls(),
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+        )
+
+    @set_app.command("list")
+    def set_list(ctx: typer.Context) -> None:
+        """List discoverable operation sets."""
+        set_list_command_impl(
+            ctx,
+            config_loader_cls=get_config_loader_cls(),
+            resolve_command_global_config_fn=resolve_command_global_config_fn,
         )
 
     @app.command("create-db")
@@ -709,6 +718,25 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         include: list[str] = include_filter_option,
         exclude: list[str] = exclude_filter_option,
         sorting: str = sort_option,
+        save_set: str | None = typer.Option(
+            None,
+            "--save-set",
+            help="Save the resulting addon list as an operation set",
+        ),
+        set_kind: str | None = typer.Option(
+            None,
+            "--set-kind",
+            help="Kind for the saved set: install, update, or test",
+        ),
+        set_name: str | None = typer.Option(
+            None, "--set-name", help="Optional display name for the saved set"
+        ),
+        set_description: str | None = typer.Option(
+            None, "--set-description", help="Optional description for the saved set"
+        ),
+        overwrite: bool = typer.Option(
+            False, "--overwrite", help="Overwrite an existing set file"
+        ),
     ) -> None:
         """List available addons.
 
@@ -729,7 +757,13 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             include=include,
             exclude=exclude,
             sorting=sorting,
+            save_set=save_set,
+            set_kind=set_kind,
+            set_name=set_name,
+            set_description=set_description,
+            overwrite=overwrite,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
+            config_loader_cls=get_config_loader_cls(),
             module_manager_cls=get_module_manager_cls(),
             apply_core_addon_filters_fn=apply_core_addon_filters_fn,
             apply_field_filters_fn=apply_field_filters_fn,
@@ -758,6 +792,25 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--include-state",
             help="Include module state in text output as 'module:state'",
         ),
+        save_set: str | None = typer.Option(
+            None,
+            "--save-set",
+            help="Save the resulting addon list as an operation set",
+        ),
+        set_kind: str | None = typer.Option(
+            None,
+            "--set-kind",
+            help="Kind for the saved set: install, update, or test",
+        ),
+        set_name: str | None = typer.Option(
+            None, "--set-name", help="Optional display name for the saved set"
+        ),
+        set_description: str | None = typer.Option(
+            None, "--set-description", help="Optional description for the saved set"
+        ),
+        overwrite: bool = typer.Option(
+            False, "--overwrite", help="Overwrite an existing set file"
+        ),
     ) -> None:
         """List installed addons from the active database."""
         list_installed_addons_command_impl(
@@ -766,6 +819,12 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             state=state,
             separator=separator,
             include_state=include_state,
+            save_set=save_set,
+            set_kind=set_kind,
+            set_name=set_name,
+            set_description=set_description,
+            overwrite=overwrite,
+            config_loader_cls=get_config_loader_cls(),
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
         )
@@ -866,6 +925,25 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             help="Filter modules by directory (e.g., 'myaddons')",
         ),
         sorting: str = sort_option,
+        save_set: str | None = typer.Option(
+            None,
+            "--save-set",
+            help="Save the resulting addon list as an operation set",
+        ),
+        set_kind: str | None = typer.Option(
+            None,
+            "--set-kind",
+            help="Kind for the saved set: install, update, or test",
+        ),
+        set_name: str | None = typer.Option(
+            None, "--set-name", help="Optional display name for the saved set"
+        ),
+        set_description: str | None = typer.Option(
+            None, "--set-description", help="Optional description for the saved set"
+        ),
+        overwrite: bool = typer.Option(
+            False, "--overwrite", help="Overwrite an existing set file"
+        ),
     ) -> None:
         """List direct dependencies needed to install a set of modules.
 
@@ -884,7 +962,13 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             depth=depth,
             select_dir=select_dir,
             sorting=sorting,
+            save_set=save_set,
+            set_kind=set_kind,
+            set_name=set_name,
+            set_description=set_description,
+            overwrite=overwrite,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
+            config_loader_cls=get_config_loader_cls(),
             module_manager_cls=get_module_manager_cls(),
             print_dependency_tree_fn=print_dependency_tree_fn,
             print_dependency_list_fn=print_dependency_list_fn,
@@ -899,6 +983,25 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--separator",
             help="Separator for output (e.g., ',' for 'a,b,c')",
         ),
+        save_set: str | None = typer.Option(
+            None,
+            "--save-set",
+            help="Save the resulting addon list as an operation set",
+        ),
+        set_kind: str | None = typer.Option(
+            None,
+            "--set-kind",
+            help="Kind for the saved set: install, update, or test",
+        ),
+        set_name: str | None = typer.Option(
+            None, "--set-name", help="Optional display name for the saved set"
+        ),
+        set_description: str | None = typer.Option(
+            None, "--set-description", help="Optional description for the saved set"
+        ),
+        overwrite: bool = typer.Option(
+            False, "--overwrite", help="Overwrite an existing set file"
+        ),
     ) -> None:
         """List reverse dependencies for a module.
 
@@ -909,7 +1012,13 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             ctx,
             module=module,
             separator=separator,
+            save_set=save_set,
+            set_kind=set_kind,
+            set_name=set_name,
+            set_description=set_description,
+            overwrite=overwrite,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
+            config_loader_cls=get_config_loader_cls(),
             module_manager_cls=get_module_manager_cls(),
         )
 
@@ -933,6 +1042,30 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--select-dir",
             help="Get install order for all modules in a specific directory",
         ),
+        from_set: str | None = typer.Option(
+            None,
+            "--from-set",
+            help="Read modules from an existing operation set",
+        ),
+        save_set: str | None = typer.Option(
+            None,
+            "--save-set",
+            help="Save the ordered addon list as an operation set",
+        ),
+        set_kind: str | None = typer.Option(
+            None,
+            "--set-kind",
+            help="Kind for the saved set: install, update, or test",
+        ),
+        set_name: str | None = typer.Option(
+            None, "--set-name", help="Optional display name for the saved set"
+        ),
+        set_description: str | None = typer.Option(
+            None, "--set-description", help="Optional description for the saved set"
+        ),
+        overwrite: bool = typer.Option(
+            False, "--overwrite", help="Overwrite an existing set file"
+        ),
     ) -> None:
         """Return the dependency-resolved install order for one or more addons."""
         install_order_command_impl(
@@ -940,7 +1073,14 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             modules=modules,
             separator=separator,
             select_dir=select_dir,
+            from_set=from_set,
+            save_set=save_set,
+            set_kind=set_kind,
+            set_name=set_name,
+            set_description=set_description,
+            overwrite=overwrite,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
+            config_loader_cls=get_config_loader_cls(),
             module_manager_cls=get_module_manager_cls(),
             print_command_error_result_fn=print_command_error_result_fn,
             dependency_error_details_fn=dependency_error_details_fn,

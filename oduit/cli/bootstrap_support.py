@@ -1,11 +1,16 @@
 """Bootstrap helpers for the Typer composition root."""
 
 import os
+from pathlib import Path
 from typing import Any, cast
 
 import typer
 
 from ..cli_types import GlobalConfig, OutputFormat
+from ..operation_sets import (
+    OperationSetLocationContext,
+    build_operation_set_location_context,
+)
 from .runtime_context import AppRuntimeContext
 
 
@@ -179,6 +184,25 @@ def build_doctor_report(
             module_manager_cls=module_manager_cls,
             odoo_operations_cls=odoo_operations_cls,
         ),
+    )
+
+
+def resolve_operation_set_location_context(
+    global_config: GlobalConfig,
+    *,
+    config_loader_cls: Any,
+) -> OperationSetLocationContext:
+    """Build config-aware operation-set lookup context for CLI commands."""
+    config_loader = config_loader_cls()
+    raw_config_dir = getattr(config_loader, "config_dir", None)
+    config_dir = (
+        str(raw_config_dir) if isinstance(raw_config_dir, str | os.PathLike) else None
+    )
+    return build_operation_set_location_context(
+        cwd=Path.cwd(),
+        config_path=global_config.config_path,
+        config_source=global_config.config_source,
+        config_dir=config_dir,
     )
 
 

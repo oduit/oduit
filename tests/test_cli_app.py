@@ -3449,30 +3449,43 @@ class TestOperationSetCLI(unittest.TestCase):
         config.update(overrides)
         return config
 
+    def _make_loader(self, *, config_dir: Path | None = None, **config_overrides):
+        mock_loader = MagicMock()
+        mock_loader.has_local_config.return_value = False
+        mock_loader.load_config.return_value = self._make_config(**config_overrides)
+        mock_loader.config_dir = str(config_dir or Path(self.tmp_dir))
+        mock_loader.resolve_config_path.return_value = (
+            str((config_dir or Path(self.tmp_dir)) / "dev.toml"),
+            "toml",
+        )
+        return mock_loader
+
+    @staticmethod
+    def _result_stdout(result) -> str:
+        return getattr(result, "stdout", result.output)
+
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("oduit.cli.app.configure_output")
-    def test_install_command_with_set_file(
+    def test_set_apply_install_set_file(
         self, mock_configure, mock_config_loader, mock_ops_cls
     ):
-        mock_loader = MagicMock()
-        mock_loader.has_local_config.return_value = False
-        mock_loader.load_config.return_value = self._make_config()
+        mock_loader = self._make_loader()
         mock_config_loader.return_value = mock_loader
 
         mock_ops = MagicMock()
         mock_ops.install_module.return_value = {"success": True}
         mock_ops_cls.return_value = mock_ops
 
-        # Write set file
         set_path = self.sets_dir / "base.toml"
         set_path.write_text(
-            'name = "base install"\n[install]\naddons = ["has_base"]\ncompact = true\n'
+            'kind = "install"\nname = "base install"\n'
+            '[install]\naddons = ["has_base"]\ncompact = true\n'
         )
 
         result = self.runner.invoke(
             app,
-            ["--env", "dev", "install", "--set", str(set_path)],
+            ["--env", "dev", "set", "apply", str(set_path), "--allow-mutation"],
             catch_exceptions=False,
         )
         self.assertEqual(result.exit_code, 0, result.output)
@@ -3486,72 +3499,49 @@ class TestOperationSetCLI(unittest.TestCase):
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("oduit.cli.app.configure_output")
-    def test_install_command_set_rejects_direct_module_mix(
+    def test_install_command_no_longer_accepts_set_option(
         self, mock_configure, mock_config_loader, mock_ops_cls
     ):
-        mock_loader = MagicMock()
-        mock_loader.has_local_config.return_value = False
-        mock_loader.load_config.return_value = self._make_config()
-        mock_config_loader.return_value = mock_loader
-
-        set_path = self.sets_dir / "base.toml"
-        set_path.write_text('[install]\naddons = ["has_base"]\n')
+        mock_config_loader.return_value = self._make_loader()
 
         result = self.runner.invoke(
             app,
-            ["--env", "dev", "install", "has_crm", "--set", str(set_path)],
+            ["--env", "dev", "install", "has_crm", "--set", "base.toml"],
         )
-        # Should still succeed since --set takes precedence and module is
-        # ignored. The install_command routes to operation_set_command which
-        # handles the set file. This is acceptable for initial impl.
-        self.assertIn(result.exit_code, (0, 1))
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("No such option: --set", result.output)
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("oduit.cli.app.configure_output")
-    def test_update_command_with_set_file(
+    def test_root_apply_command_is_removed(
         self, mock_configure, mock_config_loader, mock_ops_cls
     ):
-        mock_loader = MagicMock()
-        mock_loader.has_local_config.return_value = False
-        mock_loader.load_config.return_value = self._make_config()
-        mock_config_loader.return_value = mock_loader
-
-        mock_ops = MagicMock()
-        mock_ops.update_module.return_value = {"success": True}
-        mock_ops_cls.return_value = mock_ops
-
-        set_path = self.sets_dir / "dev.toml"
-        set_path.write_text('[update]\naddons = ["has_helpdesk"]\ncompact = true\n')
+        mock_config_loader.return_value = self._make_loader()
 
         result = self.runner.invoke(
             app,
-            ["--env", "dev", "update", "--set", str(set_path)],
-            catch_exceptions=False,
+            ["--env", "dev", "apply", "base.toml"],
         )
-        self.assertEqual(result.exit_code, 0, result.output)
-        mock_ops.update_module.assert_called_once()
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("No such command", result.output)
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("oduit.cli.app.configure_output")
-    def test_test_command_with_set_file(
+    def test_set_inspect_json_payload(
         self, mock_configure, mock_config_loader, mock_ops_cls
     ):
-        mock_loader = MagicMock()
-        mock_loader.has_local_config.return_value = False
-        mock_loader.load_config.return_value = self._make_config()
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        mock_loader = self._make_loader(config_dir=config_dir)
         mock_config_loader.return_value = mock_loader
+        mock_ops_cls.return_value = MagicMock()
 
-        mock_ops = MagicMock()
-        mock_ops.install_module.return_value = {"success": True}
-        mock_ops.update_module.return_value = {"success": True}
-        mock_ops.run_tests.return_value = {"success": True}
-        mock_ops_cls.return_value = mock_ops
-
-        set_path = self.sets_dir / "helpdesk_tests.toml"
+        (config_dir / "sets").mkdir()
+        set_path = config_dir / "sets" / "helpdesk_tests.toml"
         set_path.write_text(
-            'name = "helpdesk tests"\n'
+            'kind = "test"\nname = "helpdesk tests"\n'
             '[test]\ninstall = ["has_base", "has_helpdesk"]\n'
             'update = ["has_helpdesk"]\n'
             'test_tags = ["/has_helpdesk"]\n'
@@ -3560,71 +3550,401 @@ class TestOperationSetCLI(unittest.TestCase):
 
         result = self.runner.invoke(
             app,
-            ["--env", "dev", "test", "--set", str(set_path)],
+            ["--env", "dev", "--json", "set", "inspect", "helpdesk_tests"],
             catch_exceptions=False,
         )
         self.assertEqual(result.exit_code, 0, result.output)
-        # Should have called install, update, and run_tests
-        mock_ops.install_module.assert_called_once()
-        mock_ops.update_module.assert_called_once()
-        mock_ops.run_tests.assert_called()
+        payload = json.loads(result.output)
+        self.assertEqual(payload["type"], "operation_set_inspection")
+        self.assertTrue(payload["success"])
+        self.assertTrue(payload["read_only"])
+        self.assertEqual(payload["safety_level"], "safe_read_only")
+        self.assertEqual(payload["kind"], "test")
+        self.assertEqual(payload["resolution_source"], "active_config")
+        self.assertEqual(payload["addon_count"], 2)
+        self.assertEqual(payload["missing_addons"], [])
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("oduit.cli.app.configure_output")
-    def test_apply_command_runs_all(
+    def test_set_apply_test_only_set_ignores_mutation_flag_policy(
         self, mock_configure, mock_config_loader, mock_ops_cls
     ):
-        mock_loader = MagicMock()
-        mock_loader.has_local_config.return_value = False
-        mock_loader.load_config.return_value = self._make_config()
+        mock_loader = self._make_loader(needs_mutation_flag=True)
         mock_config_loader.return_value = mock_loader
 
         mock_ops = MagicMock()
-        mock_ops.install_module.return_value = {"success": True}
-        mock_ops.update_module.return_value = {"success": True}
         mock_ops.run_tests.return_value = {"success": True}
         mock_ops_cls.return_value = mock_ops
 
-        set_path = self.sets_dir / "full.toml"
+        set_path = self.sets_dir / "tests_only.toml"
         set_path.write_text(
-            'name = "full set"\n'
-            '[install]\naddons = ["has_base"]\n'
-            '[update]\naddons = ["has_helpdesk"]\n'
+            'kind = "test"\nname = "tests only"\n'
             '[test]\ntest_tags = ["/has_helpdesk"]\n',
         )
 
         result = self.runner.invoke(
             app,
-            ["--env", "dev", "apply", str(set_path)],
+            ["--env", "dev", "set", "apply", str(set_path)],
             catch_exceptions=False,
         )
         self.assertEqual(result.exit_code, 0, result.output)
-        mock_ops.install_module.assert_called_once()
-        mock_ops.update_module.assert_called_once()
         mock_ops.run_tests.assert_called()
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     @patch("oduit.cli.app.configure_output")
-    def test_operation_set_json_payload(
+    def test_set_apply_test_with_install_requires_allow_mutation_when_configured(
         self, mock_configure, mock_config_loader, mock_ops_cls
     ):
-        mock_loader = MagicMock()
-        mock_loader.has_local_config.return_value = False
-        mock_loader.load_config.return_value = self._make_config()
+        mock_loader = self._make_loader(needs_mutation_flag=True)
         mock_config_loader.return_value = mock_loader
+
+        set_path = self.sets_dir / "helpdesk_tests.toml"
+        set_path.write_text(
+            'kind = "test"\n'
+            '[test]\ninstall = ["has_base", "has_helpdesk"]\n'
+            'test_tags = ["/has_helpdesk"]\n',
+        )
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "set", "apply", str(set_path)],
+        )
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("needs_mutation_flag=true", result.output)
+        mock_ops_cls.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_list_shows_discoverable_sets(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        mock_loader = self._make_loader(config_dir=config_dir)
+        mock_config_loader.return_value = mock_loader
+        mock_ops_cls.return_value = MagicMock()
+
+        (config_dir / "sets").mkdir()
+        (config_dir / "sets" / "base.toml").write_text(
+            'kind = "install"\n[install]\naddons = ["has_base"]\n'
+        )
+
+        result = self.runner.invoke(app, ["--env", "dev", "set", "list"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("base", result.output)
+        self.assertIn("active_config", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_list_installed_addons_can_save_operation_set(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        (config_dir / "sets").mkdir()
+        mock_config_loader.return_value = self._make_loader(config_dir=config_dir)
+
+        mock_ops = MagicMock()
+        mock_ops.list_installed_addons.return_value = InstalledAddonInventory(
+            success=True,
+            operation="list_installed_addons",
+            addons=[
+                InstalledAddonRecord(
+                    module="has_base", state="installed", installed=True
+                ),
+                InstalledAddonRecord(
+                    module="has_helpdesk", state="installed", installed=True
+                ),
+            ],
+            total=2,
+            states=["installed"],
+        )
+        mock_ops_cls.return_value = mock_ops
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "list-installed-addons",
+                "--save-set",
+                "snapshot",
+                "--set-kind",
+                "install",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(
+            self._result_stdout(result).strip().splitlines(),
+            ["has_base", "has_helpdesk"],
+        )
+        snapshot_path = config_dir / "sets" / "snapshot.toml"
+        self.assertTrue(snapshot_path.exists())
+        self.assertIn('kind = "install"', snapshot_path.read_text())
+        self.assertIn('"has_base"', snapshot_path.read_text())
+        self.assertIn('"has_helpdesk"', snapshot_path.read_text())
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_list_addons_can_save_operation_set(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        (config_dir / "sets").mkdir()
+        mock_config_loader.return_value = self._make_loader(config_dir=config_dir)
+        mock_ops_cls.return_value = MagicMock()
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "list-addons",
+                "--save-set",
+                "custom_update",
+                "--set-kind",
+                "update",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(
+            self._result_stdout(result).strip().splitlines(),
+            ["has_base", "has_helpdesk"],
+        )
+        saved_path = config_dir / "sets" / "custom_update.toml"
+        self.assertTrue(saved_path.exists())
+        saved_text = saved_path.read_text()
+        self.assertIn('kind = "update"', saved_text)
+        self.assertIn("[update]", saved_text)
+        self.assertIn('"has_base"', saved_text)
+        self.assertIn('"has_helpdesk"', saved_text)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_list_depends_can_save_operation_set(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        sets_dir = config_dir / "sets"
+        sets_dir.mkdir()
+        mock_config_loader.return_value = self._make_loader(config_dir=config_dir)
+        mock_ops_cls.return_value = MagicMock()
+
+        (Path(self.tmp_dir) / "addons" / "has_base" / "__manifest__.py").write_text(
+            '{"name": "has_base", "version": "19.0.1.0.0", "depends": []}'
+        )
+        (Path(self.tmp_dir) / "addons" / "has_helpdesk" / "__manifest__.py").write_text(
+            '{"name": "has_helpdesk", "version": "19.0.1.0.0", "depends": ["has_base"]}'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "list-depends",
+                "has_helpdesk",
+                "--save-set",
+                "depends_update",
+                "--set-kind",
+                "update",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(self._result_stdout(result).strip(), "has_base")
+        saved_text = (sets_dir / "depends_update.toml").read_text()
+        self.assertIn('kind = "update"', saved_text)
+        self.assertIn('"has_base"', saved_text)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_list_codepends_can_save_operation_set(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        sets_dir = config_dir / "sets"
+        sets_dir.mkdir()
+        mock_config_loader.return_value = self._make_loader(config_dir=config_dir)
+        mock_ops_cls.return_value = MagicMock()
+
+        (Path(self.tmp_dir) / "addons" / "has_base" / "__manifest__.py").write_text(
+            '{"name": "has_base", "version": "19.0.1.0.0", "depends": []}'
+        )
+        (Path(self.tmp_dir) / "addons" / "has_helpdesk" / "__manifest__.py").write_text(
+            '{"name": "has_helpdesk", "version": "19.0.1.0.0", "depends": ["has_base"]}'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "list-codepends",
+                "has_base",
+                "--save-set",
+                "codepends_install",
+                "--set-kind",
+                "install",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(
+            self._result_stdout(result).strip().splitlines(),
+            ["has_base", "has_helpdesk"],
+        )
+        saved_text = (sets_dir / "codepends_install.toml").read_text()
+        self.assertIn('kind = "install"', saved_text)
+        self.assertIn('"has_base"', saved_text)
+        self.assertIn('"has_helpdesk"', saved_text)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_install_order_can_read_modules_from_operation_set(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        sets_dir = config_dir / "sets"
+        sets_dir.mkdir()
+        mock_config_loader.return_value = self._make_loader(config_dir=config_dir)
+        mock_ops_cls.return_value = MagicMock()
+
+        (Path(self.tmp_dir) / "addons" / "has_base" / "__manifest__.py").write_text(
+            '{"name": "has_base", "version": "19.0.1.0.0", "depends": []}'
+        )
+        (Path(self.tmp_dir) / "addons" / "has_helpdesk" / "__manifest__.py").write_text(
+            '{"name": "has_helpdesk", "version": "19.0.1.0.0", "depends": ["has_base"]}'
+        )
+        (sets_dir / "snapshot.toml").write_text(
+            'kind = "install"\n[install]\naddons = ["has_helpdesk"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "install-order", "--from-set", "snapshot"],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(
+            self._result_stdout(result).strip().splitlines(),
+            ["has_base", "has_helpdesk"],
+        )
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_install_order_from_set_can_save_ordered_set(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        sets_dir = config_dir / "sets"
+        sets_dir.mkdir()
+        mock_config_loader.return_value = self._make_loader(config_dir=config_dir)
+        mock_ops_cls.return_value = MagicMock()
+
+        (Path(self.tmp_dir) / "addons" / "has_base" / "__manifest__.py").write_text(
+            '{"name": "has_base", "version": "19.0.1.0.0", "depends": []}'
+        )
+        (Path(self.tmp_dir) / "addons" / "has_helpdesk" / "__manifest__.py").write_text(
+            '{"name": "has_helpdesk", "version": "19.0.1.0.0", "depends": ["has_base"]}'
+        )
+        (sets_dir / "snapshot.toml").write_text(
+            'kind = "install"\nname = "Snapshot"\n'
+            '[install]\naddons = ["has_helpdesk"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "install-order",
+                "--from-set",
+                "snapshot",
+                "--save-set",
+                "ordered_snapshot",
+            ],
+            catch_exceptions=False,
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["install_order"], ["has_base", "has_helpdesk"])
+        self.assertEqual(payload["saved_set"]["kind"], "install")
+        self.assertEqual(payload["saved_set"]["addon_count"], 2)
+        saved_text = (sets_dir / "ordered_snapshot.toml").read_text()
+        self.assertIn('kind = "install"', saved_text)
+        self.assertIn('name = "Snapshot ordered"', saved_text)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_install_order_rejects_test_sets_for_from_set(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        config_dir = Path(self.tmp_dir) / "config"
+        config_dir.mkdir()
+        sets_dir = config_dir / "sets"
+        sets_dir.mkdir()
+        mock_config_loader.return_value = self._make_loader(config_dir=config_dir)
+        mock_ops_cls.return_value = MagicMock()
+
+        (sets_dir / "tests_only.toml").write_text(
+            'kind = "test"\n[test]\ninstall = ["has_helpdesk"]\n'
+        )
+
+        result = self.runner.invoke(
+            app,
+            ["--env", "dev", "install-order", "--from-set", "tests_only"],
+        )
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("non-test set", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("oduit.cli.app.configure_output")
+    def test_set_apply_json_payload(
+        self, mock_configure, mock_config_loader, mock_ops_cls
+    ):
+        mock_config_loader.return_value = self._make_loader()
 
         mock_ops = MagicMock()
         mock_ops.install_module.return_value = {"success": True}
         mock_ops_cls.return_value = mock_ops
 
         set_path = self.sets_dir / "base.toml"
-        set_path.write_text('name = "base install"\n[install]\naddons = ["has_base"]\n')
+        set_path.write_text(
+            'kind = "install"\nname = "base install"\n'
+            '[install]\naddons = ["has_base"]\n'
+        )
 
         result = self.runner.invoke(
             app,
-            ["--env", "dev", "--json", "install", "--set", str(set_path)],
+            [
+                "--env",
+                "dev",
+                "--json",
+                "set",
+                "apply",
+                str(set_path),
+                "--allow-mutation",
+            ],
             catch_exceptions=False,
         )
         self.assertEqual(result.exit_code, 0, result.output)
@@ -3634,10 +3954,10 @@ class TestOperationSetCLI(unittest.TestCase):
         self.assertTrue(payload["success"])
         self.assertFalse(payload["read_only"])
         self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
-        self.assertIn("set_name", payload)
+        self.assertEqual(payload["kind"], "install")
+        self.assertEqual(payload["set_name"], "base install")
         self.assertIn("set_path", payload)
         self.assertIn("executed_operations", payload)
-        self.assertIn("skipped_operations", payload)
         self.assertIn("failures", payload)
 
 

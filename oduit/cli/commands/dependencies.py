@@ -5,11 +5,15 @@ from typing import Any
 
 import typer
 
+from ...cli.bootstrap_support import resolve_operation_set_location_context
 from ...cli_types import OutputFormat
+from ...exceptions import ConfigError
 from ...module_manager import ModuleManager
+from ...operation_sets import load_operation_set
 from ...output import print_error, print_info
 from ...utils import output_result_to_json
 from .module_input import resolve_module_names
+from .operation_set_cli import save_addon_list_as_operation_set
 
 
 def _resolve_requested_modules(
@@ -66,6 +70,24 @@ def _analyze_dependency_cycle(
     """Return cycle analysis when the manager provides a real payload."""
     cycle_analysis = module_manager.analyze_dependency_cycle(*module_list)
     return cycle_analysis if isinstance(cycle_analysis, dict) else None
+
+
+def _dependency_list(
+    *,
+    module_list: list[str],
+    module_manager: ModuleManager,
+    depth: int | None,
+    sorting: str,
+) -> list[str]:
+    tree_depth = depth + 1 if depth is not None and depth >= 0 else None
+    if depth is not None and depth >= 0:
+        dependencies = module_manager.get_dependencies_at_depth(
+            module_list, max_depth=tree_depth
+        )
+    else:
+        dependencies = module_manager.get_direct_dependencies(*module_list)
+
+    return module_manager.sort_modules(dependencies, sorting)
 
 
 def _explain_cycle_remediation() -> list[str]:
@@ -145,7 +167,13 @@ def list_depends_command(
     depth: int | None,
     select_dir: str | None,
     sorting: str,
+    save_set: str | None,
+    set_kind: str | None,
+    set_name: str | None,
+    set_description: str | None,
+    overwrite: bool,
     resolve_command_env_config_fn: Any,
+    config_loader_cls: Any,
     module_manager_cls: type[ModuleManager] = ModuleManager,
     print_dependency_tree_fn: Any = None,
     print_dependency_list_fn: Any = None,
@@ -182,8 +210,11 @@ def list_depends_command(
             else:
                 source_desc = f"modules [{', '.join(module_list)}]"
 
-        tree_depth = depth + 1 if depth is not None and depth >= 0 else None
         if tree:
+            if save_set:
+                print_error("--save-set is not supported together with --tree.")
+                raise typer.Exit(1) from None
+            tree_depth = depth + 1 if depth is not None and depth >= 0 else None
             print_dependency_tree_fn(
                 module_list,
                 module_manager,
@@ -191,15 +222,44 @@ def list_depends_command(
                 global_config.odoo_series,
             )
         else:
-            print_dependency_list_fn(
-                module_list,
-                module_manager,
-                tree_depth,
-                depth,
-                separator,
-                source_desc,
-                sorting,
+            dependencies = _dependency_list(
+                module_list=module_list,
+                module_manager=module_manager,
+                depth=depth,
+                sorting=sorting,
             )
+            if save_set:
+                saved_set = save_addon_list_as_operation_set(
+                    global_config=global_config,
+                    config_loader_cls=config_loader_cls,
+                    save_set=save_set,
+                    addons=dependencies,
+                    set_kind=set_kind,
+                    overwrite=overwrite,
+                    set_name=set_name,
+                    set_description=set_description,
+                    source={
+                        "command": "list-depends",
+                        "modules": module_list,
+                        "select_dir": select_dir,
+                        "config_source": global_config.config_source,
+                        "config_path": global_config.config_path,
+                        "env": global_config.env_name,
+                    },
+                )
+            else:
+                saved_set = None
+
+            if separator:
+                if dependencies:
+                    print(separator.join(dependencies))
+            elif dependencies:
+                for dependency in dependencies:
+                    print(dependency)
+            else:
+                print(f"No external dependencies for {source_desc}")
+            if saved_set is not None:
+                typer.echo(f"Saved {saved_set.kind} set: {saved_set.path}", err=True)
     except ValueError as exc:
         print_error(f"Error checking dependencies: {exc}")
         raise typer.Exit(1) from None
@@ -210,14 +270,40 @@ def list_codepends_command(
     *,
     module: str,
     separator: str | None,
+    save_set: str | None,
+    set_kind: str | None,
+    set_name: str | None,
+    set_description: str | None,
+    overwrite: bool,
     resolve_command_env_config_fn: Any,
+    config_loader_cls: Any,
     module_manager_cls: type[ModuleManager] = ModuleManager,
 ) -> None:
     """List reverse dependencies for a module."""
-    _, env_config = resolve_command_env_config_fn(ctx)
+    global_config, env_config = resolve_command_env_config_fn(ctx)
     module_manager = module_manager_cls(env_config["addons_path"])
     reverse_dependencies = module_manager.get_reverse_dependencies(module)
     all_codeps = sorted(reverse_dependencies + [module])
+
+    saved_set = None
+    if save_set:
+        saved_set = save_addon_list_as_operation_set(
+            global_config=global_config,
+            config_loader_cls=config_loader_cls,
+            save_set=save_set,
+            addons=all_codeps,
+            set_kind=set_kind,
+            overwrite=overwrite,
+            set_name=set_name,
+            set_description=set_description,
+            source={
+                "command": "list-codepends",
+                "module": module,
+                "config_source": global_config.config_source,
+                "config_path": global_config.config_path,
+                "env": global_config.env_name,
+            },
+        )
 
     if separator:
         if all_codeps:
@@ -227,6 +313,8 @@ def list_codepends_command(
             print(f"{dependency}")
     else:
         print_info(f"Module '{module}' has no reverse dependencies")
+    if saved_set is not None:
+        typer.echo(f"Saved {saved_set.kind} set: {saved_set.path}", err=True)
 
 
 def install_order_command(
@@ -235,7 +323,14 @@ def install_order_command(
     modules: str | None,
     separator: str | None,
     select_dir: str | None,
+    from_set: str | None,
+    save_set: str | None,
+    set_kind: str | None,
+    set_name: str | None,
+    set_description: str | None,
+    overwrite: bool,
     resolve_command_env_config_fn: Any,
+    config_loader_cls: Any,
     module_manager_cls: type[ModuleManager] = ModuleManager,
     print_command_error_result_fn: Any = None,
     dependency_error_details_fn: Any = None,
@@ -243,42 +338,91 @@ def install_order_command(
     """Return dependency-resolved install order."""
     global_config, env_config = resolve_command_env_config_fn(ctx)
     module_manager = module_manager_cls(env_config["addons_path"])
+    source_operation_set = None
 
-    try:
-        module_list, source = _resolve_requested_modules(
-            module_manager=module_manager,
-            modules=modules,
-            select_dir=select_dir,
-        )
-    except LookupError as exc:
-        print_command_error_result_fn(
-            global_config,
-            "install_order",
-            str(exc),
-            details={
-                "modules": [module.strip() for module in modules.split(",")]
-                if modules
-                else None,
-                "select_dir": select_dir,
-                "missing_modules": [
-                    module.strip()
-                    for module in modules.split(",")
-                    if module.strip()
-                    and module_manager.find_module_path(module.strip()) is None
-                ]
-                if modules
-                else [],
-            },
-        )
-        raise typer.Exit(1) from None
-    except ValueError as exc:
-        print_command_error_result_fn(
-            global_config,
-            "install_order",
-            str(exc),
-            details={"modules": modules, "select_dir": select_dir},
-        )
-        raise typer.Exit(1) from None
+    if from_set is not None:
+        if modules is not None or select_dir is not None:
+            print_command_error_result_fn(
+                global_config,
+                "install_order",
+                "Cannot combine --from-set with module names or --select-dir.",
+                details={
+                    "modules": modules,
+                    "select_dir": select_dir,
+                    "from_set": from_set,
+                },
+            )
+            raise typer.Exit(1) from None
+        try:
+            source_operation_set = load_operation_set(
+                from_set,
+                context=resolve_operation_set_location_context(
+                    global_config,
+                    config_loader_cls=config_loader_cls,
+                ),
+            )
+        except ConfigError as exc:
+            print_command_error_result_fn(
+                global_config,
+                "install_order",
+                str(exc),
+                error_type="ConfigError",
+                details={"from_set": from_set},
+            )
+            raise typer.Exit(1) from None
+        if source_operation_set.kind == "install":
+            assert source_operation_set.install is not None
+            module_list = list(source_operation_set.install.addons)
+        elif source_operation_set.kind == "update":
+            assert source_operation_set.update is not None
+            module_list = list(source_operation_set.update.addons)
+        else:
+            print_command_error_result_fn(
+                global_config,
+                "install_order",
+                "install-order cannot infer test.install or test.update"
+                " from a test set. Use a non-test set instead.",
+                error_type="ConfigError",
+                details={"from_set": from_set, "kind": source_operation_set.kind},
+            )
+            raise typer.Exit(1) from None
+        source = f"set:{source_operation_set.kind}"
+    else:
+        try:
+            module_list, source = _resolve_requested_modules(
+                module_manager=module_manager,
+                modules=modules,
+                select_dir=select_dir,
+            )
+        except LookupError as exc:
+            print_command_error_result_fn(
+                global_config,
+                "install_order",
+                str(exc),
+                details={
+                    "modules": [module.strip() for module in modules.split(",")]
+                    if modules
+                    else None,
+                    "select_dir": select_dir,
+                    "missing_modules": [
+                        module.strip()
+                        for module in modules.split(",")
+                        if module.strip()
+                        and module_manager.find_module_path(module.strip()) is None
+                    ]
+                    if modules
+                    else [],
+                },
+            )
+            raise typer.Exit(1) from None
+        except ValueError as exc:
+            print_command_error_result_fn(
+                global_config,
+                "install_order",
+                str(exc),
+                details={"modules": modules, "select_dir": select_dir},
+            )
+            raise typer.Exit(1) from None
 
     try:
         ordered_modules = module_manager.get_install_order(*module_list)
@@ -306,17 +450,57 @@ def install_order_command(
         )
         raise typer.Exit(1) from None
 
-    if global_config.format == OutputFormat.JSON:
-        result_json = output_result_to_json(
-            {
-                "success": True,
-                "operation": "install_order",
-                "modules": module_list,
-                "install_order": ordered_modules,
-                "source": source,
-                "select_dir": select_dir,
-            }
+    saved_set = None
+    if save_set:
+        default_kind = (
+            source_operation_set.kind
+            if source_operation_set is not None
+            and source_operation_set.kind in {"install", "update"}
+            else None
         )
+        derived_name = set_name
+        derived_description = set_description
+        if source_operation_set is not None:
+            if derived_name is None and source_operation_set.name:
+                derived_name = f"{source_operation_set.name} ordered"
+            if derived_description is None and source_operation_set.description:
+                derived_description = f"{source_operation_set.description} (ordered)"
+        saved_set = save_addon_list_as_operation_set(
+            global_config=global_config,
+            config_loader_cls=config_loader_cls,
+            save_set=save_set,
+            addons=ordered_modules,
+            set_kind=set_kind,
+            default_kind=default_kind,
+            overwrite=overwrite,
+            set_name=derived_name,
+            set_description=derived_description,
+            source={
+                "command": "install-order",
+                "modules": module_list,
+                "from_set": from_set,
+                "config_source": global_config.config_source,
+                "config_path": global_config.config_path,
+                "env": global_config.env_name,
+            },
+        )
+
+    if global_config.format == OutputFormat.JSON:
+        payload_data = {
+            "success": True,
+            "operation": "install_order",
+            "modules": module_list,
+            "install_order": ordered_modules,
+            "source": source,
+            "select_dir": select_dir,
+        }
+        if saved_set is not None:
+            payload_data["saved_set"] = {
+                "path": str(saved_set.path),
+                "kind": saved_set.kind,
+                "addon_count": saved_set.addon_count,
+            }
+        result_json = output_result_to_json(payload_data)
         print(json.dumps(result_json))
         return
 
@@ -325,6 +509,8 @@ def install_order_command(
     else:
         for module in ordered_modules:
             print(module)
+    if saved_set is not None:
+        typer.echo(f"Saved {saved_set.kind} set: {saved_set.path}", err=True)
 
 
 def explain_install_order_command(

@@ -245,7 +245,6 @@ from .commands.dependencies import (
 )
 from .commands.dependencies import list_depends_command as _list_depends_command_impl
 from .commands.dependencies import list_missing_command as _list_missing_command_impl
-from .commands.runtime import apply_command as _apply_command_impl
 from .commands.runtime import doctor_command as _doctor_command_impl
 from .commands.runtime import export_lang_command as _export_lang_command_impl
 from .commands.runtime import (
@@ -256,6 +255,9 @@ from .commands.runtime import (
     list_installed_addons_command as _list_installed_addons_command_impl,
 )
 from .commands.runtime import run_command as _run_command_impl
+from .commands.runtime import set_apply_command as _set_apply_command_impl
+from .commands.runtime import set_inspect_command as _set_inspect_command_impl
+from .commands.runtime import set_list_command as _set_list_command_impl
 from .commands.runtime import shell_command as _shell_command_impl
 from .commands.runtime import test_command as _test_command_impl
 from .commands.runtime import uninstall_command as _uninstall_command_impl
@@ -518,7 +520,9 @@ _app_registration_context = AppRegistrationContext(
         update_command_impl=_update_command_impl,
         uninstall_command_impl=_uninstall_command_impl,
         test_command_impl=_test_command_impl,
-        apply_command_impl=_apply_command_impl,
+        set_apply_command_impl=_set_apply_command_impl,
+        set_inspect_command_impl=_set_inspect_command_impl,
+        set_list_command_impl=_set_list_command_impl,
         create_db_command_impl=_create_db_command_impl,
         list_db_command_impl=_list_db_command_impl,
         list_env_command_impl=_list_env_command_impl,

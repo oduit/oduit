@@ -9,6 +9,7 @@ from ...cli_types import AddonTemplate, OutputFormat
 from ...module_manager import ModuleManager
 from ...output import print_error, print_info
 from ...utils import output_result_to_json
+from .operation_set_cli import save_addon_list_as_operation_set
 
 
 def _parse_filter_pairs(
@@ -221,7 +222,13 @@ def list_addons_command(
     include: list[str],
     exclude: list[str],
     sorting: str,
+    save_set: str | None,
+    set_kind: str | None,
+    set_name: str | None,
+    set_description: str | None,
+    overwrite: bool,
     resolve_command_env_config_fn: Any,
+    config_loader_cls: Any,
     module_manager_cls: type[ModuleManager] = ModuleManager,
     apply_core_addon_filters_fn: Any = None,
     apply_field_filters_fn: Any = None,
@@ -271,11 +278,33 @@ def list_addons_command(
         print_error(f"Sorting failed: {exc}")
         raise typer.Exit(1) from None
 
+    saved_set = None
+    if save_set:
+        saved_set = save_addon_list_as_operation_set(
+            global_config=global_config,
+            config_loader_cls=config_loader_cls,
+            save_set=save_set,
+            addons=sorted_addons,
+            set_kind=set_kind,
+            overwrite=overwrite,
+            set_name=set_name,
+            set_description=set_description,
+            source={
+                "command": "list-addons",
+                "select_dir": select_dir,
+                "config_source": global_config.config_source,
+                "config_path": global_config.config_path,
+                "env": global_config.env_name,
+            },
+        )
+
     if separator:
         print(separator.join(sorted_addons))
     else:
         for addon in sorted_addons:
             print(addon)
+    if saved_set is not None:
+        typer.echo(f"Saved {saved_set.kind} set: {saved_set.path}", err=True)
 
 
 def list_manifest_values_command(
