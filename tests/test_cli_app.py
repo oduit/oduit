@@ -6,6 +6,7 @@
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -3530,7 +3531,8 @@ class TestOperationSetCLI(unittest.TestCase):
             ["--env", "dev", "install", "has_crm", "--set", "base.toml"],
         )
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("No such option: --set", result.output)
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+        self.assertIn("No such option: --set", clean)
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
