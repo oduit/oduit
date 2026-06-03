@@ -4,7 +4,6 @@ import json
 import re
 from typing import Any, NoReturn, cast
 
-import click
 import typer
 
 from ...schemas import SAFE_READ_ONLY
@@ -18,7 +17,7 @@ def agent_emit_payload(payload: dict[str, Any]) -> None:
 
 def _agent_show_command_enabled() -> bool:
     """Return whether the current agent invocation opted into command output."""
-    ctx = click.get_current_context(silent=True)
+    ctx = typer._click.globals.get_current_context(silent=True)
     while ctx is not None:
         obj = getattr(ctx, "obj", None)
         if isinstance(obj, dict) and "show_command" in obj:

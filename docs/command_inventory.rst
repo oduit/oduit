@@ -31,9 +31,6 @@ This page is generated from the canonical Typer registration surface in
    * - ``test``
      - ``human_oriented``
      - Run module tests with various options.
-   * - ``apply``
-     - ``human_oriented``
-     - Run an operation set: install, update, then test in order.
    * - ``create-db``
      - ``human_oriented``
      - Create database.
@@ -103,6 +100,9 @@ This page is generated from the canonical Typer registration surface in
    * - ``exec-file``
      - ``human_oriented``
      - Execute trusted Python from a file within Odoo.
+   * - ``set``
+     - ``human_oriented``
+     - Manage operation sets
    * - ``docs``
      - ``human_oriented``
      - Generate addon and model documentation bundles

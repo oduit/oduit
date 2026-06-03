@@ -127,7 +127,7 @@ def test_agent_output_result_to_json_hides_command_by_default() -> None:
 def test_agent_output_result_to_json_preserves_command_when_requested() -> None:
     context = SimpleNamespace(obj={"show_command": True}, parent=None)
     with patch(
-        "oduit.cli.agent.payloads.click.get_current_context",
+        "oduit.cli.agent.payloads.typer._click.globals.get_current_context",
         return_value=context,
     ):
         payload = agent_output_result_to_json(

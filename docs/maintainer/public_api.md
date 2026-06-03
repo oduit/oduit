@@ -58,7 +58,6 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `update`                | `human_oriented` | Update module.                                                       |
 | `uninstall`             | `human_oriented` | Uninstall module.                                                    |
 | `test`                  | `human_oriented` | Run module tests with various options.                               |
-| `apply`                 | `human_oriented` | Run an operation set: install, update, then test in order.           |
 | `create-db`             | `human_oriented` | Create database.                                                     |
 | `list-db`               | `human_oriented` | List all databases.                                                  |
 | `list-env`              | `human_oriented` | List available environments.                                         |
@@ -82,6 +81,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `version`               | `human_oriented` | Get Odoo version from odoo-bin.                                      |
 | `exec`                  | `human_oriented` | Execute trusted Python within Odoo and return a structured result.   |
 | `exec-file`             | `human_oriented` | Execute trusted Python from a file within Odoo.                      |
+| `set`                   | `human_oriented` | Manage operation sets                                                |
 | `docs`                  | `human_oriented` | Generate addon and model documentation bundles                       |
 | `inspect`               | `human_oriented` | Runtime model, field, XMLID, and module inspection                   |
 | `db`                    | `human_oriented` | Database inspection through the live Odoo connection                 |
