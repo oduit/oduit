@@ -130,6 +130,38 @@ Legacy flat config files remain supported, but ``resolve-config`` now reports a
 deprecation warning when they are detected so agents can migrate toward the
 sectioned TOML shape.
 
+Operation sets are not environment configuration
+------------------------------------------------
+
+Environment configuration stays in ``.oduit.toml`` or
+``~/.config/oduit/<env>.toml``. Operation sets live beside the active config and
+store reusable execution plans for install, update, or test operations.
+
+For local project config:
+
+.. code-block:: text
+
+   .oduit.toml
+   .oduit/
+     sets/
+       base.toml
+
+For named environments:
+
+.. code-block:: text
+
+   ~/.config/oduit/dev.toml
+   ~/.config/oduit/sets/base.toml
+
+Use ``oduit set inspect``, ``oduit set apply``, and ``oduit set list`` to work
+with sets. Save addon lists into sets with ``--save-set`` and ``--set-kind``.
+Reorder install/update sets with ``install-order --from-set``.
+
+Short names resolve from the active config set store, then ``.oduit/sets/``,
+then ``~/.config/oduit/sets/``.
+
+Paths in ``[test].test_files`` resolve relative to the set file, not necessarily cwd.
+
 Important Keys
 --------------
 

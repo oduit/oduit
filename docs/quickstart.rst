@@ -142,6 +142,48 @@ falling back to ``exec``. ``exec`` and ``inspect recordset`` are trusted
 arbitrary execution surfaces and keep rollback-by-default semantics unless
 ``--commit`` is passed explicitly.
 
+Reusable operation sets
+~~~~~~~~~~~~~~~~~~~~~
+
+Create ``.oduit/sets/base.toml``:
+
+.. code-block:: toml
+
+   schema_version = 2
+   kind = "install"
+
+   [install]
+   addons = ["has_base", "has_helpdesk"]
+   without_demo = true
+
+Inspect and apply it:
+
+.. code-block:: bash
+
+   oduit set inspect base
+   oduit set apply base --allow-mutation
+   oduit set list
+
+Snapshot installed addons from a database and turn them into an ordered set:
+
+.. code-block:: bash
+
+   oduit list-installed-addons --save-set snapshot --set-kind install
+   oduit install-order --from-set snapshot --save-set snapshot_ordered
+
+Save dependency and codependency lists as sets:
+
+.. code-block:: bash
+
+   oduit list-depends has_helpdesk --save-set helpdesk_deps --set-kind install
+   oduit list-codepends has_base --save-set base_impact --set-kind update
+
+Use ``--overwrite`` to replace an existing set. Use ``--set-name`` and
+``--set-description`` to add display metadata.
+
+Sets are stored under ``.oduit/sets/`` for local projects or
+``~/.config/oduit/sets/`` for named environments.
+
 Agent Workflow
 ~~~~~~~~~~~~~~
 

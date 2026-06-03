@@ -282,31 +282,36 @@ When using arbitrary execution:
 ## Operation sets
 
 Use operation sets when a repository has repeated install/update/test plans under
-`.oduit/sets/`.
+`.oduit/sets/` or `~/.config/oduit/sets/`.
 
-Prefer explicit `--set` syntax:
+Current CLI surface:
 
 ```bash
-oduit install --set base
-oduit update --set dev
-oduit test --set helpdesk_tests
-oduit apply dev
+oduit set inspect base
+oduit set apply base --allow-mutation
+oduit set list
+oduit install-order --from-set base --save-set base_ordered
+oduit list-installed-addons --save-set snapshot --set-kind install
 ```
 
-Operation sets are execution plans, not environment configs. Do not edit
-`.oduit.toml` to encode one-off module batches. Keep `.oduit.toml` for binaries,
-database, addons path, mutation policy, and runtime parameters.
+Do not use `oduit install --set`, `oduit update --set`, `oduit test --set`, or
+root-level `oduit apply` unless those commands have been explicitly implemented.
 
-Before running a set, inspect it like any other source file. Confirm the target
-environment and mutation policy with:
+Operation sets are execution plans, not environment configs. Keep `.oduit.toml`
+for binaries, database, addons path, mutation policy, and runtime parameters.
+
+Before applying a set, inspect it and confirm the target environment:
 
 ```bash
 oduit doctor
+oduit set inspect base
 oduit agent resolve-config
 ```
 
-If the environment requires explicit mutation confirmation, pass
-`--allow-mutation` only after reviewing the set.
+If the environment requires explicit mutation confirmation, pass `--allow-mutation`
+only after reviewing the set. Install and update sets mutate the runtime database.
+Test sets only require mutation confirmation when they have `[test].install` or
+`[test].update`.
 
 ## Python API
 

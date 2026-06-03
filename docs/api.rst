@@ -21,6 +21,7 @@ Core Modules
    api/manifest_collection
    api/addons_path_manager
    api/demo_process_manager
+   api/operation_sets
 
 Command Line Interface
 ----------------------

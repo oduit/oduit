@@ -355,6 +355,42 @@ Run module tests with various options. Plain test runs stay read-only.
    # Stop on first error with compact output
    oduit --env dev test --test-tags /sale --stop-on-error --compact
 
+
+set
+~~^
+
+Manage reusable operation sets. Sets are TOML files with a ``kind`` and a
+matching table (``[install]``, ``[update]``, or ``[test]``).
+
+Inspect a set without changing the database:
+
+.. code-block:: bash
+
+   oduit set inspect helpdesk_tests
+   oduit --json set inspect helpdesk_tests
+
+Apply a set according to its declared ``kind``:
+
+.. code-block:: bash
+
+   oduit set apply base --allow-mutation
+
+List discoverable sets:
+
+.. code-block:: bash
+
+   oduit set list
+
+Short names resolve from the active config set store, then ``.oduit/sets/``,
+then ``~/.config/oduit/sets/``. Explicit file paths are loaded directly.
+
+Install and update sets mutate the runtime database and may require
+``--allow-mutation``. Test sets only require ``--allow-mutation`` when they have
+``[test].install`` or ``[test].update``.
+
+Use ``--include-command`` and ``--include-stdout`` with ``--json set apply`` to
+opt into verbose/sensitive fields.
+
 create-db
 ^^^^^^^^^
 
@@ -516,6 +552,20 @@ Valid filter fields: ``name``, ``version``, ``summary``, ``author``, ``website``
    ``list-addons`` is source inventory only. It scans the configured
    ``addons_path`` and does not query database runtime module state.
 
+**Set-writing options:**
+
+- ``--save-set TEXT``: Save the addon list as a reusable operation set
+- ``--set-kind TEXT``: Set kind for the saved set (``install`` or ``update``)
+- ``--set-name TEXT``: Display name for the saved set
+- ``--set-description TEXT``: Description for the saved set
+- ``--overwrite``: Overwrite an existing set file
+
+.. code-block:: bash
+
+   # Save addon list as an update set
+   oduit --env dev list-addons --select-dir custom_addons --save-set custom_update --set-kind update
+
+
 list-installed-addons
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -548,6 +598,20 @@ List installed addons from the active database runtime.
 .. note::
    ``list-installed-addons`` is runtime inventory. It requires working database
    access and is separate from the source-only ``list-addons`` command.
+
+**Set-writing options:**
+
+- ``--save-set TEXT``: Save the addon list as a reusable operation set
+- ``--set-kind TEXT``: Set kind for the saved set (``install`` or ``update``)
+- ``--set-name TEXT``: Display name for the saved set
+- ``--set-description TEXT``: Description for the saved set
+- ``--overwrite``: Overwrite an existing set file
+
+.. code-block:: bash
+
+   # Snapshot installed addons as an install set
+   oduit --env dev list-installed-addons --save-set snapshot --set-kind install
+
 
    # Exclude addons depending on sale
    oduit --env dev list-addons --exclude depends:sale
@@ -756,6 +820,22 @@ The command will:
 - Return an error if the module itself is not found
 - In tree mode, display the full dependency hierarchy for a single module
 
+**Set-writing options:**
+
+``--save-set`` cannot be combined with ``--tree``.
+
+- ``--save-set TEXT``: Save the dependency list as a reusable operation set
+- ``--set-kind TEXT``: Set kind for the saved set (``install`` or ``update``)
+- ``--set-name TEXT``: Display name for the saved set
+- ``--set-description TEXT``: Description for the saved set
+- ``--overwrite``: Overwrite an existing set file
+
+.. code-block:: bash
+
+   # Save dependencies as an install set
+   oduit --env dev list-depends has_helpdesk --save-set helpdesk_deps --set-kind install
+
+
 list-codepends
 ^^^^^^^^^^^^^^
 
@@ -790,6 +870,20 @@ The command will:
 - Return only the selected module if no reverse dependencies are found
 - Preserve the command name ``list-codepends`` for compatibility, even though
   the behavior is reverse-dependency analysis
+
+**Set-writing options:**
+
+- ``--save-set TEXT``: Save the codependency list as a reusable operation set
+- ``--set-kind TEXT``: Set kind for the saved set (``install`` or ``update``)
+- ``--set-name TEXT``: Display name for the saved set
+- ``--set-description TEXT``: Description for the saved set
+- ``--overwrite``: Overwrite an existing set file
+
+.. code-block:: bash
+
+   # Save codependencies as an update set
+   oduit --env dev list-codepends has_base --save-set base_impact --set-kind update
+
 
 install-order
 ^^^^^^^^^^^^^
@@ -826,6 +920,25 @@ You can either provide comma-separated module names directly or use
 
 If dependency resolution fails because of a cycle, both text mode and JSON mode
 surface structured cycle diagnostics and remediation guidance.
+
+**Set-reading and set-writing options:**
+
+``--from-set`` reads an install or update set and computes the dependency-resolved
+order for its addons. It rejects test sets because a test set can contain both
+pre-install and pre-update roles.
+
+- ``--from-set TEXT``: Read addons from an existing operation set (install/update only)
+- ``--save-set TEXT``: Save the ordered result as a new operation set
+- ``--set-kind TEXT``: Set kind for the saved set (defaults to the source set kind)
+- ``--set-name TEXT``: Display name for the saved set
+- ``--set-description TEXT``: Description for the saved set
+- ``--overwrite``: Overwrite an existing set file
+
+.. code-block:: bash
+
+   # Reorder an install set and save the ordered copy
+   oduit --env dev install-order --from-set snapshot --save-set ordered_snapshot
+
 
 explain-install-order
 ^^^^^^^^^^^^^^^^^^^^^

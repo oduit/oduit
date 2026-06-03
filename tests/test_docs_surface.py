@@ -341,3 +341,60 @@ def test_agent_contract_change_log_exists() -> None:
     ]
     missing = [marker for marker in required_markers if marker not in content]
     assert not missing, "\n".join(missing)
+
+
+def test_operation_set_docs_cover_current_cli_surface() -> None:
+    targets = [
+        ROOT / "README.md",
+        ROOT / "docs" / "cli.rst",
+        ROOT / "docs" / "quickstart.rst",
+        ROOT / "docs" / "configuration.rst",
+        ROOT / "skills" / "oduit" / "SKILL.md",
+    ]
+    required_markers = [
+        "oduit set apply",
+        "oduit set inspect",
+        "oduit set list",
+        "--save-set",
+        "--set-kind",
+        "install-order --from-set",
+        ".oduit/sets",
+        "~/.config/oduit/sets",
+    ]
+
+    for path in targets:
+        content = path.read_text(encoding="utf-8")
+        missing = [marker for marker in required_markers if marker not in content]
+        assert not missing, f"{path.relative_to(ROOT)} missing markers:\n" + "\n".join(
+            missing
+        )
+
+
+def test_operation_set_docs_do_not_advertise_removed_surface() -> None:
+    docs = _read_docs()
+    banned_patterns = {
+        "oduit install --set": "install --set is not implemented",
+        "oduit update --set": "update --set is not implemented",
+        "oduit test --set": "test --set is not implemented",
+        "oduit apply ": "root apply command is removed; use oduit set apply",
+    }
+    advisory_markers = {
+        "Do not use",
+        "do not use",
+        "do not advertise",
+        "not implemented",
+        "removed",
+    }
+    failures: list[str] = []
+    for path, content in docs.items():
+        for banned, reason in banned_patterns.items():
+            start = 0
+            while True:
+                idx = content.find(banned, start)
+                if idx == -1:
+                    break
+                window = content[max(0, idx - 100) : idx + len(banned) + 100]
+                if not any(marker in window for marker in advisory_markers):
+                    failures.append(f"{path.relative_to(ROOT)}: {reason}: {banned}")
+                start = idx + len(banned)
+    assert not failures, "\n".join(failures)

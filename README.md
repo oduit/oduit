@@ -122,11 +122,52 @@ Store project sets under `.oduit/sets/`:
     helpdesk_tests.toml
 ```
 
-Example set file:
+#### Set kinds
+
+Each operation set has exactly one `kind` and exactly one matching table.
+Use `schema_version = 2` in every set file.
+
+Install set:
 
 ```toml
+schema_version = 2
+kind = "install"
+name = "base install"
+description = "Install base project addons"
+
+[install]
+addons = ["has_base", "has_helpdesk"]
+without_demo = true
+compact = true
+```
+
+Valid `[install]` keys: `addons`, `with_demo`, `without_demo`, `language`,
+`max_cron_threads`, `compact`, `log_level`.
+`with_demo` and `without_demo` are mutually exclusive.
+
+Update set:
+
+```toml
+schema_version = 2
+kind = "update"
+name = "helpdesk update"
+
+[update]
+addons = ["has_helpdesk"]
+without_demo = true
+i18n_overwrite = false
+compact = true
+```
+
+Valid `[update]` keys: `addons`, `without_demo`, `language`, `i18n_overwrite`,
+`max_cron_threads`, `compact`, `log_level`.
+
+Test set:
+
+```toml
+schema_version = 2
 kind = "test"
-name = "helpdesk test set"
+name = "helpdesk tests"
 description = "Install/update helpdesk addons and run focused tests"
 
 [test]
@@ -138,34 +179,62 @@ test_files = [
   "addons/has_helpdesk/tests/test_portal.py",
 ]
 coverage = "has_helpdesk"
-compact = true
 stop_on_error = true
 ```
 
-Apply, inspect, and list sets:
+Valid `[test]` keys: `install`, `update`, `test_tags`, `test_files`, `coverage`,
+`compact`, `stop_on_error`, `log_level`.
+Paths inside `test_files` are resolved relative to the set file.
+
+#### Applying sets
 
 ```bash
-oduit set apply base --allow-mutation
 oduit set inspect helpdesk_tests
+oduit set apply base --allow-mutation
 oduit set list
 ```
 
-Save addon selections back into reusable sets:
+`oduit set apply` uses the set's `kind`. Install and update sets mutate the
+runtime database. Test sets only require `--allow-mutation` when they have
+`[test].install` or `[test].update`.
+
+#### Saving sets from addon-list commands
 
 ```bash
 oduit list-installed-addons --save-set snapshot --set-kind install
-oduit list-addons --save-set custom_update --set-kind update
+oduit list-addons --select-dir addons --save-set custom_update --set-kind update
+oduit list-depends has_helpdesk --save-set helpdesk_deps --set-kind install
+oduit list-codepends has_base --save-set base_impact --set-kind update
 oduit install-order --from-set snapshot --save-set ordered_snapshot
 ```
+
+Use `--overwrite` to replace an existing set. Use `--set-name` and
+`--set-description` to add display metadata.
+
+`install-order --from-set` reads install/update sets only. It rejects test sets
+because a test set can contain both pre-install and pre-update roles.
+
+#### Set lookup resolution
 
 Short names resolve as:
 
 1. the exact file path provided
 2. the active config set store
 3. `.oduit/sets/<name>.toml`
-4. the global config `sets/` directory
+4. the global config `sets/` directory (`~/.config/oduit/sets/`)
 
-Paths inside `test_files` are resolved relative to the set file.
+Direct paths with `/`, `\`, or absolute paths do not fall back to set stores if missing.
+
+#### Set write resolution for --save-set
+
+When `--save-set snapshot` is used, oduit writes to:
+
+1. the active config set store if available
+2. otherwise the global config `sets/` directory
+3. otherwise the local project `.oduit/sets/`
+
+When `--save-set custom/output.toml` or another explicit path is used, oduit writes
+exactly there. Existing files require `--overwrite`.
 
 ## CLI Highlights
 
