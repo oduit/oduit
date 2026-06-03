@@ -484,7 +484,7 @@ class DatabaseOperationsService(OperationsService):
                 "success": success,
                 "return_code": return_code,
                 "command": (
-                    init_command if use_native_db_init else create_operation.command
+                    init_command if use_native_db_init else create_operation.command  # type: ignore[union-attr]
                 ),
                 "init_command": init_command,
                 "operation": "create_database",

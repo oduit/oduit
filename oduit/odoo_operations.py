@@ -1009,6 +1009,8 @@ class OdooOperations:
         timeout: float = 30.0,
     ) -> dict[str, Any]:
         """Execute trusted arbitrary Python through the embedded executor."""
+        if self.env_config.get("demo_mode", False):
+            return {"success": True, "value": None, "operation": "execute_code"}
         return self._get_inspector().execute_code(
             code,
             database=database,

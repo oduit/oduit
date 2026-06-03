@@ -31,6 +31,9 @@ This page is generated from the canonical Typer registration surface in
    * - ``test``
      - ``human_oriented``
      - Run module tests with various options.
+   * - ``apply``
+     - ``human_oriented``
+     - Run an operation set: install, update, then test in order.
    * - ``create-db``
      - ``human_oriented``
      - Create database.

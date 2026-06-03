@@ -776,6 +776,7 @@ class TechnicalDocumentation(DictModel):
     markdown: str = ""
     warnings: list[str] = dataclass_field(default_factory=list)
     remediation: list[str] = dataclass_field(default_factory=list)
+    used_existing_evidence: bool = False
 
 
 @dataclass

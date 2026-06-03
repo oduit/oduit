@@ -1,6 +1,7 @@
 import json
 import stat
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -303,8 +304,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
 
     def test_agent_mutation_requires_allow_mutation(self) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -327,8 +328,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
 
     def test_agent_test_summary_is_read_only_without_install_or_update(self) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -363,8 +364,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
 
     def test_agent_test_summary_requires_allow_mutation_for_install(self) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -396,8 +397,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
 
     def test_agent_runtime_mutation_is_blocked_when_write_protected(self) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -428,8 +429,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self,
     ) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -458,8 +459,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
 
     def test_agent_runtime_mutation_requires_agent_specific_flag(self) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -482,8 +483,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
 
     def test_agent_plan_update_stays_read_only_when_write_protected(self) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -508,8 +509,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self,
     ) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -532,8 +533,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self,
     ) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -554,8 +555,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
 
     def test_agent_validate_addon_change_requires_allow_mutation(self) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -587,8 +588,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self,
     ) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])
@@ -639,8 +640,8 @@ class TestSec4AgentBoundaries(unittest.TestCase):
 
     def test_agent_locate_model_does_not_use_runtime_execution(self) -> None:
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            tmp_path = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
             addons_dir = tmp_path / "addons"
             addons_dir.mkdir()
             self._make_addon(addons_dir, "base", depends=[])

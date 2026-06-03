@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import typer
-from click.core import ParameterSource
+from typer._click.core import ParameterSource
 
 from ...arc42_renderer import (
     inspect_generated_markdown_quality,

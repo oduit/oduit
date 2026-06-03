@@ -17,6 +17,24 @@ if TYPE_CHECKING:
 
 # Demo module catalog with predefined behaviors
 DEMO_MODULES = {
+    "base": {
+        "status": "success",
+        "install_time": 1.0,
+        "dependencies": [],
+        "description": "Odoo base module",
+        "log_stream": [
+            "INFO odoo: Odoo version 17.0",
+            "INFO odoo.modules.loading: loading 1 modules...",
+            "INFO odoo.modules.loading: updating modules list",
+            "INFO odoo.modules.loading: Loading module base (1/1)",
+            (
+                "INFO odoo.modules.registry: module base:"
+                " creating or updating database tables"
+            ),
+            "INFO odoo.modules.loading: Module base loaded in 0.89s",
+            "INFO odoo.modules.loading: Modules loaded.",
+        ],
+    },
     "module_ok": {
         "status": "success",
         "install_time": 2.5,
