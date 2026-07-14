@@ -69,6 +69,11 @@ from .agent.mutate import (
     agent_create_addon_command as _agent_create_addon_command,
 )
 from .agent.mutate import agent_export_lang_command as _agent_export_lang_command
+from .agent.mutate import agent_i18n_export_command as _agent_i18n_export_command
+from .agent.mutate import agent_i18n_import_command as _agent_i18n_import_command
+from .agent.mutate import (
+    agent_i18n_loadlang_command as _agent_i18n_loadlang_command,
+)
 from .agent.mutate import agent_inspect_cron_command as _agent_inspect_cron_command
 from .agent.mutate import (
     agent_install_module_command as _agent_install_module_command,
@@ -245,8 +250,11 @@ from .commands.dependencies import (
 )
 from .commands.dependencies import list_depends_command as _list_depends_command_impl
 from .commands.dependencies import list_missing_command as _list_missing_command_impl
+from .commands.i18n import export_lang_compat_command as _export_lang_command_impl
+from .commands.i18n import i18n_export_command as _i18n_export_command_impl
+from .commands.i18n import i18n_import_command as _i18n_import_command_impl
+from .commands.i18n import i18n_loadlang_command as _i18n_loadlang_command_impl
 from .commands.runtime import doctor_command as _doctor_command_impl
-from .commands.runtime import export_lang_command as _export_lang_command_impl
 from .commands.runtime import (
     get_odoo_version_command as _get_odoo_version_command_impl,
 )
@@ -542,6 +550,9 @@ _app_registration_context = AppRegistrationContext(
         impact_of_update_command_impl=_impact_of_update_command_impl,
         list_missing_command_impl=_list_missing_command_impl,
         init_env_command_impl=_init_env_command_impl,
+        i18n_export_command_impl=_i18n_export_command_impl,
+        i18n_import_command_impl=_i18n_import_command_impl,
+        i18n_loadlang_command_impl=_i18n_loadlang_command_impl,
         export_lang_command_impl=_export_lang_command_impl,
         get_odoo_version_command_impl=_get_odoo_version_command_impl,
     ),
@@ -661,6 +672,9 @@ _agent_registration_context = AgentRegistrationContext(
         uninstall_module_command_impl=_agent_uninstall_module_command,
         update_module_command_impl=_agent_update_module_command,
         create_addon_command_impl=_agent_create_addon_command,
+        i18n_export_command_impl=_agent_i18n_export_command,
+        i18n_import_command_impl=_agent_i18n_import_command,
+        i18n_loadlang_command_impl=_agent_i18n_loadlang_command,
         export_lang_command_impl=_agent_export_lang_command,
         test_summary_command_impl=_agent_test_summary_command,
         validate_impl=_agent_validate_impl,

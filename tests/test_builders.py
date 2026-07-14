@@ -12,6 +12,9 @@ from oduit.builders import (
     BaseOdooCommandBuilder,
     ConfigProvider,
     DatabaseCommandBuilder,
+    I18nExportCommandBuilder,
+    I18nImportCommandBuilder,
+    I18nLoadLanguageCommandBuilder,
     InstallCommandBuilder,
     LanguageCommandBuilder,
     OdooTestCommandBuilder,
@@ -19,6 +22,7 @@ from oduit.builders import (
     RunCommandBuilder,
     ShellCommandBuilder,
     UpdateCommandBuilder,
+    odoo_series_major,
 )
 from oduit.exceptions import ConfigError
 
@@ -374,6 +378,184 @@ class TestLanguageCommandBuilder:
         assert any("--language=" in part for part in cmd)
         assert any("fr_FR" in part for part in cmd)
         assert "--no-http" in cmd
+
+    def test_language_command_builder_can_build_native_i18n_export(
+        self, config_provider
+    ):
+        builder = LanguageCommandBuilder(
+            config_provider,
+            "sale",
+            "/tmp/sale_fr.po",
+            "fr_FR",
+            odoo_series="19.0",
+        )
+        cmd = builder.build()
+
+        assert cmd[:5] == [
+            "/usr/bin/python3",
+            "/opt/odoo/odoo-bin",
+            "--addons-path=/opt/odoo/addons,/opt/custom/addons",
+            "i18n",
+            "export",
+        ]
+        assert "sale" in cmd
+        assert "--languages" in cmd
+        assert "fr_FR" in cmd
+        assert "--output=/tmp/sale_fr.po" in cmd
+        assert "--no-http" not in cmd
+        assert "--modules=sale" not in cmd
+        assert builder.build_operation().operation_type == "export_language"
+
+
+class TestI18nCommandBuilders:
+    def test_odoo_series_major_supports_common_shapes(self):
+        assert odoo_series_major("18.0") == 18
+        assert odoo_series_major("v19_0") == 19
+        assert odoo_series_major(type("Series", (), {"value": "20.0"})()) == 20
+
+    def test_i18n_export_builder_odoo18_uses_legacy_flags(self, config_provider):
+        builder = I18nExportCommandBuilder(
+            config_provider,
+            modules=["sale", "purchase"],
+            languages=["de_DE"],
+            output="/tmp/x.po",
+            odoo_series="18.0",
+        )
+
+        cmd = builder.build()
+
+        assert "--modules=sale,purchase" in cmd
+        assert "--i18n-export=/tmp/x.po" in cmd
+        assert "--language=de_DE" in cmd
+        assert "--stop-after-init" in cmd
+        assert "--no-http" in cmd
+        assert "i18n" not in cmd
+        assert "export" not in cmd
+        assert "--languages" not in cmd
+
+    def test_i18n_export_builder_odoo19_uses_native_subcommand(self, config_provider):
+        builder = I18nExportCommandBuilder(
+            config_provider,
+            modules=["sale", "purchase"],
+            languages=["de_DE", "fr_FR"],
+            output=None,
+            odoo_series="19.0",
+        )
+
+        cmd = builder.build()
+
+        expected_prefix = [
+            "/usr/bin/python3",
+            "/opt/odoo/odoo-bin",
+            "--addons-path=/opt/odoo/addons,/opt/custom/addons",
+            "i18n",
+            "export",
+            "sale",
+            "purchase",
+            "--languages",
+            "de_DE",
+            "fr_FR",
+        ]
+        assert cmd[: len(expected_prefix)] == expected_prefix
+        assert "--database=test_db" in cmd
+        assert "--addons-path=/opt/odoo/addons,/opt/custom/addons" in cmd
+        assert "--config=" not in " ".join(cmd)
+        for forbidden in (
+            "--modules=sale,purchase",
+            "--i18n-export",
+            "--language=de_DE",
+            "--load-language",
+            "--no-http",
+            "--stop-after-init",
+            "--log-level=info",
+            "--db_user=odoo",
+            "--db_password=password",
+            "--http-port=8069",
+            "--data-dir=/opt/odoo/data",
+        ):
+            assert forbidden not in cmd
+
+    def test_i18n_import_builder_odoo18_handles_single_file(
+        self, config_provider, tmp_path
+    ):
+        translation_file = tmp_path / "sale_de.po"
+        translation_file.write_text('msgid ""\nmsgstr ""\n')
+
+        builder = I18nImportCommandBuilder(
+            config_provider,
+            files=[str(translation_file)],
+            language="de_DE",
+            overwrite=True,
+            odoo_series="18.0",
+        )
+
+        cmd = builder.build()
+
+        assert f"--i18n-import={translation_file}" in cmd
+        assert "--language=de_DE" in cmd
+        assert "--i18n-overwrite" in cmd
+        assert "--stop-after-init" in cmd
+        assert "--no-http" in cmd
+
+    def test_i18n_import_builder_odoo19_handles_multiple_files(
+        self, config_provider, tmp_path
+    ):
+        first_file = tmp_path / "sale_de.po"
+        first_file.write_text('msgid ""\nmsgstr ""\n')
+        second_file = tmp_path / "sale_de.csv"
+        second_file.write_text("module,msgid,msgstr\n")
+
+        builder = I18nImportCommandBuilder(
+            config_provider,
+            files=[str(first_file), str(second_file)],
+            language="de_DE",
+            overwrite=True,
+            odoo_series="19.0",
+        )
+
+        cmd = builder.build()
+
+        assert cmd[:5] == [
+            "/usr/bin/python3",
+            "/opt/odoo/odoo-bin",
+            "--addons-path=/opt/odoo/addons,/opt/custom/addons",
+            "i18n",
+            "import",
+        ]
+        assert str(first_file) in cmd
+        assert str(second_file) in cmd
+        assert "--language=de_DE" in cmd
+        assert "--overwrite" in cmd
+        assert "--i18n-import" not in cmd
+        assert "--i18n-overwrite" not in cmd
+
+    def test_i18n_load_language_builders_preserve_locale_values(self, config_provider):
+        legacy = I18nLoadLanguageCommandBuilder(
+            config_provider,
+            languages=["en", "es_AR", "sr@latin"],
+            odoo_series="18.0",
+        )
+        native = I18nLoadLanguageCommandBuilder(
+            config_provider,
+            languages=["en", "es_AR", "sr@latin"],
+            odoo_series="19.0",
+        )
+
+        legacy_cmd = legacy.build()
+        native_cmd = native.build()
+
+        assert "--load-language=en,es_AR,sr@latin" in legacy_cmd
+        assert "--stop-after-init" in legacy_cmd
+        assert "--no-http" in legacy_cmd
+        assert native_cmd[:5] == [
+            "/usr/bin/python3",
+            "/opt/odoo/odoo-bin",
+            "--addons-path=/opt/odoo/addons,/opt/custom/addons",
+            "i18n",
+            "loadlang",
+        ]
+        assert native_cmd[5:8] == ["en", "es_AR", "sr@latin"]
+        assert "--load-language=en,es_AR,sr@latin" not in native_cmd
 
 
 class TestDatabaseCommandBuilder:

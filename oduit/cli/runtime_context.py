@@ -109,6 +109,9 @@ class AppCommandImplementations:
     impact_of_update_command_impl: Any
     list_missing_command_impl: Any
     init_env_command_impl: Any
+    i18n_export_command_impl: Any
+    i18n_import_command_impl: Any
+    i18n_loadlang_command_impl: Any
     export_lang_command_impl: Any
     get_odoo_version_command_impl: Any
 
@@ -257,6 +260,9 @@ class AgentCommandImplementations:
     uninstall_module_command_impl: Any
     update_module_command_impl: Any
     create_addon_command_impl: Any
+    i18n_export_command_impl: Any
+    i18n_import_command_impl: Any
+    i18n_loadlang_command_impl: Any
     export_lang_command_impl: Any
     test_summary_command_impl: Any
     validate_impl: Any

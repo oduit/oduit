@@ -187,6 +187,7 @@ class OdooOperations:
         no_http: bool = False,
         log_level: str | None = None,
         suppress_output: bool = False,
+        odoo_series: Any | None = None,
     ) -> dict:
         """Export language translations for a specific module to a file."""
         return self._runtime_service.export_module_language(
@@ -196,6 +197,71 @@ class OdooOperations:
             no_http=no_http,
             log_level=log_level,
             suppress_output=suppress_output,
+            odoo_series=odoo_series,
+        )
+
+    def export_translations(
+        self,
+        modules: list[str] | tuple[str, ...],
+        languages: list[str] | tuple[str, ...] | None = None,
+        output: str | None = None,
+        *,
+        odoo_series: Any | None = None,
+        log_level: str | None = None,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+    ) -> dict:
+        """Export translations with version-aware command selection."""
+        return self._runtime_service.export_translations(
+            modules=modules,
+            languages=languages,
+            output=output,
+            odoo_series=odoo_series,
+            log_level=log_level,
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
+        )
+
+    def import_translations(
+        self,
+        files: list[str] | tuple[str, ...],
+        language: str,
+        *,
+        overwrite: bool = False,
+        odoo_series: Any | None = None,
+        log_level: str | None = None,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        stop_on_error: bool = True,
+    ) -> dict:
+        """Import translations into the configured database."""
+        return self._runtime_service.import_translations(
+            files=files,
+            language=language,
+            overwrite=overwrite,
+            odoo_series=odoo_series,
+            log_level=log_level,
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
+            stop_on_error=stop_on_error,
+        )
+
+    def load_languages(
+        self,
+        languages: list[str] | tuple[str, ...],
+        *,
+        odoo_series: Any | None = None,
+        log_level: str | None = None,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+    ) -> dict:
+        """Load languages into the configured database."""
+        return self._runtime_service.load_languages(
+            languages=languages,
+            odoo_series=odoo_series,
+            log_level=log_level,
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
         )
 
     def run_tests(

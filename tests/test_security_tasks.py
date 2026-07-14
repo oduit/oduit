@@ -553,6 +553,73 @@ class TestSec4AgentBoundaries(unittest.TestCase):
         self.assertFalse(payload["read_only"])
         self.assertEqual(payload["safety_level"], "controlled_source_mutation")
 
+    def test_agent_i18n_import_requires_allow_mutation(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            translation_file = tmp_path / "sale_de.po"
+            translation_file.write_text('msgid ""\nmsgstr ""\n')
+            config = self._agent_config(tmp_path, str(addons_dir))
+            config["needs_mutation_flag"] = True
+            loader = self._loader_with_config(config, tmp_path)
+
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+                result = runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "agent",
+                        "i18n-import",
+                        str(translation_file),
+                        "--language",
+                        "de_DE",
+                    ],
+                )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["error_type"], "ConfirmationRequired")
+        self.assertFalse(payload["read_only"])
+        self.assertEqual(payload["safety_level"], "controlled_runtime_mutation")
+
+    def test_agent_i18n_export_file_output_requires_allow_mutation(self) -> None:
+        runner = CliRunner()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            addons_dir = tmp_path / "addons"
+            addons_dir.mkdir()
+            self._make_addon(addons_dir, "base", depends=[])
+            config = self._agent_config(tmp_path, str(addons_dir))
+            loader = self._loader_with_config(config, tmp_path)
+
+            with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+                result = runner.invoke(
+                    app,
+                    [
+                        "--env",
+                        "dev",
+                        "--odoo-series",
+                        "19.0",
+                        "agent",
+                        "i18n-export",
+                        "sale",
+                        "--language",
+                        "de_DE",
+                        "--output",
+                        str(tmp_path / "sale_de.po"),
+                    ],
+                )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["error_type"], "ConfirmationRequired")
+        self.assertFalse(payload["read_only"])
+        self.assertEqual(payload["safety_level"], "controlled_source_mutation")
+
     def test_agent_validate_addon_change_requires_allow_mutation(self) -> None:
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmpdir:

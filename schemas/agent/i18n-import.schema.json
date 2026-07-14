@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/i18n-import.schema.json",
+  "type": "object",
+  "required": ["type", "data"],
+  "properties": {
+    "type": {
+      "const": "i18n_import"
+    },
+    "data": {
+      "type": "object",
+      "required": ["files", "language", "overwrite"],
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "language": {
+          "type": "string"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "odoo_series": {
+          "type": ["string", "null"]
+        },
+        "sub_results": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -89,8 +89,8 @@ This page is generated from the canonical Typer registration surface in
      - ``human_oriented``
      - Initialize a new oduit environment configuration.
    * - ``export-lang``
-     - ``human_oriented``
-     - Export language module.
+     - ``compatibility_only``
+     - Export language module (compatibility alias).
    * - ``version``
      - ``human_oriented``
      - Get Odoo version from odoo-bin.
@@ -103,6 +103,9 @@ This page is generated from the canonical Typer registration surface in
    * - ``set``
      - ``human_oriented``
      - Manage operation sets
+   * - ``i18n``
+     - ``human_oriented``
+     - Import, export, and load Odoo translations
    * - ``docs``
      - ``human_oriented``
      - Generate addon and model documentation bundles

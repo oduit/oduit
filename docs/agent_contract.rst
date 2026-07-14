@@ -42,8 +42,11 @@ Only mutate through the controlled mutation commands:
 * ``install-module``
 * ``uninstall-module``
 * ``update-module``
+* ``i18n-export``
+* ``i18n-import``
+* ``i18n-loadlang``
 * ``create-addon``
-* ``export-lang``
+* ``export-lang`` (compatibility alias)
 * ``test-summary``
 
 For split addon technical documentation, use:
@@ -117,6 +120,18 @@ this loop:
 For runtime spot checks after a change, prefer ``query-model``, ``read-record``,
 and ``search-count`` over arbitrary code execution.
 
+For translation workflows, prefer the dedicated i18n agent commands:
+
+.. code-block:: bash
+
+   oduit --env dev agent i18n-export sale --language de_DE --output - --dry-run
+   oduit --env dev agent i18n-export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+   oduit --env dev agent i18n-import /tmp/sale-de.po --language de_DE --allow-mutation
+   oduit --env dev agent i18n-loadlang en es_AR sr@latin --allow-mutation
+
+Use ``agent export-lang`` only as a compatibility alias for the legacy single
+module export workflow.
+
 When an agent needs direct parity with the human inspection / DB / manifest
 commands, use the structured wrappers instead of shell snippets:
 
@@ -154,7 +169,8 @@ Mutation Policy
 
 * Default to read-only commands.
 * ``install-module``, ``uninstall-module``, ``update-module``,
-  ``create-addon``, and ``export-lang`` are controlled mutations.
+  ``create-addon``, ``i18n-export``, ``i18n-import``, ``i18n-loadlang``, and
+  ``export-lang`` are controlled mutations.
 * ``inspect-cron`` is read-only by default; ``inspect-cron --trigger`` becomes
   a controlled runtime mutation and may require ``--allow-mutation``.
 * Runtime DB mutation uses explicit flags:
@@ -169,8 +185,9 @@ Mutation Policy
 * ``uninstall-module`` also requires ``--allow-uninstall`` and
   ``allow_uninstall = true`` in the active environment config.
 * ``--dry-run`` is supported by ``install-module``, ``uninstall-module``,
-  ``update-module``, ``create-addon``, and ``export-lang``. Their dry runs
-  return read-only planning payloads.
+  ``update-module``, ``create-addon``, ``i18n-export``, ``i18n-import``,
+  ``i18n-loadlang``, and ``export-lang``. Their dry runs return read-only
+  planning payloads.
 * ``test-summary`` stays read-only unless you pass ``--install`` or
   ``--update``. ``validate-addon-change`` only consults runtime DB mutation
   policy when you request install or update work.

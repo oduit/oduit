@@ -425,6 +425,13 @@ class DemoProcessManager(BaseProcessManager):
                 return cmd[i + 1]
         return "unknown_module"
 
+    @staticmethod
+    def _has_native_i18n_subcommand(cmd: list[str], action: str) -> bool:
+        for index, token in enumerate(cmd[:-1]):
+            if token == "i18n" and cmd[index + 1] == action:
+                return True
+        return False
+
     def run_command(
         self,
         cmd: list[str],
@@ -450,8 +457,18 @@ class DemoProcessManager(BaseProcessManager):
             return self._simulate_scaffold_operation(
                 cmd, verbose=verbose, suppress_output=suppress_output
             )
-        elif "--i18n-export" in cmd:
-            return self._simulate_export_operation(
+        elif "--i18n-export" in cmd or self._has_native_i18n_subcommand(cmd, "export"):
+            return self._simulate_i18n_export_operation(
+                cmd, verbose=verbose, suppress_output=suppress_output
+            )
+        elif "--i18n-import" in cmd or self._has_native_i18n_subcommand(cmd, "import"):
+            return self._simulate_i18n_import_operation(
+                cmd, verbose=verbose, suppress_output=suppress_output
+            )
+        elif "--load-language" in cmd or self._has_native_i18n_subcommand(
+            cmd, "loadlang"
+        ):
+            return self._simulate_i18n_load_language_operation(
                 cmd, verbose=verbose, suppress_output=suppress_output
             )
         elif "shell" in cmd:
@@ -875,10 +892,10 @@ class DemoProcessManager(BaseProcessManager):
                 "command": " ".join(cmd),
             }
 
-    def _simulate_export_operation(
+    def _simulate_i18n_export_operation(
         self, cmd: list[str], verbose: bool = False, suppress_output: bool = False
     ) -> dict[str, Any]:
-        """Simulate language export operations"""
+        """Simulate translation export operations."""
         if verbose and not suppress_output:
             print("[DEMO] Simulating language export...")
 
@@ -889,6 +906,44 @@ class DemoProcessManager(BaseProcessManager):
             "return_code": 0,
             "output": (
                 "INFO odoo.tools.translate: Language export completed successfully"
+            ),
+            "stderr": "",
+            "command": " ".join(cmd),
+        }
+
+    def _simulate_i18n_import_operation(
+        self, cmd: list[str], verbose: bool = False, suppress_output: bool = False
+    ) -> dict[str, Any]:
+        """Simulate translation import operations."""
+        if verbose and not suppress_output:
+            print("[DEMO] Simulating language import...")
+
+        time.sleep(0.2)
+
+        return {
+            "success": True,
+            "return_code": 0,
+            "output": (
+                "INFO odoo.tools.translate: Language import completed successfully"
+            ),
+            "stderr": "",
+            "command": " ".join(cmd),
+        }
+
+    def _simulate_i18n_load_language_operation(
+        self, cmd: list[str], verbose: bool = False, suppress_output: bool = False
+    ) -> dict[str, Any]:
+        """Simulate language loading operations."""
+        if verbose and not suppress_output:
+            print("[DEMO] Simulating language loading...")
+
+        time.sleep(0.2)
+
+        return {
+            "success": True,
+            "return_code": 0,
+            "output": (
+                "INFO odoo.tools.translate: Language loading completed successfully"
             ),
             "stderr": "",
             "command": " ".join(cmd),
@@ -955,12 +1010,31 @@ class DemoProcessManager(BaseProcessManager):
         result_builder = OperationResult.from_operation(command_operation)
 
         try:
-            # Execute using regular demo process manager logic
-            process_result = self.run_command(
-                command_operation.command,
-                verbose=verbose,
-                suppress_output=suppress_output,
-            )
+            operation_type = command_operation.operation_type
+            if operation_type in {"i18n_export", "export_language"}:
+                process_result = self._simulate_i18n_export_operation(
+                    command_operation.command,
+                    verbose=verbose,
+                    suppress_output=suppress_output,
+                )
+            elif operation_type == "i18n_import":
+                process_result = self._simulate_i18n_import_operation(
+                    command_operation.command,
+                    verbose=verbose,
+                    suppress_output=suppress_output,
+                )
+            elif operation_type == "i18n_load_language":
+                process_result = self._simulate_i18n_load_language_operation(
+                    command_operation.command,
+                    verbose=verbose,
+                    suppress_output=suppress_output,
+                )
+            else:
+                process_result = self.run_command(
+                    command_operation.command,
+                    verbose=verbose,
+                    suppress_output=suppress_output,
+                )
 
             # Use the enhanced result processing
             if process_result:

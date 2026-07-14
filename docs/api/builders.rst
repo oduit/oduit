@@ -34,3 +34,6 @@ Key Concepts
 - ``build_operation()`` returns a structured ``CommandOperation``
 - the structured form carries metadata such as operation type, modules, and
   parser hints for downstream result processing
+- version-aware i18n flows use dedicated builders:
+  ``I18nExportCommandBuilder``, ``I18nImportCommandBuilder``, and
+  ``I18nLoadLanguageCommandBuilder``

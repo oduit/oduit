@@ -214,7 +214,13 @@ Runtime database mutation commands:
 Source mutation commands:
 
 - `create-addon`
-- `export-lang`
+- `i18n-export`
+- `export-lang` (compatibility alias)
+
+Runtime translation mutation commands:
+
+- `i18n-import`
+- `i18n-loadlang`
 
 Rules:
 
@@ -234,10 +240,24 @@ Never widen destructive behavior silently. If a task needs installation, update,
 uninstall, cron triggering, source generation, or translation export, call that
 out and use the explicit flags.
 
+Translation notes:
+
+- prefer `oduit i18n export` and `oduit agent i18n-export` over `export-lang`
+- `i18n export --output -` is read-only; filesystem outputs are source mutations
+- `i18n import` and `i18n loadlang` are runtime DB mutations
+- locale values are not limited to `xx_XX`; examples include `en`, `es_AR`, and `sr@latin`
+- use `--dry-run` first on the agent i18n commands when you need the normalized request,
+  effective series, and chosen strategy without executing Odoo
+
 ## Human CLI fallback
 
 Use human-oriented commands when a person-readable result is enough or when no
 agent wrapper exists:
+
+oduit agent i18n-export sale --language de_DE --output - --dry-run
+oduit agent i18n-export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+oduit agent i18n-import /tmp/sale-de.po --language de_DE --allow-mutation
+oduit agent i18n-loadlang en es_AR sr@latin --allow-mutation
 
 ```bash
 oduit doctor

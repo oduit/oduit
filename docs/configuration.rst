@@ -202,6 +202,17 @@ Common Odoo keys:
 * ``log_level``
 * ``http_port``
 * ``workers``
+* ``odoo_series`` (optional explicit override when addon-based detection is unavailable)
+
+Translation-specific config caution
+-----------------------------------
+
+Legacy Odoo server keys such as ``translate_out``, ``translate_in``,
+``load_language``, ``overwrite_existing_translations``, and
+``translate_modules`` remain supported for compatibility, but they are risky as
+persistent environment defaults. Prefer passing translation inputs explicitly to
+``oduit i18n export``, ``oduit i18n import``, and ``oduit i18n loadlang``
+instead of storing them in shared config.
 
 Documentation workflow settings
 -------------------------------

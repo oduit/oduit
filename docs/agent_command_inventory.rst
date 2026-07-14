@@ -238,9 +238,21 @@ Command tiers:
      - ``stable_for_agents``
      - ``controlled_source_mutation``
      - Create a new addon with an explicit mutation gate.
-   * - ``export-lang``
+   * - ``i18n-export``
+     - ``stable_for_agents``
+     - ``controlled_source_mutation``
+     - Export translations with a structured agent payload.
+   * - ``i18n-import``
      - ``stable_for_agents``
      - ``controlled_runtime_mutation``
+     - Import translations with a structured agent payload.
+   * - ``i18n-loadlang``
+     - ``stable_for_agents``
+     - ``controlled_runtime_mutation``
+     - Load languages with a structured agent payload.
+   * - ``export-lang``
+     - ``compatibility_only``
+     - ``controlled_source_mutation``
      - Export language files with an explicit mutation gate.
    * - ``test-summary``
      - ``stable_for_agents``

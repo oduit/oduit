@@ -97,12 +97,17 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     )
     list_missing_command_impl = context.implementations.list_missing_command_impl
     init_env_command_impl = context.implementations.init_env_command_impl
+    i18n_export_command_impl = context.implementations.i18n_export_command_impl
+    i18n_import_command_impl = context.implementations.i18n_import_command_impl
+    i18n_loadlang_command_impl = context.implementations.i18n_loadlang_command_impl
     export_lang_command_impl = context.implementations.export_lang_command_impl
     get_odoo_version_command_impl = (
         context.implementations.get_odoo_version_command_impl
     )
     set_app = typer.Typer(help="Manage operation sets")
+    i18n_app = typer.Typer(help="Import, export, and load Odoo translations")
     app.add_typer(set_app, name="set")
+    app.add_typer(i18n_app, name="i18n")
 
     @app.command()
     def doctor(ctx: typer.Context) -> None:
@@ -1287,22 +1292,178 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             display_config_summary_fn=display_config_summary_fn,
         )
 
+    @i18n_app.command("export")
+    def i18n_export(
+        ctx: typer.Context,
+        modules: list[str] = typer.Argument(help="One or more addon technical names"),
+        languages: list[str] | None = typer.Option(
+            None,
+            "--language",
+            "--lang",
+            "-l",
+            help="Repeatable or comma-separated export language values",
+        ),
+        output: str | None = typer.Option(
+            None,
+            "--output",
+            "-o",
+            help="Optional output path, or '-' to write PO content to stdout",
+        ),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm translation file creation or module-local export writes",
+        ),
+        include_command: bool = typer.Option(
+            False, "--include-command", help="Include executed command in result JSON"
+        ),
+        include_stdout: bool = typer.Option(
+            False, "--include-stdout", help="Include stdout in result JSON"
+        ),
+        log_level: LogLevel | None = typer.Option(
+            None,
+            "--log-level",
+            help="Legacy-only compatibility log level for Odoo 18 and older",
+        ),
+    ) -> None:
+        """Export module translations."""
+        i18n_export_command_impl(
+            ctx,
+            modules=modules,
+            languages=languages,
+            output=output,
+            allow_mutation=allow_mutation,
+            include_command=include_command,
+            include_stdout=include_stdout,
+            log_level=log_level,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            module_manager_cls=get_module_manager_cls(),
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @i18n_app.command("import")
+    def i18n_import(
+        ctx: typer.Context,
+        files: list[str] = typer.Argument(help="One or more translation files"),
+        language: str = typer.Option(
+            ...,
+            "--language",
+            "--lang",
+            "-l",
+            help="Language code for the imported files",
+        ),
+        overwrite: bool = typer.Option(
+            False,
+            "--overwrite",
+            "-w",
+            help="Overwrite existing translation terms",
+        ),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm runtime database mutation for translation import",
+        ),
+        include_command: bool = typer.Option(
+            False, "--include-command", help="Include executed command in result JSON"
+        ),
+        include_stdout: bool = typer.Option(
+            False, "--include-stdout", help="Include stdout in result JSON"
+        ),
+        log_level: LogLevel | None = typer.Option(
+            None,
+            "--log-level",
+            help="Legacy-only compatibility log level for Odoo 18 and older",
+        ),
+    ) -> None:
+        """Import translation files."""
+        i18n_import_command_impl(
+            ctx,
+            files=files,
+            language=language,
+            overwrite=overwrite,
+            allow_mutation=allow_mutation,
+            include_command=include_command,
+            include_stdout=include_stdout,
+            log_level=log_level,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            module_manager_cls=get_module_manager_cls(),
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @i18n_app.command("loadlang")
+    def i18n_loadlang(
+        ctx: typer.Context,
+        languages: list[str] = typer.Argument(help="One or more locale codes"),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm runtime database mutation for language loading",
+        ),
+        include_command: bool = typer.Option(
+            False, "--include-command", help="Include executed command in result JSON"
+        ),
+        include_stdout: bool = typer.Option(
+            False, "--include-stdout", help="Include stdout in result JSON"
+        ),
+        log_level: LogLevel | None = typer.Option(
+            None,
+            "--log-level",
+            help="Legacy-only compatibility log level for Odoo 18 and older",
+        ),
+    ) -> None:
+        """Load languages into the active database."""
+        i18n_loadlang_command_impl(
+            ctx,
+            languages=languages,
+            allow_mutation=allow_mutation,
+            include_command=include_command,
+            include_stdout=include_stdout,
+            log_level=log_level,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            module_manager_cls=get_module_manager_cls(),
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
     @app.command("export-lang")
     def export_lang(
         ctx: typer.Context,
         module: str = typer.Argument(help="Module to export"),
         language: str | None = language_option,
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm translation file creation for the compatibility export path",
+        ),
+        include_command: bool = typer.Option(
+            False, "--include-command", help="Include executed command in result JSON"
+        ),
+        include_stdout: bool = typer.Option(
+            False, "--include-stdout", help="Include stdout in result JSON"
+        ),
         log_level: LogLevel | None = log_level_option,
     ) -> None:
-        """Export language module."""
+        """Export language module (compatibility alias)."""
         export_lang_command_impl(
             ctx,
             module=module,
             language=language,
+            allow_mutation=allow_mutation,
+            include_command=include_command,
+            include_stdout=include_stdout,
             log_level=log_level,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             module_manager_cls=get_module_manager_cls(),
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
         )
 
     @app.command("version")

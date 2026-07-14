@@ -1026,31 +1026,48 @@ of a module update.
    # Output as JSON
    oduit --env dev --json impact-of-update sale
 
+i18n
+^^^^
+
+Use the ``i18n`` command group for translation export, import, and language
+loading across Odoo 18 and Odoo 19.
+
+.. code-block:: bash
+
+   oduit --env dev i18n export MODULE [MODULE ...] [OPTIONS]
+   oduit --env dev i18n import FILE [FILE ...] --language CODE [OPTIONS]
+   oduit --env dev i18n loadlang LANGUAGE [LANGUAGE ...] [OPTIONS]
+
+Compatibility matrix:
+
+* Odoo 19+: uses native ``odoo-bin i18n export/import/loadlang``
+* Odoo 18 and older: uses legacy ``--i18n-*`` and ``--load-language`` flags
+
+Notes:
+
+* ``i18n export`` defaults to ``pot`` when no language is supplied
+* Odoo 18 and older require exactly one export language and ``--output``
+* Odoo 19+ allows multiple export languages when ``--output`` is omitted
+* ``--output -`` is read-only and writes PO content to stdout
+* ``i18n import`` accepts only ``.po`` and ``.csv`` files
+* locale values such as ``en``, ``es_AR``, and ``sr@latin`` are preserved
+
+Examples:
+
+.. code-block:: bash
+
+   oduit --env dev --odoo-series 18.0 i18n export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+   oduit --env dev --odoo-series 19.0 i18n export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+   oduit --env dev --odoo-series 19.0 i18n export sale purchase --language de_DE --language fr_FR --allow-mutation
+   oduit --env dev i18n import /tmp/sale-de.po --language de_DE --overwrite --allow-mutation
+   oduit --env dev i18n loadlang en es_AR sr@latin --allow-mutation
+
 export-lang
 ^^^^^^^^^^^
 
-Export language translations for a module. This is a controlled source mutation
-command and requires ``--allow-mutation``.
-
-.. code-block:: bash
-
-   oduit --env dev export-lang MODULE [OPTIONS]
-
-**Options:**
-
-- ``--language, -l TEXT``: Language to export (default: from config or de_DE)
-
-**Examples:**
-
-.. code-block:: bash
-
-   # Export default language
-   oduit --env dev export-lang sale --allow-mutation
-
-   # Export specific language
-   oduit --env dev export-lang sale --allow-mutation --language fr_FR
-
-The exported file will be saved to ``<module_path>/i18n/<language>.po``.
+``export-lang`` remains available as a compatibility alias for one-module
+source exports. It derives ``<module>/i18n/<language>.po`` and still requires
+``--allow-mutation``.
 
 print-config
 ^^^^^^^^^^^^
@@ -1700,6 +1717,9 @@ commands only need it when the active config requires explicit confirmation. See
    oduit --env dev agent install-module sale --dry-run
    oduit --env dev agent update-module sale --allow-mutation
    oduit --env dev agent create-addon my_module --allow-mutation
+   oduit --env dev agent i18n-export sale --language de_DE --output - --dry-run
+   oduit --env dev agent i18n-import /tmp/sale-de.po --language de_DE --allow-mutation
+   oduit --env dev agent i18n-loadlang en es_AR sr@latin --allow-mutation
    oduit --env dev agent export-lang sale --allow-mutation --language de_DE
 
 query-model
@@ -1762,7 +1782,13 @@ Translation Workflow
 .. code-block:: bash
 
    # Export translations
-   oduit --env dev export-lang my_module --allow-mutation --language de_DE
+   oduit --env dev --odoo-series 19.0 i18n export my_module --language de_DE --output /tmp/my_module-de.po --allow-mutation
+
+   # Import translations
+   oduit --env dev i18n import /tmp/my_module-de.po --language de_DE --overwrite --allow-mutation
+
+   # Load available languages into the database
+   oduit --env dev i18n loadlang en es_AR sr@latin --allow-mutation
 
    # Update module with translation overwrite
    oduit --env dev update my_module --i18n-overwrite --language de_DE

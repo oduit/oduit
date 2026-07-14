@@ -2464,15 +2464,283 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_manager_instance = MagicMock()
+        mock_manager_instance.detect_odoo_series.return_value = "18.0"
         mock_manager_instance.find_module_path.return_value = "/test/addons/sale"
         mock_module_manager.return_value = mock_manager_instance
         mock_ops_instance = MagicMock()
+        mock_ops_instance.export_module_language.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
 
-        result = self.runner.invoke(app, ["--env", "dev", "export-lang", "sale"])
+        result = self.runner.invoke(
+            app, ["--env", "dev", "export-lang", "sale", "--allow-mutation"]
+        )
 
         self.assertEqual(result.exit_code, 0)
         mock_ops_instance.export_module_language.assert_called_once()
+
+    def test_i18n_help_commands(self):
+        for args in (
+            ["i18n", "--help"],
+            ["i18n", "export", "--help"],
+            ["i18n", "import", "--help"],
+            ["i18n", "loadlang", "--help"],
+        ):
+            result = self.runner.invoke(app, args)
+            self.assertEqual(result.exit_code, 0, msg=f"failed for {args}")
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_i18n_export_explicit_odoo19_uses_new_operation(
+        self, mock_config_loader_class, mock_module_manager, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_module_manager.return_value = MagicMock()
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.export_translations.return_value = {
+            "success": True,
+            "strategy": "native_i18n",
+            "odoo_series": "19.0",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--odoo-series",
+                "19.0",
+                "i18n",
+                "export",
+                "sale",
+                "--language",
+                "de_DE",
+                "--output",
+                "-",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.export_translations.assert_called_once()
+        kwargs = mock_ops_instance.export_translations.call_args.kwargs
+        self.assertEqual(kwargs["modules"], ["sale"])
+        self.assertEqual(kwargs["languages"], ["de_DE"])
+        self.assertEqual(kwargs["output"], "-")
+        self.assertEqual(kwargs["odoo_series"], "19.0")
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_i18n_export_uses_detected_series(
+        self, mock_config_loader_class, mock_module_manager, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.detect_odoo_series.return_value = "18.0"
+        mock_module_manager.return_value = mock_manager_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.export_translations.return_value = {
+            "success": True,
+            "strategy": "legacy_flags",
+            "odoo_series": "18.0",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "i18n",
+                "export",
+                "sale",
+                "--language",
+                "de_DE",
+                "--output",
+                "/tmp/sale-de.po",
+                "--allow-mutation",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(
+            mock_ops_instance.export_translations.call_args.kwargs["odoo_series"],
+            "18.0",
+        )
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ModuleManager")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_i18n_export_unresolved_series_fails(
+        self, mock_config_loader_class, mock_module_manager, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.detect_odoo_series.return_value = None
+        mock_module_manager.return_value = mock_manager_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.get_odoo_version.return_value = {
+            "success": False,
+            "version": None,
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "i18n", "export", "sale", "--output", "/tmp/x.po"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("Unable to determine the Odoo series", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_i18n_export_stdout_does_not_require_allow_mutation(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.export_translations.return_value = {
+            "success": True,
+            "strategy": "native_i18n",
+            "odoo_series": "19.0",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--odoo-series",
+                "19.0",
+                "i18n",
+                "export",
+                "sale",
+                "--output",
+                "-",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.export_translations.assert_called_once()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_i18n_export_legacy_without_output_is_rejected(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_odoo_ops.return_value = MagicMock()
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--odoo-series",
+                "18.0",
+                "i18n",
+                "export",
+                "sale",
+                "--language",
+                "de_DE",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("require --output", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_i18n_export_json_is_structured(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.export_translations.return_value = {
+            "success": True,
+            "operation": "i18n_export",
+            "modules": ["sale"],
+            "languages": ["de_DE"],
+            "output": "-",
+            "strategy": "native_i18n",
+            "odoo_series": "19.0",
+            "stdout": "po-data",
+            "command": ["python3", "odoo-bin", "i18n", "export"],
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--json",
+                "--odoo-series",
+                "19.0",
+                "i18n",
+                "export",
+                "sale",
+                "--language",
+                "de_DE",
+                "--output",
+                "-",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["type"], "i18n_export")
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["data"]["modules"], ["sale"])
+        self.assertNotIn("command", payload["data"])
+        self.assertNotIn("stdout", payload["data"])
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_i18n_export_failure_returns_exit_code_one(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.export_translations.return_value = {
+            "success": False,
+            "operation": "i18n_export",
+            "error": "boom",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--odoo-series",
+                "19.0",
+                "i18n",
+                "export",
+                "sale",
+                "--output",
+                "-",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 1)
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")

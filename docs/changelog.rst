@@ -18,6 +18,9 @@ Added
 
 - Allow to assure that each addon is process in sets
 
+- Add version-aware Odoo 18/19 i18n export, import, and loadlang commands for
+  the classic CLI, agent CLI, Python API, demo mode, and inventories
+
 
 
 Fixed
@@ -31,12 +34,17 @@ Fixed
 
 - Windows pytest fix
 
+- Keep ``export-lang`` as a compatibility alias while moving translation
+  workflows to the new ``i18n`` command family
+
 
 
 Documentation
 ~~~~~~~~~~~~~~~~~~~~~
 
 - Update changelog
+
+- Document the Odoo 18/19 i18n compatibility surface and agent mutation rules
 
 - Update docs regarding new set commands
 

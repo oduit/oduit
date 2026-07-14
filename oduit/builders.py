@@ -11,12 +11,16 @@ Provides proper separation of concerns and fluent interfaces.
 
 import logging
 import os
+import re
 import shlex
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .config_provider import ConfigProvider
+from .exceptions import ConfigError
 from .module_manager import ModuleManager
 
 _logger = logging.getLogger(__name__)
@@ -24,6 +28,128 @@ _logger = logging.getLogger(__name__)
 
 def _split_module_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _dedupe_preserving_order(values: Sequence[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _normalize_non_empty_values(
+    values: Sequence[Any] | Any,
+    *,
+    value_label: str,
+) -> list[str]:
+    raw_values = (
+        [values]
+        if isinstance(values, str) or not isinstance(values, Sequence)
+        else list(values)
+    )
+    if not raw_values:
+        raise ConfigError(f"{value_label} list cannot be empty.")
+
+    normalized: list[str] = []
+    for raw_value in raw_values:
+        value = str(raw_value).strip()
+        if not value:
+            raise ConfigError(f"{value_label} values must be non-empty.")
+        if any(character.isspace() for character in value):
+            raise ConfigError(
+                f"{value_label} values must not contain whitespace: {value}"
+            )
+        normalized.append(value)
+
+    return _dedupe_preserving_order(normalized)
+
+
+def _normalize_languages(values: Sequence[Any] | Any) -> list[str]:
+    return _normalize_non_empty_values(values, value_label="Language")
+
+
+def _normalize_modules(values: Sequence[Any] | Any) -> list[str]:
+    return _normalize_non_empty_values(values, value_label="Module")
+
+
+def _validate_import_files(files: Sequence[Any] | Any) -> list[str]:
+    normalized_files = _normalize_non_empty_values(files, value_label="Import file")
+    for filename in normalized_files:
+        path = Path(filename)
+        if path.suffix.lower() not in {".po", ".csv"}:
+            raise ConfigError(
+                f"Translation import accepts only .po and .csv files: {filename}"
+            )
+        if not path.exists():
+            raise ConfigError(f"Translation import file does not exist: {filename}")
+        if not path.is_file():
+            raise ConfigError(
+                f"Translation import file must be a regular file: {filename}"
+            )
+    return normalized_files
+
+
+def _validate_export_output(output: str | None, *, native_i18n: bool) -> str | None:
+    if output is None:
+        return None
+
+    normalized_output = str(output).strip()
+    if not normalized_output:
+        raise ConfigError("Export output must be a non-empty path or '-'.")
+    if normalized_output == "-":
+        if native_i18n:
+            return normalized_output
+        raise ConfigError("Odoo 18 and older require --output for i18n export.")
+
+    allowed_suffixes = (
+        {".po", ".pot", ".tgz", ".csv"}
+        if native_i18n
+        else {
+            ".po",
+            ".csv",
+            ".tgz",
+        }
+    )
+    if Path(normalized_output).suffix.lower() not in allowed_suffixes:
+        if native_i18n:
+            raise ConfigError(
+                "Odoo 19+ export output must end in .po, .pot, .tgz, .csv, or be '-'."
+            )
+        raise ConfigError(
+            "Odoo 18 and older export output must end in .po, .csv, or .tgz."
+        )
+
+    return normalized_output
+
+
+def odoo_series_major(value: Any | None) -> int | None:
+    if value is None:
+        return None
+    if hasattr(value, "value"):
+        return odoo_series_major(value.value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+
+    text = str(value).strip()
+    if not text:
+        return None
+    match = re.search(r"(\d+)", text)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _normalize_odoo_series_label(value: Any | None) -> str | None:
+    major = odoo_series_major(value)
+    if major is None:
+        return None
+    return f"{major}.0"
 
 
 @dataclass
@@ -527,6 +653,94 @@ class BaseOdooCommandBuilder(AbstractCommandBuilder):
         )
 
 
+class BaseI18nCommandBuilder(BaseOdooCommandBuilder):
+    """Shared base for version-aware i18n command builders."""
+
+    def __init__(self, config_provider: ConfigProvider, odoo_series: Any):
+        super().__init__(config_provider)
+        config_provider.validate_keys(
+            ["odoo_bin", "addons_path", "db_name"], "i18n command"
+        )
+        self._odoo_series_major = odoo_series_major(odoo_series)
+        if self._odoo_series_major is None:
+            raise ConfigError(
+                "Unable to determine the Odoo series for the i18n command. "
+                "Pass --odoo-series 18.0 or --odoo-series 19.0."
+            )
+        self._odoo_series = _normalize_odoo_series_label(odoo_series)
+        self._strategy = (
+            "native_i18n" if self._odoo_series_major >= 19 else "legacy_flags"
+        )
+        self._setup_base_command()
+
+    @property
+    def is_native_i18n(self) -> bool:
+        return self._strategy == "native_i18n"
+
+    @property
+    def strategy(self) -> str:
+        return self._strategy
+
+    @property
+    def odoo_series(self) -> str:
+        assert self._odoo_series is not None
+        return self._odoo_series
+
+    def _apply_i18n_environment_config(self) -> None:
+        if config_file := self.config.get_optional("config_file"):
+            self.config_file(config_file)
+        if not self.is_native_i18n:
+            if addons_path := self.config.get_optional("addons_path"):
+                self.addons_path(self._expand_addons_path(addons_path))
+        if db_name := self.config.get_optional("db_name"):
+            self.database(db_name)
+
+    def _apply_legacy_i18n_termination(self) -> None:
+        self.stop_after_init(True)
+        self.no_http(True)
+
+    def _append_native_i18n_command(self, action: str) -> None:
+        if addons_path := self.config.get_optional("addons_path"):
+            self.addons_path(self._expand_addons_path(addons_path))
+        self._set_command("i18n")
+        self._set_command(action)
+
+    def overwrite(self, enabled: bool = True) -> "BaseI18nCommandBuilder":
+        if enabled:
+            self._set_flag("overwrite")
+        else:
+            self._remove_by_key("overwrite")
+        return self
+
+    def log_level(self, level: str) -> "BaseI18nCommandBuilder":
+        if self.is_native_i18n:
+            return self
+        super().log_level(level)
+        return self
+
+    def no_http(self, enabled: bool = True) -> "BaseI18nCommandBuilder":
+        if self.is_native_i18n:
+            self._remove_by_key("no-http")
+            return self
+        super().no_http(enabled)
+        return self
+
+    def stop_after_init(self, enabled: bool = True) -> "BaseI18nCommandBuilder":
+        if self.is_native_i18n:
+            self._remove_by_key("stop-after-init")
+            return self
+        super().stop_after_init(enabled)
+        return self
+
+    def disable_http(self) -> "BaseI18nCommandBuilder":
+        if self.is_native_i18n:
+            self._remove_http_config()
+            self._remove_by_key("no-http")
+            return self
+        super().disable_http()
+        return self
+
+
 class RunCommandBuilder(BaseOdooCommandBuilder):
     """Specialized builder for run commands"""
 
@@ -799,29 +1013,213 @@ class InstallCommandBuilder(BaseOdooCommandBuilder):
         )
 
 
+class I18nExportCommandBuilder(BaseI18nCommandBuilder):
+    """Build version-aware translation export commands."""
+
+    def __init__(
+        self,
+        config_provider: ConfigProvider,
+        modules: Sequence[str],
+        languages: Sequence[str] | None = None,
+        output: str | None = None,
+        *,
+        odoo_series: Any,
+    ):
+        super().__init__(config_provider, odoo_series)
+        self._modules = _normalize_modules(modules)
+        self._languages = _normalize_languages(languages or ["pot"])
+        self._output = _validate_export_output(output, native_i18n=self.is_native_i18n)
+
+        if self.is_native_i18n:
+            if self._output is not None and len(self._languages) != 1:
+                raise ConfigError(
+                    "--output can be used with exactly one export language on Odoo 19+."
+                )
+            self._append_native_i18n_command("export")
+            for module in self._modules:
+                self._set_command(module)
+            self._set_flag("languages")
+            for language in self._languages:
+                self._set_value(language)
+            if self._output is not None:
+                self._set_parameter("output", self._output)
+            self._apply_i18n_environment_config()
+            return
+
+        if len(self._languages) != 1:
+            raise ConfigError("Odoo 18 and older support exactly one export language.")
+        if self._output is None:
+            raise ConfigError("Odoo 18 and older require --output for i18n export.")
+
+        self._apply_i18n_environment_config()
+        self.modules(",".join(self._modules))
+        self.i18n_export(self._output)
+        self.language(self._languages[0])
+        self._apply_legacy_i18n_termination()
+
+    def build_operation(self) -> CommandOperation:
+        return CommandOperation(
+            command=self.build(),
+            operation_type="i18n_export",
+            database=self.config.get_optional("db_name"),
+            modules=list(self._modules),
+            is_odoo_command=True,
+            expected_result_fields={
+                "database": self.config.get_optional("db_name"),
+                "modules": list(self._modules),
+                "languages": list(self._languages),
+                "output": self._output,
+                "odoo_series": self.odoo_series,
+                "strategy": self.strategy,
+            },
+            result_parsers=[],
+        )
+
+
+class I18nImportCommandBuilder(BaseI18nCommandBuilder):
+    """Build version-aware translation import commands."""
+
+    def __init__(
+        self,
+        config_provider: ConfigProvider,
+        files: Sequence[str],
+        language: str,
+        *,
+        overwrite: bool = False,
+        odoo_series: Any,
+    ):
+        super().__init__(config_provider, odoo_series)
+        self._files = _validate_import_files(files)
+        self._language = _normalize_languages([language])[0]
+        self._overwrite = overwrite
+
+        if self.is_native_i18n:
+            self._append_native_i18n_command("import")
+            for filename in self._files:
+                self._set_command(filename)
+            self.language(self._language)
+            if self._overwrite:
+                self.overwrite(True)
+            self._apply_i18n_environment_config()
+            return
+
+        if len(self._files) != 1:
+            raise ConfigError(
+                "Odoo 18 and older import one translation file per invocation."
+            )
+
+        self._apply_i18n_environment_config()
+        self.i18n_import(self._files[0])
+        self.language(self._language)
+        if self._overwrite:
+            self.i18n_overwrite(True)
+        self._apply_legacy_i18n_termination()
+
+    def build_operation(self) -> CommandOperation:
+        return CommandOperation(
+            command=self.build(),
+            operation_type="i18n_import",
+            database=self.config.get_optional("db_name"),
+            modules=[],
+            is_odoo_command=True,
+            expected_result_fields={
+                "database": self.config.get_optional("db_name"),
+                "files": list(self._files),
+                "language": self._language,
+                "overwrite": self._overwrite,
+                "odoo_series": self.odoo_series,
+                "strategy": self.strategy,
+            },
+            result_parsers=[],
+        )
+
+
+class I18nLoadLanguageCommandBuilder(BaseI18nCommandBuilder):
+    """Build version-aware language-loading commands."""
+
+    def __init__(
+        self,
+        config_provider: ConfigProvider,
+        languages: Sequence[str],
+        *,
+        odoo_series: Any,
+    ):
+        super().__init__(config_provider, odoo_series)
+        self._languages = _normalize_languages(languages)
+
+        if self.is_native_i18n:
+            self._append_native_i18n_command("loadlang")
+            for language in self._languages:
+                self._set_command(language)
+            self._apply_i18n_environment_config()
+            return
+
+        self._apply_i18n_environment_config()
+        self.load_language(",".join(self._languages))
+        self._apply_legacy_i18n_termination()
+
+    def build_operation(self) -> CommandOperation:
+        return CommandOperation(
+            command=self.build(),
+            operation_type="i18n_load_language",
+            database=self.config.get_optional("db_name"),
+            modules=[],
+            is_odoo_command=True,
+            expected_result_fields={
+                "database": self.config.get_optional("db_name"),
+                "languages": list(self._languages),
+                "odoo_series": self.odoo_series,
+                "strategy": self.strategy,
+            },
+            result_parsers=[],
+        )
+
+
 class LanguageCommandBuilder(BaseOdooCommandBuilder):
     """Specialized builder for language export commands"""
 
     def __init__(
-        self, config_provider: ConfigProvider, module: str, filename: str, language: str
+        self,
+        config_provider: ConfigProvider,
+        module: str,
+        filename: str,
+        language: str,
+        odoo_series: Any | None = None,
     ):
         super().__init__(config_provider)
-        # Store parameters for build_operation method
         self._module = module
         self._filename = filename
         self._language = language
-
-        config_provider.validate_keys(
-            ["odoo_bin", "addons_path", "db_name"], "lang command"
+        self._delegate = I18nExportCommandBuilder(
+            config_provider,
+            modules=[module],
+            languages=[language],
+            output=filename,
+            odoo_series=odoo_series or "18.0",
         )
+        self._command_parts = self._delegate._command_parts
+        self._strategy = self._delegate.strategy
+        self._odoo_series = self._delegate.odoo_series
 
-        self._setup_base_command()
-        self._apply_full_config()
-        self._remove_http_config()
-        self.no_http(True)
-        self.modules(module)
-        self.i18n_export(filename)
-        self.language(language)
+    def log_level(self, level: str) -> "LanguageCommandBuilder":
+        self._delegate.log_level(level)
+        return self
+
+    def no_http(self, enabled: bool = True) -> "LanguageCommandBuilder":
+        self._delegate.no_http(enabled)
+        return self
+
+    def stop_after_init(self, enabled: bool = True) -> "LanguageCommandBuilder":
+        self._delegate.stop_after_init(enabled)
+        return self
+
+    def disable_http(self) -> "LanguageCommandBuilder":
+        self._delegate.disable_http()
+        return self
+
+    def reset(self) -> None:
+        self._delegate.reset()
+        self._command_parts = self._delegate._command_parts
 
     def build_operation(self) -> CommandOperation:
         return CommandOperation(
@@ -836,6 +1234,8 @@ class LanguageCommandBuilder(BaseOdooCommandBuilder):
                 "module": self._module,
                 "filename": self._filename,
                 "language": self._language,
+                "odoo_series": self._odoo_series,
+                "strategy": self._strategy,
             },
             result_parsers=[],
         )

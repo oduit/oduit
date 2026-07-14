@@ -17,6 +17,7 @@ from oduit import (
     ModelFieldsResult,
     ModuleNotFoundError,
     ModuleUninstallError,
+    OdooOperationError,
     OdooOperations,
     QueryModelResult,
     RecordReadResult,
@@ -25,6 +26,7 @@ from oduit import (
     UpdatePlan,
 )
 from oduit.api_models import DocumentationRuntimeInventory, ModelViewInventory
+from oduit.exceptions import ConfigError
 from oduit.source_locator import list_model_extensions
 
 
@@ -82,6 +84,216 @@ def _port_conflict_output(port: int) -> str:
         f"Port {port} is in use by another program\n"
         "Either identify and stop that program, or start the server with a "
         "different port.\n"
+    )
+
+
+def test_export_translations_uses_detected_native_i18n_series(tmp_path: Path) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[], version="19.0.1.0.0")
+    _make_addon(addons_dir, "sale", version="19.0.1.0.0")
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+    with patch.object(
+        ops.process_manager,
+        "run_operation",
+        return_value={
+            "success": True,
+            "return_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "output": "",
+        },
+    ) as mock_run_operation:
+        result = ops.export_translations(
+            modules=["sale"],
+            languages=["de_DE"],
+            output="/tmp/sale-de.po",
+            suppress_output=True,
+        )
+
+    assert result["success"] is True
+    assert result["strategy"] == "native_i18n"
+    assert result["odoo_series"] == "19.0"
+    assert mock_run_operation.call_count == 1
+    command = mock_run_operation.call_args.args[0].command
+    assert command[:5] == [
+        str(tmp_path / "python3"),
+        str(tmp_path / "odoo-bin"),
+        f"--addons-path={addons_dir}",
+        "i18n",
+        "export",
+    ]
+
+
+def test_export_translations_fails_when_series_cannot_be_resolved(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+    with patch.object(
+        ops,
+        "get_odoo_version",
+        return_value={"success": False, "version": None},
+    ):
+        with pytest.raises(ConfigError, match="Unable to determine the Odoo series"):
+            ops.export_translations(
+                modules=["sale"],
+                languages=["de_DE"],
+                output="/tmp/sale-de.po",
+                suppress_output=True,
+                raise_on_error=True,
+            )
+
+
+def test_import_translations_runs_once_for_native_multi_file_import(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[], version="19.0.1.0.0")
+    first_file = tmp_path / "sale_de.po"
+    first_file.write_text('msgid ""\nmsgstr ""\n')
+    second_file = tmp_path / "sale_de.csv"
+    second_file.write_text("module,msgid,msgstr\n")
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+    with patch.object(
+        ops.process_manager,
+        "run_operation",
+        return_value={
+            "success": True,
+            "return_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "output": "",
+        },
+    ) as mock_run_operation:
+        result = ops.import_translations(
+            files=[str(first_file), str(second_file)],
+            language="de_DE",
+            suppress_output=True,
+        )
+
+    assert result["success"] is True
+    assert result["strategy"] == "native_i18n"
+    assert result["imported_files"] == [str(first_file), str(second_file)]
+    assert len(result["sub_results"]) == 1
+    assert mock_run_operation.call_count == 1
+
+
+def test_import_translations_runs_one_legacy_import_per_file_and_stops_on_error(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[], version="18.0.1.0.0")
+    first_file = tmp_path / "sale_de.po"
+    first_file.write_text('msgid ""\nmsgstr ""\n')
+    second_file = tmp_path / "sale_extra.po"
+    second_file.write_text('msgid ""\nmsgstr ""\n')
+    third_file = tmp_path / "sale_skip.po"
+    third_file.write_text('msgid ""\nmsgstr ""\n')
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+    with patch.object(
+        ops.process_manager,
+        "run_operation",
+        side_effect=[
+            {
+                "success": True,
+                "return_code": 0,
+                "stdout": "ok",
+                "stderr": "",
+                "output": "ok",
+            },
+            {
+                "success": False,
+                "return_code": 1,
+                "stdout": "failed",
+                "stderr": "",
+                "output": "failed",
+                "error": "boom",
+            },
+        ],
+    ) as mock_run_operation:
+        result = ops.import_translations(
+            files=[str(first_file), str(second_file), str(third_file)],
+            language="de_DE",
+            suppress_output=True,
+            stop_on_error=True,
+        )
+
+    assert result["success"] is False
+    assert result["strategy"] == "legacy_flags"
+    assert result["imported_files"] == [str(first_file)]
+    assert result["failed_files"] == [str(second_file)]
+    assert len(result["sub_results"]) == 2
+    assert mock_run_operation.call_count == 2
+
+
+def test_import_translations_raise_on_error_raises_operation_error(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[], version="19.0.1.0.0")
+    translation_file = tmp_path / "sale_de.po"
+    translation_file.write_text('msgid ""\nmsgstr ""\n')
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+    with patch.object(
+        ops.process_manager,
+        "run_operation",
+        return_value={
+            "success": False,
+            "return_code": 1,
+            "stdout": "",
+            "stderr": "",
+            "output": "",
+            "error": "import failed",
+        },
+    ):
+        with pytest.raises(OdooOperationError, match="import failed"):
+            ops.import_translations(
+                files=[str(translation_file)],
+                language="de_DE",
+                suppress_output=True,
+                raise_on_error=True,
+            )
+
+
+def test_export_module_language_delegates_to_export_translations(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+    with patch.object(
+        ops._runtime_service,
+        "export_translations",
+        return_value={"success": True},
+    ) as mock_export:
+        result = ops.export_module_language(
+            "sale",
+            "/tmp/sale-de.po",
+            "de_DE",
+            suppress_output=True,
+            odoo_series="19.0",
+        )
+
+    assert result == {"success": True}
+    mock_export.assert_called_once_with(
+        modules=["sale"],
+        languages=["de_DE"],
+        output="/tmp/sale-de.po",
+        odoo_series="19.0",
+        log_level=None,
+        suppress_output=True,
     )
 
 

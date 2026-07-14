@@ -12,6 +12,23 @@ INSTALLED_ADDON_STATE_OPTION = typer.Option(
     "--state",
     help="Repeatable runtime state filter (defaults to installed)",
 )
+I18N_EXPORT_MODULES_ARGUMENT = typer.Argument(help="One or more addon technical names")
+I18N_EXPORT_LANGUAGES_OPTION = typer.Option(
+    None,
+    "--language",
+    "--lang",
+    "-l",
+    help="Repeatable or comma-separated export language values",
+)
+I18N_IMPORT_FILES_ARGUMENT = typer.Argument(help="One or more translation files")
+I18N_IMPORT_LANGUAGE_OPTION = typer.Option(
+    ...,
+    "--language",
+    "--lang",
+    "-l",
+    help="Language code for the imported files",
+)
+I18N_LOADLANG_ARGUMENT = typer.Argument(help="One or more locale codes")
 
 
 def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa: C901
@@ -169,6 +186,9 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
     )
     update_module_command_impl = context.implementations.update_module_command_impl
     create_addon_command_impl = context.implementations.create_addon_command_impl
+    i18n_export_command_impl = context.implementations.i18n_export_command_impl
+    i18n_import_command_impl = context.implementations.i18n_import_command_impl
+    i18n_loadlang_command_impl = context.implementations.i18n_loadlang_command_impl
     export_lang_command_impl = context.implementations.export_lang_command_impl
     test_summary_command_impl = context.implementations.test_summary_command_impl
     validate_impl = context.implementations.validate_impl
@@ -1811,6 +1831,97 @@ def register_agent_commands(context: AgentRegistrationContext) -> None:  # noqa:
             output_result_to_json_fn=output_result_to_json_fn,
             safe_read_only=safe_read_only,
             controlled_source_mutation=controlled_source_mutation,
+        )
+
+    @agent_app.command("i18n-export")
+    def agent_i18n_export(
+        ctx: typer.Context,
+        modules: list[str] = I18N_EXPORT_MODULES_ARGUMENT,
+        languages: list[str] | None = I18N_EXPORT_LANGUAGES_OPTION,
+        output: str | None = typer.Option(
+            None,
+            "--output",
+            "-o",
+            help="Optional output path, or '-' to write PO content to stdout",
+        ),
+        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        dry_run: bool = typer.Option(False, "--dry-run"),
+        log_level: LogLevel | None = log_level_option,
+    ) -> None:
+        """Export translations with a structured agent payload."""
+        i18n_export_command_impl(
+            ctx,
+            modules=modules,
+            languages=languages,
+            output=output,
+            allow_mutation=allow_mutation,
+            dry_run=dry_run,
+            log_level=log_level,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_mutation_fn=agent_require_mutation_fn,
+            output_result_to_json_fn=output_result_to_json_fn,
+            module_manager_cls=get_module_manager_cls(),
+            safe_read_only=safe_read_only,
+            controlled_source_mutation=controlled_source_mutation,
+        )
+
+    @agent_app.command("i18n-import")
+    def agent_i18n_import(
+        ctx: typer.Context,
+        files: list[str] = I18N_IMPORT_FILES_ARGUMENT,
+        language: str = I18N_IMPORT_LANGUAGE_OPTION,
+        overwrite: bool = typer.Option(False, "--overwrite", "-w"),
+        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        dry_run: bool = typer.Option(False, "--dry-run"),
+        log_level: LogLevel | None = log_level_option,
+    ) -> None:
+        """Import translations with a structured agent payload."""
+        i18n_import_command_impl(
+            ctx,
+            files=files,
+            language=language,
+            overwrite=overwrite,
+            allow_mutation=allow_mutation,
+            dry_run=dry_run,
+            log_level=log_level,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_runtime_db_mutation_fn=agent_require_runtime_db_mutation_fn,
+            output_result_to_json_fn=output_result_to_json_fn,
+            module_manager_cls=get_module_manager_cls(),
+            safe_read_only=safe_read_only,
+            controlled_runtime_mutation=controlled_runtime_mutation,
+        )
+
+    @agent_app.command("i18n-loadlang")
+    def agent_i18n_loadlang(
+        ctx: typer.Context,
+        languages: list[str] = I18N_LOADLANG_ARGUMENT,
+        allow_mutation: bool = typer.Option(False, "--allow-mutation"),
+        dry_run: bool = typer.Option(False, "--dry-run"),
+        log_level: LogLevel | None = log_level_option,
+    ) -> None:
+        """Load languages with a structured agent payload."""
+        i18n_loadlang_command_impl(
+            ctx,
+            languages=languages,
+            allow_mutation=allow_mutation,
+            dry_run=dry_run,
+            log_level=log_level,
+            resolve_agent_ops_fn=resolve_agent_ops_fn,
+            agent_fail_fn=agent_fail_fn,
+            agent_payload_fn=agent_payload_fn,
+            agent_emit_payload_fn=agent_emit_payload_fn,
+            agent_require_runtime_db_mutation_fn=agent_require_runtime_db_mutation_fn,
+            output_result_to_json_fn=output_result_to_json_fn,
+            module_manager_cls=get_module_manager_cls(),
+            safe_read_only=safe_read_only,
+            controlled_runtime_mutation=controlled_runtime_mutation,
         )
 
     @agent_app.command("export-lang")

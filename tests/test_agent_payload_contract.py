@@ -160,6 +160,9 @@ def test_agent_schema_files_exist_and_are_valid_json() -> None:
         SCHEMAS / "agent" / "index-usage-metrics.schema.json",
         SCHEMAS / "agent" / "manifest-validation.schema.json",
         SCHEMAS / "agent" / "manifest.schema.json",
+        SCHEMAS / "agent" / "i18n-export.schema.json",
+        SCHEMAS / "agent" / "i18n-import.schema.json",
+        SCHEMAS / "agent" / "i18n-loadlang.schema.json",
     ]
     for schema_path in expected:
         assert schema_path.exists(), schema_path
@@ -893,6 +896,52 @@ def test_agent_payloads_validate_against_published_schemas(tmp_path: Path) -> No
         command_schema = json.loads((SCHEMAS / "agent" / schema_name).read_text())
         _validate_schema(envelope_schema, payload)
         _validate_schema(command_schema, payload)
+
+
+def test_agent_i18n_payload_validates_against_schema(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[])
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch(
+            "oduit.cli.app.OdooOperations.export_translations",
+            return_value={
+                "success": True,
+                "operation": "i18n_export",
+                "modules": ["sale"],
+                "languages": ["de_DE"],
+                "output": "-",
+                "odoo_series": "19.0",
+                "strategy": "native_i18n",
+            },
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--odoo-series",
+                "19.0",
+                "agent",
+                "i18n-export",
+                "sale",
+                "--language",
+                "de_DE",
+                "--output",
+                "-",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    schema = json.loads((SCHEMAS / "agent" / "i18n-export.schema.json").read_text())
+    _validate_schema(schema, payload)
 
 
 def test_resolve_config_redacts_sensitive_values(tmp_path: Path) -> None:

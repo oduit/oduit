@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oduit.dev/schemas/agent/i18n-loadlang.schema.json",
+  "type": "object",
+  "required": ["type", "data"],
+  "properties": {
+    "type": {
+      "const": "i18n_loadlang"
+    },
+    "data": {
+      "type": "object",
+      "required": ["languages"],
+      "properties": {
+        "languages": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "odoo_series": {
+          "type": ["string", "null"]
+        },
+        "strategy": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

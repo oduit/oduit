@@ -54,7 +54,9 @@ Key Methods
 - ``install_module()`` and ``update_module()``: addon lifecycle operations
 - ``run_tests()``: run test selections with parsed failure output
 - ``create_db()``, ``drop_db()``, ``list_db()``, ``db_exists()``: database helpers
-- ``create_addon()`` and ``export_module_language()``: addon development helpers
+- ``create_addon()``, ``export_translations()``, ``import_translations()``,
+  ``load_languages()``, and ``export_module_language()``: addon development and
+  translation helpers
 - ``get_odoo_version()``: detect the Odoo version from ``odoo-bin``
 - ``get_environment_context()``: return typed environment facts for planning
 - ``inspect_addon()`` and ``plan_update()``: return typed addon inspection and
@@ -100,3 +102,9 @@ Safe vs Unsafe Paths
   ``shell_interface`` explicitly or in configuration
 - Use ``OdooCodeExecutor`` only when you explicitly need arbitrary execution and
   understand the ``allow_unsafe=True`` contract
+
+Translation helpers select the correct Odoo 18/19 command strategy
+automatically when ``odoo_series`` is supplied explicitly or can be detected
+from addon manifests. ``import_translations()`` and ``load_languages()`` are
+runtime DB mutations; ``export_translations()`` writes source files unless
+``output="-"`` is used.

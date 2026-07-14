@@ -345,6 +345,13 @@ oduit --env dev --non-interactive create-db
 oduit --env dev create-db --without-demo --country DE --language de_DE
 oduit --env dev create-db --with-demo --username admin --password admin
 oduit --env dev create-addon my_custom_module --allow-mutation
+
+# Internationalization
+oduit --env dev --odoo-series 18.0 i18n export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+oduit --env dev --odoo-series 19.0 i18n export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+oduit --env dev --odoo-series 19.0 i18n export sale purchase --language de_DE --language fr_FR --allow-mutation
+oduit --env dev i18n import /tmp/sale-de.po --language de_DE --overwrite --allow-mutation
+oduit --env dev i18n loadlang en es_AR sr@latin --allow-mutation
 oduit --env dev export-lang sale --allow-mutation --language de_DE
 
 # Operation sets
@@ -359,6 +366,37 @@ oduit --env dev install-order --from-set snapshot --save-set ordered_snapshot
 series. On Odoo 19+, oduit uses native `odoo-bin db init`. On older Odoo
 versions, oduit emulates equivalent behavior with `createdb` plus
 `-i base --stop-after-init` and post-init updates.
+
+## Internationalization
+
+Prefer the new `i18n` command group for translation export, import, and language
+loading. `export-lang` remains available as a compatibility alias for one
+module/one language source export.
+
+| Odoo series  | Preferred export/import/load surface            | Notes                                                                                                    |
+| ------------ | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 18 and older | legacy flags via `oduit i18n ...`               | export requires exactly one language and `--output`; multi-file import runs one Odoo invocation per file |
+| 19 and newer | native `odoo-bin i18n ...` via `oduit i18n ...` | export allows module-local multi-language writes when `--output` is omitted                              |
+
+Source mutation rules:
+
+- `i18n export --output -` is read-only and does not need `--allow-mutation`
+- filesystem export outputs require `--allow-mutation`
+- Odoo 19+ export without `--output` writes addon-local files and requires `--allow-mutation`
+- `i18n import` and `i18n loadlang` mutate the configured database and require `--allow-mutation` when the active policy demands it
+
+Locale values are passed through unchanged. Valid examples include `en`,
+`es_AR`, and `sr@latin`.
+
+Migration examples:
+
+```bash
+# Preferred command family
+oduit --env dev --odoo-series 19.0 i18n export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+
+# Compatibility alias, still supported for one module/one language
+oduit --env dev export-lang sale --allow-mutation --language de_DE
+```
 
 ## Split addon technical documentation
 
@@ -423,7 +461,7 @@ Runtime DB mutation policy is controlled by explicit config flags:
 - `agent_write_protect_db`: block agent runtime DB mutation even when human mutation is allowed
 - `agent_needs_mutation_flag`: require `--allow-mutation` for agent runtime DB mutations
 
-This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`) and agent runtime mutation commands. Source mutations such as `create-addon` and `export-lang` still use their own explicit mutation gate.
+This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`, `i18n import`, `i18n loadlang`) and agent runtime mutation commands. Source mutations such as `create-addon`, `i18n export`, and `export-lang` still use their own explicit mutation gate.
 Plain `test` runs stay read-only; only `test --install/--update`, `agent test-summary --install/--update`, and `agent validate-addon-change` with install/update options enter the runtime DB mutation path.
 
 ## Inspection and Agent Workflows

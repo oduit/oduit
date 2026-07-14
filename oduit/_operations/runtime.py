@@ -9,14 +9,17 @@ from .. import output as _output_module
 from ..builders import (
     CommandOperation,
     ConfigProvider,
+    I18nExportCommandBuilder,
+    I18nImportCommandBuilder,
+    I18nLoadLanguageCommandBuilder,
     InstallCommandBuilder,
-    LanguageCommandBuilder,
     OdooTestCommandBuilder,
     OdooTestCoverageCommandBuilder,
     RunCommandBuilder,
     ShellCommandBuilder,
     UpdateCommandBuilder,
     VersionCommandBuilder,
+    odoo_series_major,
 )
 from ..exceptions import (
     ConfigError,
@@ -24,6 +27,7 @@ from ..exceptions import (
     ModuleUpdateError,
     OdooOperationError,
 )
+from ..module_manager import ModuleManager
 from ..output import print_error, print_error_result, print_info, print_warning
 from .base import OperationsService
 
@@ -60,6 +64,80 @@ class RuntimeOperationsService(OperationsService):
         if not match:
             return None
         return int(match.group("port"))
+
+    @staticmethod
+    def _normalize_odoo_series_label(value: Any | None) -> str | None:
+        major = odoo_series_major(value)
+        if major is None:
+            return None
+        return f"{major}.0"
+
+    def _resolve_i18n_odoo_series(self, explicit_odoo_series: Any | None = None) -> Any:
+        for candidate in (
+            explicit_odoo_series,
+            self.operations.config.get_optional("odoo_series"),
+        ):
+            if odoo_series_major(candidate) is not None:
+                return candidate
+
+        addons_path = self.operations.config.get_optional("addons_path")
+        if isinstance(addons_path, str) and addons_path.strip():
+            detected_series = ModuleManager(addons_path).detect_odoo_series()
+            if odoo_series_major(detected_series) is not None:
+                return detected_series
+
+        version_result = self.get_odoo_version(suppress_output=True)
+        if version_result.get("success", False):
+            detected_version = version_result.get("version")
+            if odoo_series_major(detected_version) is not None:
+                return detected_version
+
+        raise ConfigError(
+            "Unable to determine the Odoo series for the i18n command. "
+            "Pass --odoo-series 18.0 or --odoo-series 19.0."
+        )
+
+    def _run_i18n_operation(
+        self,
+        operation: CommandOperation,
+        *,
+        suppress_output: bool,
+    ) -> dict[str, Any]:
+        result = self.operations.process_manager.run_operation(
+            operation,
+            verbose=self.operations.verbose and not suppress_output,
+            suppress_output=suppress_output,
+        )
+        result.update(operation.expected_result_fields)
+        return result
+
+    @staticmethod
+    def _aggregate_import_stdout(sub_results: list[dict[str, Any]]) -> str:
+        if len(sub_results) == 1:
+            return str(sub_results[0].get("stdout", ""))
+
+        output_sections: list[str] = []
+        for sub_result in sub_results:
+            stdout = str(sub_result.get("stdout", "")).strip()
+            if not stdout:
+                continue
+            files = sub_result.get("files")
+            heading = files[0] if isinstance(files, list) and files else "import"
+            output_sections.append(f"[{heading}]\n{stdout}")
+        return "\n\n".join(output_sections)
+
+    @staticmethod
+    def _raise_if_operation_failed(
+        result: dict[str, Any],
+        *,
+        raise_on_error: bool,
+        fallback_message: str,
+    ) -> None:
+        if raise_on_error and not result.get("success", False):
+            raise OdooOperationError(
+                result.get("error", fallback_message),
+                operation_result=result,
+            )
 
     def _find_available_http_port(
         self,
@@ -465,6 +543,208 @@ class RuntimeOperationsService(OperationsService):
 
         return result
 
+    def export_translations(
+        self,
+        modules: list[str] | tuple[str, ...],
+        languages: list[str] | tuple[str, ...] | None = None,
+        output: str | None = None,
+        *,
+        odoo_series: Any | None = None,
+        log_level: str | None = None,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+    ) -> dict[str, Any]:
+        """Export translations with the correct Odoo 18/19 command strategy."""
+        resolved_series = self._resolve_i18n_odoo_series(odoo_series)
+        if self.operations.verbose and not suppress_output:
+            module_names = ", ".join(str(module) for module in modules)
+            print_info(f"Export translations for {module_names}")
+
+        try:
+            builder = I18nExportCommandBuilder(
+                self.operations.config,
+                modules=modules,
+                languages=languages,
+                output=output,
+                odoo_series=resolved_series,
+            )
+            if log_level and isinstance(log_level, str):
+                builder.log_level(log_level)
+            operation = builder.build_operation()
+            result = self._run_i18n_operation(
+                operation,
+                suppress_output=suppress_output,
+            )
+        except ConfigError as e:
+            result = {"success": False, "error": str(e), "error_type": "ConfigError"}
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(e), 1)
+                else:
+                    print_error(str(e))
+
+        self._raise_if_operation_failed(
+            result,
+            raise_on_error=raise_on_error,
+            fallback_message="Translation export failed",
+        )
+        return result
+
+    def import_translations(
+        self,
+        files: list[str] | tuple[str, ...],
+        language: str,
+        *,
+        overwrite: bool = False,
+        odoo_series: Any | None = None,
+        log_level: str | None = None,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        stop_on_error: bool = True,
+    ) -> dict[str, Any]:
+        """Import translations using one native run or per-file legacy runs."""
+        resolved_series = self._resolve_i18n_odoo_series(odoo_series)
+        series_major = odoo_series_major(resolved_series)
+        assert series_major is not None
+
+        sub_results: list[dict[str, Any]] = []
+        imported_files: list[str] = []
+        failed_files: list[str] = []
+
+        try:
+            if series_major >= 19:
+                builders = [
+                    I18nImportCommandBuilder(
+                        self.operations.config,
+                        files=files,
+                        language=language,
+                        overwrite=overwrite,
+                        odoo_series=resolved_series,
+                    )
+                ]
+            else:
+                builders = [
+                    I18nImportCommandBuilder(
+                        self.operations.config,
+                        files=[filename],
+                        language=language,
+                        overwrite=overwrite,
+                        odoo_series=resolved_series,
+                    )
+                    for filename in files
+                ]
+
+            for builder in builders:
+                if log_level and isinstance(log_level, str):
+                    builder.log_level(log_level)
+                operation = builder.build_operation()
+                sub_result = self._run_i18n_operation(
+                    operation,
+                    suppress_output=suppress_output,
+                )
+                sub_results.append(sub_result)
+
+                result_files = sub_result.get("files", [])
+                if sub_result.get("success", False):
+                    imported_files.extend(result_files)
+                else:
+                    failed_files.extend(result_files)
+                    if stop_on_error and series_major < 19:
+                        break
+        except ConfigError as e:
+            result = {"success": False, "error": str(e), "error_type": "ConfigError"}
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(e), 1)
+                else:
+                    print_error(str(e))
+            self._raise_if_operation_failed(
+                result,
+                raise_on_error=raise_on_error,
+                fallback_message="Translation import failed",
+            )
+            return result
+
+        aggregate_success = bool(sub_results) and all(
+            sub_result.get("success", False) for sub_result in sub_results
+        )
+        first_failure_code = next(
+            (
+                int(sub_result.get("return_code", 1))
+                for sub_result in sub_results
+                if not sub_result.get("success", False)
+            ),
+            0,
+        )
+        top_level_stdout = self._aggregate_import_stdout(sub_results)
+        result = {
+            "success": aggregate_success,
+            "operation": "i18n_import",
+            "operation_type": "i18n_import",
+            "database": self.operations.config.get_optional("db_name"),
+            "files": list(dict.fromkeys(str(filename) for filename in files)),
+            "language": str(language).strip(),
+            "overwrite": overwrite,
+            "strategy": "native_i18n" if series_major >= 19 else "legacy_flags",
+            "odoo_series": self._normalize_odoo_series_label(resolved_series),
+            "imported_files": imported_files,
+            "failed_files": failed_files,
+            "sub_results": sub_results,
+            "return_code": 0 if aggregate_success else first_failure_code,
+            "stdout": top_level_stdout,
+            "stderr": "",
+        }
+        if not aggregate_success:
+            failed_message = ", ".join(failed_files) or "translation import"
+            result["error"] = f"Translation import failed for: {failed_message}"
+
+        self._raise_if_operation_failed(
+            result,
+            raise_on_error=raise_on_error,
+            fallback_message="Translation import failed",
+        )
+        return result
+
+    def load_languages(
+        self,
+        languages: list[str] | tuple[str, ...],
+        *,
+        odoo_series: Any | None = None,
+        log_level: str | None = None,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+    ) -> dict[str, Any]:
+        """Load languages into the configured database."""
+        resolved_series = self._resolve_i18n_odoo_series(odoo_series)
+
+        try:
+            builder = I18nLoadLanguageCommandBuilder(
+                self.operations.config,
+                languages=languages,
+                odoo_series=resolved_series,
+            )
+            if log_level and isinstance(log_level, str):
+                builder.log_level(log_level)
+            operation = builder.build_operation()
+            result = self._run_i18n_operation(
+                operation,
+                suppress_output=suppress_output,
+            )
+        except ConfigError as e:
+            result = {"success": False, "error": str(e), "error_type": "ConfigError"}
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(e), 1)
+                else:
+                    print_error(str(e))
+
+        self._raise_if_operation_failed(
+            result,
+            raise_on_error=raise_on_error,
+            fallback_message="Language loading failed",
+        )
+        return result
+
     def export_module_language(
         self,
         module: str,
@@ -473,62 +753,20 @@ class RuntimeOperationsService(OperationsService):
         no_http: bool = False,
         log_level: str | None = None,
         suppress_output: bool = False,
+        odoo_series: Any | None = None,
     ) -> dict:
-        """Export language translations for a specific module to a file.
-
-        Exports the language translations for the specified module to a file.
-        This is useful for translation management, backup, or distribution of
-        language files. The operation uses Odoo's built-in export functionality.
-
-        Args:
-            module (str): Name of the module to export translations for
-            filename (str): Output filename for the exported language file
-            language (str): Language code to export (e.g., 'en_US', 'fr_FR')
-            no_http (bool, optional): Disable HTTP server during export.
-                Defaults to False.
-            log_level (str | None, optional): Set Odoo log level. Defaults to None.
-
-        Returns:
-            dict: Operation result with success status and command details
-
-        Raises:
-            ConfigError: If the environment configuration is invalid
-
-        Example:
-            >>> env_config = {'python_bin': '/usr/bin/python3',
-            ...               'odoo_bin': '/path/to/odoo-bin'}
-            >>> ops = OdooOperations(env_config)
-            >>> ops.export_module_language('sale', 'sale_fr.po', 'fr_FR')
-        """
+        """Compatibility wrapper for exporting one module language file."""
         if self.operations.verbose and not suppress_output:
             print_info(f"Export language {language} to {filename} for module: {module}")
-        builder = LanguageCommandBuilder(
-            self.operations.config, module, filename, language
+
+        return self.export_translations(
+            modules=[module],
+            languages=[language],
+            output=filename,
+            odoo_series=odoo_series,
+            log_level=log_level,
+            suppress_output=suppress_output,
         )
-
-        if no_http:
-            builder.disable_http()
-        if log_level and isinstance(log_level, str):
-            builder.log_level(log_level)
-
-        try:
-            operation = builder.build_operation()
-            result = self.operations.process_manager.run_operation(
-                operation,
-                verbose=self.operations.verbose and not suppress_output,
-                suppress_output=suppress_output,
-            )
-
-        except ConfigError as e:
-            result = {"success": False, "error": str(e), "error_type": "ConfigError"}
-            if suppress_output:
-                return result
-            if _output_module._formatter.format_type == "json":
-                print_error_result(str(e), 1)
-            else:
-                print_error(str(e))
-
-        return result
 
     def run_tests(
         self,

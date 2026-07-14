@@ -6,6 +6,7 @@
 
 import unittest
 
+from oduit.builders import CommandOperation
 from oduit.config_loader import ConfigLoader
 from oduit.demo_process_manager import DEMO_MODULES, DemoProcessManager
 from oduit.odoo_operations import OdooOperations
@@ -146,6 +147,48 @@ class TestDemoMode(unittest.TestCase):
         dependency_error = result["dependency_errors"][0]
         self.assertIn("fastapi_reseller", dependency_error)
         self.assertIn("ti4health_shopify", dependency_error)
+
+    def test_demo_recognizes_legacy_i18n_commands(self):
+        manager = DemoProcessManager()
+
+        for command in (
+            ["python", "odoo-bin", "--i18n-export=/tmp/sale.po"],
+            ["python", "odoo-bin", "--i18n-import=/tmp/sale.po"],
+            ["python", "odoo-bin", "--load-language=en,es_AR"],
+        ):
+            result = manager.run_command(command)
+            self.assertTrue(result["success"], msg=str(command))
+
+    def test_demo_recognizes_native_i18n_commands(self):
+        manager = DemoProcessManager()
+
+        for command in (
+            ["python", "odoo-bin", "i18n", "export", "sale", "--languages", "de_DE"],
+            [
+                "python",
+                "odoo-bin",
+                "i18n",
+                "import",
+                "/tmp/sale.po",
+                "--language=de_DE",
+            ],
+            ["python", "odoo-bin", "i18n", "loadlang", "en", "es_AR"],
+        ):
+            result = manager.run_command(command)
+            self.assertTrue(result["success"], msg=str(command))
+
+    def test_demo_run_operation_uses_i18n_operation_type(self):
+        manager = DemoProcessManager()
+        result = manager.run_operation(
+            CommandOperation(
+                command=["python", "odoo-bin", "i18n", "import", "/tmp/a.po"],
+                operation_type="i18n_import",
+            ),
+            suppress_output=True,
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["operation"], "i18n_import")
 
 
 if __name__ == "__main__":

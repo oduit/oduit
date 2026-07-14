@@ -69,7 +69,8 @@ TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
     "impact-of-update": HUMAN_ORIENTED,
     "list-missing": HUMAN_ORIENTED,
     "init": HUMAN_ORIENTED,
-    "export-lang": HUMAN_ORIENTED,
+    "i18n": HUMAN_ORIENTED,
+    "export-lang": COMPATIBILITY_ONLY,
     "version": HUMAN_ORIENTED,
     "docs": HUMAN_ORIENTED,
 }
@@ -130,7 +131,10 @@ AGENT_COMMAND_METADATA: dict[str, tuple[CommandTier, str]] = {
     "update-module": (STABLE_FOR_AGENTS, "controlled_runtime_mutation"),
     "uninstall-module": (STABLE_FOR_AGENTS, "controlled_runtime_mutation"),
     "create-addon": (STABLE_FOR_AGENTS, "controlled_source_mutation"),
-    "export-lang": (STABLE_FOR_AGENTS, "controlled_runtime_mutation"),
+    "i18n-export": (STABLE_FOR_AGENTS, "controlled_source_mutation"),
+    "i18n-import": (STABLE_FOR_AGENTS, "controlled_runtime_mutation"),
+    "i18n-loadlang": (STABLE_FOR_AGENTS, "controlled_runtime_mutation"),
+    "export-lang": (COMPATIBILITY_ONLY, "controlled_source_mutation"),
     "test-summary": (STABLE_FOR_AGENTS, "controlled_runtime_mutation"),
     "validate-addon-change": (
         BETA_FOR_AGENTS,

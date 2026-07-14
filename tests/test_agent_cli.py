@@ -110,6 +110,136 @@ def _loader_with_config(config: dict[str, str], tmp_path: Path) -> MagicMock:
     return loader
 
 
+def test_agent_i18n_export_dry_run_to_stdout_is_read_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[], version="19.0.1.0.0")
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--odoo-series",
+                "19.0",
+                "agent",
+                "i18n-export",
+                "sale",
+                "--language",
+                "de_DE",
+                "--output",
+                "-",
+                "--dry-run",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["type"] == "i18n_export"
+    assert payload["read_only"] is True
+    assert payload["safety_level"] == "safe_read_only"
+    assert data["modules"] == ["sale"]
+    assert data["languages"] == ["de_DE"]
+    assert data["output"] == "-"
+    assert data["strategy"] == "native_i18n"
+    assert data["dry_run"] is True
+
+
+def test_agent_i18n_import_reports_runtime_mutation_payload(tmp_path: Path) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[], version="19.0.1.0.0")
+    translation_file = tmp_path / "sale_de.po"
+    translation_file.write_text('msgid ""\nmsgstr ""\n')
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch.object(
+            OdooOperations,
+            "import_translations",
+            return_value={
+                "success": True,
+                "operation": "i18n_import",
+                "files": [str(translation_file)],
+                "language": "de_DE",
+                "overwrite": True,
+                "strategy": "native_i18n",
+                "odoo_series": "19.0",
+                "sub_results": [{"success": True, "files": [str(translation_file)]}],
+            },
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--odoo-series",
+                "19.0",
+                "agent",
+                "i18n-import",
+                str(translation_file),
+                "--language",
+                "de_DE",
+                "--overwrite",
+                "--allow-mutation",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["type"] == "i18n_import"
+    assert payload["read_only"] is False
+    assert payload["safety_level"] == "controlled_runtime_mutation"
+    assert data["files"] == [str(translation_file)]
+    assert data["language"] == "de_DE"
+    assert data["overwrite"] is True
+
+
+def test_agent_i18n_loadlang_dry_run_reports_normalized_languages(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    _make_addon(addons_dir, "base", depends=[], version="18.0.1.0.0")
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with patch("oduit.cli.app.ConfigLoader", return_value=loader):
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "--odoo-series",
+                "18.0",
+                "agent",
+                "i18n-loadlang",
+                "en,es_AR",
+                "sr@latin",
+                "--dry-run",
+            ],
+        )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["type"] == "i18n_loadlang"
+    assert data["languages"] == ["en", "es_AR", "sr@latin"]
+    assert data["strategy"] == "legacy_flags"
+    assert payload["read_only"] is True
+
+
 READ_ONLY_PARITY_SUCCESS_CASES = [
     pytest.param(
         "inspect_ref",
