@@ -1,0 +1,1779 @@
+# Command Line Interface
+
+oduit provides a command-line interface (CLI) for managing Odoo instances, testing modules,
+and performing common operations without writing Python code.
+
+```{contents} Table of Contents
+:depth: 2
+:local:
+```
+
+## Installation
+
+The CLI is automatically installed when you install oduit:
+
+```bash
+pip install oduit
+```
+
+After installation, the `oduit` command will be available in your terminal.
+
+## Configuration
+
+The CLI prefers sectioned TOML configuration:
+
+1. **Environment configuration** from `~/.config/oduit/<env>.toml`
+2. **Local project configuration** from `.oduit.toml` in the current directory
+
+Compatibility support for `~/.config/oduit/<env>.yaml` still exists, but new
+configs and new docs examples should use TOML.
+
+### Environment Configuration
+
+Create a configuration file for your environment.
+
+**Preferred TOML format** (`~/.config/oduit/dev.toml`):
+
+```toml
+[binaries]
+python_bin = "/usr/bin/python3"
+odoo_bin = "/opt/odoo/odoo-bin"
+coverage_bin = "/usr/bin/coverage"
+
+[odoo_params]
+db_name = "mydb"
+addons_path = "/opt/odoo/addons"
+config_file = "/etc/odoo/odoo.conf"
+http_port = 8069
+workers = 4
+dev = true
+allow_uninstall = false
+write_protect_db = false
+agent_write_protect_db = false
+needs_mutation_flag = false
+agent_needs_mutation_flag = false
+```
+
+**Compatibility YAML format** (`~/.config/oduit/dev.yaml`):
+
+```yaml
+binaries:
+  python_bin: "/usr/bin/python3"
+  odoo_bin: "/opt/odoo/odoo-bin"
+  coverage_bin: "/usr/bin/coverage"
+
+odoo_params:
+  db_name: "mydb"
+  addons_path: "/opt/odoo/addons"
+  config_file: "/etc/odoo/odoo.conf"
+  http_port: 8069
+  workers: 4
+  dev: true
+  allow_uninstall: false
+  write_protect_db: false
+  agent_write_protect_db: false
+  needs_mutation_flag: false
+  agent_needs_mutation_flag: false
+```
+
+### Local Project Configuration
+
+Create a `.oduit.toml` file in your project root:
+
+```toml
+[binaries]
+python_bin = "./venv/bin/python"
+odoo_bin = "./odoo/odoo-bin"
+
+[odoo_params]
+addons_path = "./addons"
+db_name = "project_dev"
+dev = true
+allow_uninstall = false
+write_protect_db = false
+agent_write_protect_db = false
+needs_mutation_flag = false
+agent_needs_mutation_flag = false
+```
+
+If present, this configuration will be used when `--env` is not specified.
+
+Runtime DB mutation policy is controlled by explicit flags:
+
+- `write_protect_db` blocks runtime DB mutation for every caller
+- `needs_mutation_flag` requires `--allow-mutation` for human runtime DB mutation
+- `agent_write_protect_db` blocks runtime DB mutation for agent commands
+- `agent_needs_mutation_flag` requires `--allow-mutation` for agent runtime DB mutation
+
+Plain `test` runs stay read-only. Runtime DB mutation is only consulted when a
+command actually installs, updates, uninstalls, creates a database, or triggers
+another runtime write path.
+
+## Import an existing Odoo config
+
+Use `init` to migrate an `odoo.conf` into oduit's sectioned TOML format:
+
+```bash
+oduit init dev --from-conf /etc/odoo/odoo.conf
+```
+
+Useful overrides:
+
+```bash
+oduit init dev \
+  --from-conf ./odoo.conf \
+  --python-bin ./.venv/bin/python \
+  --odoo-bin ./odoo-bin \
+  --coverage-bin ./.venv/bin/coverage
+```
+
+By default `init` writes `~/.config/oduit/<env>.toml`. For project-local
+workflows you can write `.oduit.toml` directly or preview the generated TOML:
+
+```bash
+oduit init dev --from-conf ./odoo.conf --local
+oduit init dev --from-conf ./odoo.conf --output ./configs/dev.toml
+oduit init dev --from-conf ./odoo.conf --dry-run
+```
+
+After generating the config, validate it with:
+
+```bash
+oduit --env dev print-config
+oduit --env dev doctor
+oduit --env dev list-addons
+```
+
+## Basic Usage
+
+### Global Options
+
+These options are available for all commands:
+
+```bash
+oduit [OPTIONS] COMMAND [ARGS]
+```
+
+Options:
+
+- `--env, -e TEXT`: Environment to use (e.g., prod, test, dev)
+- `--json`: Output in JSON format (default: text)
+- `--non-interactive`: Fail instead of prompting for confirmation
+- `--verbose, -v`: Show verbose output including configuration and command details
+- `--no-http`: Add --no-http flag to all odoo-bin commands
+
+## Commands
+
+### run
+
+Run the Odoo server with the configured settings.
+
+```bash
+oduit --env dev run
+oduit run  # Uses local .oduit.toml
+```
+
+**Examples:**
+
+```bash
+# Run with specific environment
+oduit --env production run
+
+# Run with verbose output
+oduit --env dev --verbose run
+
+# Run without HTTP (for running alongside another Odoo instance)
+oduit --env dev --no-http run
+```
+
+### shell
+
+Start an Odoo shell for interactive Python execution within the Odoo environment.
+
+```bash
+oduit --env dev shell [OPTIONS]
+```
+
+**Options:**
+
+- `--shell-interface [ipython|ptpython|bpython|python]`: Shell interface to use (default: python)
+- `--compact`: Suppress INFO logs at startup for cleaner output
+
+**Examples:**
+
+```bash
+# Start default Python shell
+oduit --env dev shell
+
+# Use IPython shell
+oduit --env dev shell --shell-interface ipython
+
+# Compact output (no startup logs)
+oduit --env dev shell --compact
+```
+
+### install
+
+Install an Odoo module. This is a runtime DB mutation command.
+
+```bash
+oduit --env dev install MODULE [OPTIONS]
+```
+
+**Options:**
+
+- `--without-demo TEXT`: Install without demo data
+- `--with-demo`: Install with demo data (overrides config)
+- `--language TEXT`: Load specific language translations
+- `--i18n-overwrite`: Overwrite existing translations during installation
+- `--max-cron-threads INTEGER`: Set maximum cron threads for Odoo server
+- `--allow-mutation`: Optional confirmation flag when `needs_mutation_flag = true`
+
+**Examples:**
+
+```bash
+# Install a module
+oduit --env dev install sale
+
+# Install without demo data
+oduit --env dev install sale --without-demo all
+
+# Install with specific language
+oduit --env dev install sale --language de_DE
+
+# Install and overwrite translations
+oduit --env dev install sale --language de_DE --i18n-overwrite
+```
+
+### update
+
+Update an Odoo module. This is a runtime DB mutation command.
+
+```bash
+oduit --env dev update MODULE [OPTIONS]
+```
+
+**Options:**
+
+- `--without-demo TEXT`: Update without demo data
+- `--language TEXT`: Load specific language translations
+- `--i18n-overwrite`: Overwrite existing translations during update
+- `--max-cron-threads INTEGER`: Set maximum cron threads for Odoo server
+- `--compact`: Suppress INFO logs at startup for cleaner output
+- `--allow-mutation`: Optional confirmation flag when `needs_mutation_flag = true`
+
+**Examples:**
+
+```bash
+# Update a module
+oduit --env dev update sale
+
+# Update with language overwrite
+oduit --env dev update sale --i18n-overwrite --language de_DE
+
+# Update with compact output
+oduit --env dev update sale --compact
+```
+
+### uninstall
+
+Uninstall an Odoo module through the trusted runtime mutation path.
+
+```bash
+oduit --env dev uninstall MODULE --allow-uninstall
+```
+
+**Notes:**
+
+- Uninstall is disabled by default and requires `allow_uninstall = true` in
+  the active config.
+- Runtime DB mutation follows `write_protect_db` / `needs_mutation_flag`.
+- The CLI requires `--allow-uninstall` for each destructive uninstall.
+- Uninstall may fail early if installed dependents still rely on the target
+  module.
+
+**Examples:**
+
+```bash
+# Uninstall a module after opting in at config level
+oduit --env dev uninstall crm --allow-uninstall
+
+# Machine-readable uninstall result
+oduit --env dev --json uninstall crm --allow-uninstall
+```
+
+### test
+
+Run module tests with various options. Plain test runs stay read-only.
+
+```bash
+oduit --env dev test [OPTIONS]
+```
+
+**Options:**
+
+- `--test-tags TEXT`: Comma-separated list of specs to filter tests
+- `--install TEXT`: Install specified addon before testing
+- `--update TEXT`: Update specified addon before testing
+- `--coverage TEXT`: Run coverage report for specified module after tests
+- `--test-file TEXT`: Run a specific Python test file
+- `--stop-on-error`: Abort test run on first detected failure in output
+- `--compact`: Show only test progress dots, statistics, and result summaries
+- `--allow-mutation`: Required only when `--install` or `--update` is used
+  and `needs_mutation_flag = true`
+
+**Examples:**
+
+```bash
+# Test a specific module
+oduit --env dev test --test-tags /sale
+
+# Install module and run tests
+oduit --env dev test --install sale --test-tags /sale
+
+# Test with coverage report
+oduit --env dev test --test-tags /sale --coverage sale
+
+# Run specific test file
+oduit --env dev test --test-file tests/test_sale.py
+
+# Stop on first error with compact output
+oduit --env dev test --test-tags /sale --stop-on-error --compact
+```
+
+### set
+
+Manage reusable operation sets. Sets are TOML files with a `kind` and a
+matching table (`[install]`, `[update]`, or `[test]`).
+
+Inspect a set without changing the database:
+
+```bash
+oduit set inspect helpdesk_tests
+oduit --json set inspect helpdesk_tests
+```
+
+Apply a set according to its declared `kind`:
+
+```bash
+oduit set apply base --allow-mutation
+```
+
+#### Robust operation-set application
+
+```bash
+oduit set inspect base
+oduit set apply install --allow-mutation --retry-missing 1
+oduit set apply install --allow-mutation --one-by-one
+oduit set apply tests --allow-mutation --one-by-one --retry-failed-tests 1
+```
+
+By default, install and update set operations verify the requested addons in the
+active database after each mutation step. Use `--retry-missing` to retry only
+addons that are still not in `installed` state. Use `--one-by-one` to install
+or update a single addon, verify it, and only then continue with the next addon.
+
+List discoverable sets:
+
+```bash
+oduit set list
+```
+
+Short names resolve from the active config set store, then `.oduit/sets/`,
+then `~/.config/oduit/sets/`. Explicit file paths are loaded directly.
+
+Install and update sets mutate the runtime database and may require
+`--allow-mutation`. Test sets only require `--allow-mutation` when they have
+`[test].install` or `[test].update`.
+
+**set apply options:**
+
+- `--verify-state / --no-verify-state`: Verify addon state after install/update (default: enabled)
+- `--retry-missing INTEGER`: Retry addons not in installed state after verification
+- `--one-by-one`: Apply and verify one addon at a time
+- `--retry-failed-tests INTEGER`: Retry failed test tags/files in test sets
+- `--continue-on-error`: In one-by-one mode, continue after a failure
+
+Use `--include-command` and `--include-stdout` with `--json set apply` to
+opt into verbose/sensitive fields.
+
+### create-db
+
+Create a new database for Odoo. This follows the runtime DB mutation flags and
+can be blocked by `write_protect_db`.
+
+```bash
+oduit --env dev create-db [OPTIONS]
+```
+
+**Options:**
+
+- `--create-role`: Create database role
+- `--alter-role`: Alter database role
+- `--with-sudo`: Use sudo for database creation (if required by PostgreSQL setup)
+- `--drop`: Drop database if it exists before creating
+- `--non-interactive`: Run without confirmation prompt (use with caution)
+- `--db-user TEXT`: Specify the database user (overrides config setting)
+- `--allow-mutation`: Optional confirmation flag when `needs_mutation_flag = true`
+
+**Examples:**
+
+```bash
+# Create database (prompts for confirmation)
+oduit --env dev create-db
+
+# Create database with role creation
+oduit --env dev create-db --create-role
+
+# Drop existing database and create new one
+oduit --env dev create-db --drop
+
+# Non-interactive mode (auto-confirm)
+oduit --env dev create-db --non-interactive
+
+# Use sudo for PostgreSQL operations
+oduit --env dev create-db --with-sudo
+
+# Combine options: drop, create role, non-interactive
+oduit --env dev create-db --drop --create-role --non-interactive
+```
+
+```{note}
+The command checks if the database exists before attempting to create it.
+Use ``--drop`` to automatically drop an existing database before creating.
+```
+
+```{warning}
+This command will prompt for confirmation before creating the database
+unless you pass ``--non-interactive``. In non-interactive mode, the command
+fails fast instead of auto-confirming.
+```
+
+### list-db
+
+List all databases in PostgreSQL.
+
+```bash
+oduit --env dev list-db [OPTIONS]
+```
+
+**Options:**
+
+- `--with-sudo/--no-sudo`: Use sudo for database listing (default: False)
+- `--db-user TEXT`: Specify the database user (overrides config setting)
+
+**Examples:**
+
+```bash
+# List databases
+oduit --env dev list-db
+
+# List databases with sudo
+oduit --env dev list-db --with-sudo
+
+# List databases as specific user
+oduit --env dev list-db --db-user postgres
+```
+
+### create-addon
+
+Create a new Odoo addon with a template structure. This is a controlled source
+mutation command and requires `--allow-mutation`.
+
+```bash
+oduit --env dev create-addon ADDON_NAME [OPTIONS]
+```
+
+**Options:**
+
+- `--path TEXT`: Path where to create the addon
+- `--template [basic|website]`: Addon template to use (default: basic)
+
+**Examples:**
+
+```bash
+# Create basic addon
+oduit --env dev create-addon my_custom_module --allow-mutation
+
+# Create addon with website template
+oduit --env dev create-addon my_website_module --allow-mutation --template website
+
+# Create addon in specific path
+oduit --env dev create-addon my_module --allow-mutation --path /opt/custom/addons
+```
+
+### list-addons
+
+List available addons in the configured addons path.
+
+```bash
+oduit --env dev list-addons [OPTIONS]
+```
+
+**Options:**
+
+- `--select-dir TEXT`: Filter addons by exact directory name match
+
+**Examples:**
+
+```bash
+# List all addons
+oduit --env dev list-addons
+
+# List addons in a specific directory (exact name match)
+oduit --env dev list-addons --select-dir custom_addons
+```
+
+```{note}
+The ``--select-dir`` option requires an exact match with the directory
+basename. For example, if your addons path is ``/path/to/custom_addons``,
+you must use ``--select-dir custom_addons`` (not ``custom`` or ``addons``).
+```
+
+**Filtering Options:**
+
+- `--include FIELD:VALUE`: Include only addons where FIELD contains VALUE
+- `--exclude FIELD:VALUE`: Exclude addons where FIELD contains VALUE
+- `--exclude-core-addons`: Exclude Odoo core addons
+- `--exclude-enterprise-addons`: Exclude Odoo enterprise addons
+
+Valid filter fields: `name`, `version`, `summary`, `author`, `website`,
+`license`, `category`, `module_path`, `depends`, `addon_type`
+
+**Filtering Examples:**
+
+```bash
+# Exclude all Theme addons
+oduit --env dev list-addons --exclude category:Theme
+
+# Include only Odoo-authored addons (excluding core addons)
+oduit --env dev list-addons --include author:Odoo --exclude-core-addons
+
+# List only LGPL licensed addons
+oduit --env dev list-addons --include license:LGPL
+```
+
+```{note}
+``list-addons`` is source inventory only. It scans the configured
+``addons_path`` and does not query database runtime module state.
+```
+
+**Set-writing options:**
+
+- `--save-set TEXT`: Save the addon list as a reusable operation set
+- `--set-kind TEXT`: Set kind for the saved set (`install` or `update`)
+- `--set-name TEXT`: Display name for the saved set
+- `--set-description TEXT`: Description for the saved set
+- `--overwrite`: Overwrite an existing set file
+
+```bash
+# Save addon list as an update set
+oduit --env dev list-addons --select-dir custom_addons --save-set custom_update --set-kind update
+```
+
+### list-installed-addons
+
+List installed addons from the active database runtime.
+
+```bash
+oduit --env dev list-installed-addons [OPTIONS]
+```
+
+**Options:**
+
+- `--module TEXT` / `--modules TEXT`: Comma-separated addon names filter
+- `--state TEXT`: Repeatable runtime state filter (defaults to `installed`)
+- `--separator TEXT`: Separator for text output
+- `--include-state`: Print `module:state` in text mode
+
+**Examples:**
+
+```bash
+# List installed addons from the active database
+oduit --env dev list-installed-addons
+
+# Filter to selected addons
+oduit --env dev list-installed-addons --modules sale,stock
+
+# Include the runtime state in text output
+oduit --env dev list-installed-addons --state installed --state to_upgrade --include-state
+```
+
+```{note}
+``list-installed-addons`` is runtime inventory. It requires working database
+access and is separate from the source-only ``list-addons`` command.
+```
+
+**Set-writing options:**
+
+- `--save-set TEXT`: Save the addon list as a reusable operation set
+- `--set-kind TEXT`: Set kind for the saved set (`install` or `update`)
+- `--set-name TEXT`: Display name for the saved set
+- `--set-description TEXT`: Description for the saved set
+- `--overwrite`: Overwrite an existing set file
+
+```bash
+# Snapshot installed addons as an install set
+oduit --env dev list-installed-addons --save-set snapshot --set-kind install
+
+
+# Exclude addons depending on sale
+oduit --env dev list-addons --exclude depends:sale
+```
+
+### list-duplicates
+
+List duplicate addon names discovered in more than one addons path.
+
+```bash
+oduit --env dev list-duplicates
+```
+
+This is useful before automated updates, because duplicate module names make
+resolution order ambiguous.
+
+> \# Combine multiple filters
+> oduit --env dev list-addons --exclude category:Theme --exclude category:Hidden
+
+### print-manifest
+
+Display detailed manifest information for a specific addon.
+
+```bash
+oduit --env dev print-manifest ADDON_NAME [OPTIONS]
+```
+
+**Options:**
+
+- `--select-dir TEXT`: Filter addons by exact directory name match
+
+**Examples:**
+
+```bash
+# Print manifest for sale module
+oduit --env dev print-manifest sale
+
+# Print manifest for module in specific directory
+oduit --env dev print-manifest my_module --select-dir custom_addons
+
+# Output as JSON
+oduit --env dev --json print-manifest sale
+```
+
+**Output:**
+
+The command displays a Rich table with the following information:
+
+- **Name**: Technical module name
+- **Display Name**: Human-readable name
+- **Version**: Module version
+- **Addon Type**: Odoo CE, Odoo EE, or Custom
+- **Summary**: Brief description
+- **Author**: Module author(s)
+- **Website**: Project website
+- **License**: License type (e.g., LGPL-3, OPL-1)
+- **Category**: Module category
+- **Installable**: Whether the module can be installed
+- **Auto Install**: Whether the module auto-installs
+- **Depends**: Module dependencies
+- **External Dependencies (Python)**: Required Python packages
+- **External Dependencies (Bin)**: Required binary dependencies
+- **Module Path**: Full filesystem path to the module
+
+### list-manifest-values
+
+List unique values for a specific manifest field across all addons.
+
+```bash
+oduit --env dev list-manifest-values FIELD [OPTIONS]
+```
+
+This command scans all available addons and collects unique values for the
+specified manifest field. Useful for discovering what values exist in your
+addons (e.g., all categories, licenses, authors in use).
+
+**Arguments:**
+
+- `FIELD`: The manifest field to list values for (e.g., `category`, `license`, `author`)
+
+**Options:**
+
+- `--separator TEXT`: Separator for output (default: newline)
+- `--select-dir TEXT`: Filter addons by exact directory name match
+- `--exclude-core-addons`: Exclude Odoo core addons
+- `--exclude-enterprise-addons`: Exclude Odoo enterprise addons
+
+**Examples:**
+
+```bash
+# List all unique categories
+oduit --env dev list-manifest-values category
+
+# List all licenses used in custom addons only
+oduit --env dev list-manifest-values license --exclude-core-addons
+
+# List authors with comma separator
+oduit --env dev list-manifest-values author --separator ", "
+
+# List categories in a specific directory
+oduit --env dev list-manifest-values category --select-dir myaddons
+
+# Output as JSON
+oduit --env dev --json list-manifest-values category
+```
+
+**Output:**
+
+- Text mode: One value per line (or separated by custom separator)
+- JSON mode: Versioned payload containing `field` and `values`
+
+### list-depends
+
+List external dependencies for a specified module or directory of modules.
+
+```bash
+oduit --env dev list-depends [MODULE] [OPTIONS]
+```
+
+This command analyzes the module's dependency tree and identifies external
+dependencies that are not available in the configured addons paths. It
+recursively checks all transitive dependencies.
+
+You can either provide module names directly or use `--select-dir` to
+automatically get dependencies for all modules in a specific directory.
+
+**Options:**
+
+- `--tree`: Display dependencies as a hierarchical tree structure
+- `--depth INTEGER`: Maximum depth of dependencies to show (0=direct only, 1=direct+their deps, etc.)
+- `--separator TEXT`: Separator for list output (e.g., ",")
+- `--select-dir TEXT`: Get dependencies for all modules in a specific directory
+
+**Examples:**
+
+```bash
+# Check external dependencies for sale module
+oduit --env dev list-depends sale
+
+# Display dependency tree for a module
+oduit --env dev list-depends sale --tree
+
+# Check multiple modules external dependencies
+oduit --env dev list-depends sale,purchase
+
+# Output as comma-separated list
+oduit --env dev list-depends sale --separator ","
+
+# Show only direct dependencies
+oduit --env dev list-depends sale --depth 0
+
+# Show direct dependencies and their dependencies
+oduit --env dev list-depends sale --depth 1
+
+# Show tree with limited depth
+oduit --env dev list-depends sale --tree --depth 1
+
+# Multiple modules with depth limit
+oduit --env dev list-depends sale,purchase --depth 0
+
+# Tree view for multiple modules
+oduit --env dev list-depends sale,purchase --tree
+
+# Get dependencies for all modules in a directory
+oduit --env dev list-depends --select-dir myaddons
+
+# Get dependencies for a directory with comma-separated output
+oduit --env dev list-depends --select-dir myaddons --separator ","
+
+# Get dependencies for a directory with depth limit
+oduit --env dev list-depends --select-dir myaddons --depth 0
+
+# Tree view for all modules in a directory
+oduit --env dev list-depends --select-dir myaddons --tree
+```
+
+**Tree View:**
+
+The `--tree` option displays a hierarchical view of all codependencies:
+
+```text
+└── sale (17.0.1.0.0)
+    ├── base (1.3)
+    ├── web (1.0)
+    │   └── base (1.3)
+    └── portal (1.0.0)
+        └── web (1.0)
+```
+
+Features:
+
+- Shows module versions in parentheses
+- Uses box-drawing characters (└──, ├──, │) for tree structure
+- Detects and marks circular dependencies with ⬆ symbol
+- Supports multiple modules (displays trees separately with blank line separator)
+
+**Output:**
+
+The command will:
+
+- List all external dependencies if any are found
+- Return "No external dependencies" if all dependencies are available
+- Return an error if the module itself is not found
+- In tree mode, display the full dependency hierarchy for a single module
+
+**Set-writing options:**
+
+`--save-set` cannot be combined with `--tree`.
+
+- `--save-set TEXT`: Save the dependency list as a reusable operation set
+- `--set-kind TEXT`: Set kind for the saved set (`install` or `update`)
+- `--set-name TEXT`: Display name for the saved set
+- `--set-description TEXT`: Description for the saved set
+- `--overwrite`: Overwrite an existing set file
+
+```bash
+# Save dependencies as an install set
+oduit --env dev list-depends has_helpdesk --save-set helpdesk_deps --set-kind install
+```
+
+### list-codepends
+
+List reverse dependencies for a specified module.
+
+```bash
+oduit --env dev list-codepends MODULE
+```
+
+This command lists the addons that depend on the specified module. The current
+implementation also includes the selected module itself in the output, which is
+useful when feeding the result into follow-up install or impact-analysis flows.
+
+**Examples:**
+
+```bash
+# Find which addons depend on base
+oduit --env dev list-codepends base
+
+# Find which addons depend on sale
+oduit --env dev list-codepends sale
+
+# Find reverse dependencies for a custom module
+oduit --env dev list-codepends my_custom_module
+```
+
+**Output:**
+
+The command will:
+
+- List the selected module together with all modules that depend on it
+- Return only the selected module if no reverse dependencies are found
+- Preserve the command name `list-codepends` for compatibility, even though
+  the behavior is reverse-dependency analysis
+
+**Set-writing options:**
+
+- `--save-set TEXT`: Save the codependency list as a reusable operation set
+- `--set-kind TEXT`: Set kind for the saved set (`install` or `update`)
+- `--set-name TEXT`: Display name for the saved set
+- `--set-description TEXT`: Description for the saved set
+- `--overwrite`: Overwrite an existing set file
+
+```bash
+# Save codependencies as an update set
+oduit --env dev list-codepends has_base --save-set base_impact --set-kind update
+```
+
+### install-order
+
+Return the dependency-resolved install or update order for one or more addons.
+
+```bash
+oduit --env dev install-order [MODULES] [OPTIONS]
+```
+
+You can either provide comma-separated module names directly or use
+`--select-dir` to compute the order for all addons in one directory.
+
+**Options:**
+
+- `--separator TEXT`: Separator for output (e.g., ",")
+- `--select-dir TEXT`: Get install order for all modules in a specific directory
+
+**Examples:**
+
+```bash
+# Compute install order for two addons
+oduit --env dev install-order sale,purchase
+
+# Output as a comma-separated list
+oduit --env dev install-order sale,purchase --separator ","
+
+# Compute install order for all addons in one directory
+oduit --env dev install-order --select-dir myaddons
+
+ # Output as JSON
+ oduit --env dev --json install-order sale,purchase
+```
+
+If dependency resolution fails because of a cycle, both text mode and JSON mode
+surface structured cycle diagnostics and remediation guidance.
+
+**Set-reading and set-writing options:**
+
+`--from-set` reads an install or update set and computes the dependency-resolved
+order for its addons. It rejects test sets because a test set can contain both
+pre-install and pre-update roles.
+
+- `--from-set TEXT`: Read addons from an existing operation set (install/update only)
+- `--save-set TEXT`: Save the ordered result as a new operation set
+- `--set-kind TEXT`: Set kind for the saved set (defaults to the source set kind)
+- `--set-name TEXT`: Display name for the saved set
+- `--set-description TEXT`: Description for the saved set
+- `--overwrite`: Overwrite an existing set file
+
+```bash
+# Reorder an install set and save the ordered copy
+oduit --env dev install-order --from-set snapshot --save-set ordered_snapshot
+```
+
+### explain-install-order
+
+Explain the dependency cycle that blocks `install-order` for one or more
+addons.
+
+```bash
+oduit --env dev explain-install-order [MODULES] [OPTIONS]
+```
+
+You can either provide comma-separated module names directly or use
+`--select-dir` to analyze all addons in one directory.
+
+**Options:**
+
+- `--select-dir TEXT`: Explain install-order cycles for all modules in a specific directory
+
+**Examples:**
+
+```bash
+# Explain the cycle blocking one addon
+oduit --env dev explain-install-order sale
+
+# Explain the cycle for all addons in one directory
+oduit --env dev explain-install-order --select-dir myaddons
+
+# Output the structured explanation as JSON
+oduit --env dev --json explain-install-order sale
+```
+
+When a cycle is detected, the explanation includes the ordered cycle path, the
+dependency edges that form the loop, module paths, declared manifest
+dependencies, and concrete remediation hints.
+
+### impact-of-update
+
+Show which addons depend on a module and would likely be affected by updating it.
+
+```bash
+oduit --env dev impact-of-update MODULE [OPTIONS]
+```
+
+This command uses reverse dependency analysis to show the likely blast radius
+of a module update.
+
+**Options:**
+
+- `--separator TEXT`: Separator for output (e.g., ",")
+
+**Examples:**
+
+```bash
+# Show addons impacted by updating sale
+oduit --env dev impact-of-update sale
+
+# Output as a comma-separated list
+oduit --env dev impact-of-update sale --separator ","
+
+# Output as JSON
+oduit --env dev --json impact-of-update sale
+```
+
+### i18n
+
+Use the `i18n` command group for translation export, import, and language
+loading across Odoo 18 and Odoo 19.
+
+```bash
+oduit --env dev i18n export MODULE [MODULE ...] [OPTIONS]
+oduit --env dev i18n import FILE [FILE ...] --language CODE [OPTIONS]
+oduit --env dev i18n loadlang LANGUAGE [LANGUAGE ...] [OPTIONS]
+```
+
+Compatibility matrix:
+
+- Odoo 19+: uses native `odoo-bin i18n export/import/loadlang`
+- Odoo 18 and older: uses legacy `--i18n-*` and `--load-language` flags
+
+Notes:
+
+- `i18n export` defaults to `pot` when no language is supplied
+- Odoo 18 and older require exactly one export language and `--output`
+- Odoo 19+ allows multiple export languages when `--output` is omitted
+- `--output -` is read-only and writes PO content to stdout
+- `i18n import` accepts only `.po` and `.csv` files
+- locale values such as `en`, `es_AR`, and `sr@latin` are preserved
+
+Examples:
+
+```bash
+oduit --env dev --odoo-series 18.0 i18n export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+oduit --env dev --odoo-series 19.0 i18n export sale --language de_DE --output /tmp/sale-de.po --allow-mutation
+oduit --env dev --odoo-series 19.0 i18n export sale purchase --language de_DE --language fr_FR --allow-mutation
+oduit --env dev i18n import /tmp/sale-de.po --language de_DE --overwrite --allow-mutation
+oduit --env dev i18n loadlang en es_AR sr@latin --allow-mutation
+```
+
+### export-lang
+
+`export-lang` remains available as a compatibility alias for one-module
+source exports. It derives `<module>/i18n/<language>.po` and still requires
+`--allow-mutation`.
+
+### print-config
+
+Print the current environment configuration.
+
+```bash
+oduit --env dev print-config
+```
+
+**Examples:**
+
+```bash
+# Print production config
+oduit --env production print-config
+
+# Print local config
+oduit print-config
+```
+
+### edit-config
+
+Open the active environment or local config file in the default editor.
+
+```bash
+oduit --env dev edit-config
+```
+
+**Examples:**
+
+```bash
+# Edit production config
+oduit --env production edit-config
+
+# Edit local config
+oduit edit-config
+```
+
+## Trusted Execution and Inspection
+
+### exec
+
+Execute trusted Python directly inside the Odoo runtime and return a structured
+result.
+
+```bash
+oduit --env dev exec "env['res.partner']._table"
+oduit --env dev exec "env['res.partner'].search_count([])" --output full
+```
+
+**Options:**
+
+- `--database TEXT`: Override the configured database
+- `--commit`: Commit database changes made by the code
+- `--timeout FLOAT`: Execution timeout in seconds
+- `--output [value|full]`: Print only the resulting value or the full result
+
+```{warning}
+``exec`` is a trusted arbitrary execution surface. It rolls back by default;
+pass ``--commit`` only when mutation is explicitly intended.
+```
+
+### exec-file
+
+Execute trusted Python loaded from a file.
+
+```bash
+oduit --env dev exec-file scripts/check_runtime.py
+oduit --env dev exec-file scripts/repair_demo_data.py --commit --output full
+```
+
+### inspect
+
+Inspect runtime metadata without dropping into `odoo-bin shell`.
+
+```bash
+oduit --env dev inspect ref base.action_partner_form
+oduit --env dev inspect cron base.ir_cron_autovacuum
+oduit --env dev inspect cron base.ir_cron_autovacuum --trigger
+oduit --env dev inspect modules --state installed --names-only
+oduit --env dev inspect model res.partner
+oduit --env dev inspect field res.partner email --with-db
+oduit --env dev inspect subtypes crm.lead
+oduit --env dev inspect recordset "env['sale.order'].search([], limit=3).mapped('name')"
+```
+
+Use:
+
+- `inspect ref` for XMLID resolution
+- `inspect cron` for cron metadata and explicit triggering
+- `inspect modules` for runtime module state from `ir.module.module`
+- `inspect model` / `inspect field` for ORM metadata
+- `inspect recordset` only as the trusted arbitrary-expression escape hatch
+
+### db
+
+Inspect PostgreSQL metadata through the active Odoo connection.
+
+```bash
+oduit --env dev db table res_partner
+oduit --env dev db column res_partner email
+oduit --env dev db constraints sale_order
+oduit --env dev db tables --like sale
+oduit --env dev db m2m res.partner category_id
+```
+
+### performance
+
+Read PostgreSQL performance metadata through the active Odoo connection.
+
+```bash
+oduit --env dev performance table-scans
+oduit --env dev performance slow-queries --limit 10
+oduit --env dev performance indexes
+```
+
+`performance slow-queries` reads `pg_stat_statements` only when the
+extension is installed and reports clearly when it is unavailable.
+
+### manifest
+
+Use the `manifest` command group for path-or-addon-name manifest workflows.
+
+```bash
+oduit --env dev manifest check sale
+oduit --env dev manifest check ./addons/my_module
+oduit --env dev manifest show sale
+```
+
+### docs
+
+Generate Markdown, Mermaid-backed, or JSON documentation bundles from addon and
+model metadata, including multi-addon bundles with shared-model deduplication.
+
+```bash
+oduit --env dev docs addon sale --source-only --path /my/long/path
+oduit --env dev docs addons --select-dir myaddons --output-dir ./docs-out
+oduit --env dev docs addon sale --output sale.md
+oduit --env dev docs model res.partner --source-only --format json
+oduit --env dev docs dependency-graph --modules sale,purchase
+```
+
+Use `--format markdown` for rendered docs, `--format json` for structured
+automation output, and `--output` to write the generated Markdown directly to
+a file. Use `docs addons --output-dir` to write the multi-file addon bundle
+(`index.md`, `addons/*.md`, `models/*.md`, and `bundle.json`). Use
+`--path` to trim a shared absolute prefix from documented file paths; paths
+outside that prefix stay absolute.
+
+### Documentation commands
+
+The `docs` group includes:
+
+- `docs addon`
+- `docs addons`
+- `docs model`
+- `docs dependency-graph`
+- `docs technical-evidence`
+- `docs technical-report`
+- `docs technical-diff`
+- `docs technical-status`
+- `docs technical-check`
+- `docs technical-next`
+- `docs technical-refresh`
+- `docs technical-accept`
+- `docs technical` (legacy/compatibility monolithic workflow)
+
+### Showcase Replacements
+
+Use the first-class commands instead of shell-only examples:
+
+```bash
+# Resolve an XMLID
+oduit --env dev inspect ref base.action_partner_form
+
+# Inspect one model or field
+oduit --env dev inspect model project.task
+oduit --env dev inspect field res.partner email --with-db
+
+# Inspect PostgreSQL metadata
+oduit --env dev db table res_partner
+
+# Trusted one-off fallback
+oduit --env dev exec "env['res.partner']._table"
+```
+
+## Output Formats
+
+### Text Output (Default)
+
+Human-readable output with colors and formatting:
+
+```bash
+oduit --env dev install sale
+```
+
+### JSON Output
+
+Machine-readable JSON output for scripting:
+
+```bash
+oduit --env dev --json install sale
+```
+
+Example output:
+
+```json
+{
+  "schema_version": "2.0",
+  "type": "result",
+  "success": true,
+  "operation": "install",
+  "read_only": false,
+  "safety_level": "controlled_runtime_mutation",
+  "warnings": [],
+  "errors": [],
+  "remediation": [],
+  "data": {
+    "return_code": 0,
+    "modules_installed": ["sale"],
+    "modules_loaded": 42,
+    "without_demo": false,
+    "verbose": false
+  },
+  "meta": {
+    "timestamp": "2026-04-09T12:00:00"
+  },
+  "return_code": 0,
+  "modules_installed": ["sale"],
+  "modules_loaded": 42,
+  "without_demo": false,
+  "verbose": false
+}
+```
+
+### JSON Contract
+
+JSON output is versioned for automation use.
+
+Guaranteed keys for result payloads:
+
+- `schema_version`: current schema version string
+- `type`: payload family such as `result` or `doctor_report`
+- `success`: overall success flag
+- `read_only`: whether the command is inspection-only
+- `safety_level`: `safe_read_only`, `controlled_runtime_mutation`,
+  `controlled_source_mutation`, or `unsafe_arbitrary_execution`
+- `warnings` / `errors` / `remediation`: normalized machine-readable
+  guidance lists
+- `data`: command-specific payload content
+- `meta`: shared metadata such as `timestamp` and optional `duration`
+
+Common keys when they apply:
+
+- `operation`
+- `command`
+- `return_code`
+- `stdout` / `stderr`
+- `error` / `error_type`
+
+Operation-specific fields are preserved alongside those keys.
+
+## Agent Commands
+
+The `oduit agent` command group is the preferred automation surface for
+inspection and planning. These commands always emit structured JSON and do not
+require the global `--json` flag.
+Raw command metadata is hidden by default; pass
+`oduit agent --show-command ...` to include `data.command` when a payload
+provides it.
+
+Use {doc}`agent_contract` for the canonical command sequence, mutation policy,
+payload expectations, and failure handling. This section is the command
+reference.
+Use {doc}`agent_command_inventory` for the generated agent command matrix and
+`docs/maintainer/agent_contract_changes.md` for machine-facing change notes.
+
+When an agent needs exact parity with the human inspection / DB / performance /
+manifest surface, use the direct structured wrappers instead of shell snippets:
+
+```bash
+oduit --env dev agent inspect-ref base.action_partner_form
+oduit --env dev agent inspect-cron base.ir_cron_autovacuum
+oduit --env dev agent inspect-model res.partner
+oduit --env dev agent inspect-field res.partner email --with-db
+oduit --env dev agent db-table res_partner
+oduit --env dev agent manifest-check sale
+```
+
+### context
+
+Return a one-shot environment snapshot for agent workflows.
+
+```bash
+oduit --env dev agent context
+```
+
+### inspect-addon
+
+Inspect one addon with manifest, dependency, and impact data.
+
+```bash
+oduit --env dev agent inspect-addon sale
+```
+
+### addon-doc
+
+Return a documentation bundle for one addon, including Mermaid diagram strings,
+model summaries, and optional rendered Markdown.
+
+```bash
+oduit --env dev agent addon-doc sale
+```
+
+### inspect-addons
+
+Inspect multiple addons in one call.
+
+```bash
+oduit --env dev agent inspect-addons --modules sale,stock
+```
+
+### inspect-ref
+
+Resolve one XMLID through the structured agent envelope.
+
+```bash
+oduit --env dev agent inspect-ref base.action_partner_form
+```
+
+### inspect-cron
+
+Inspect one cron record, or trigger it explicitly with mutation approval.
+
+```bash
+oduit --env dev agent inspect-cron base.ir_cron_autovacuum
+oduit --env dev agent inspect-cron base.ir_cron_autovacuum --trigger --allow-mutation
+```
+
+### inspect-model
+
+Inspect runtime model registration metadata with the agent envelope.
+
+```bash
+oduit --env dev agent inspect-model res.partner
+```
+
+### inspect-field
+
+Inspect runtime field metadata, optionally including DB-level details.
+
+```bash
+oduit --env dev agent inspect-field res.partner email --with-db
+```
+
+### db-table / db-column / db-constraints / db-tables / db-m2m
+
+Use the structured DB wrappers when an agent needs direct schema parity.
+
+```bash
+oduit --env dev agent db-table res_partner
+oduit --env dev agent db-column res_partner email
+oduit --env dev agent db-constraints res_partner
+oduit --env dev agent db-tables --like res_%
+oduit --env dev agent db-m2m res.partner category_id
+```
+
+### manifest-check / manifest-show
+
+Use the structured manifest wrappers instead of ad hoc file parsing.
+
+```bash
+oduit --env dev agent manifest-check sale
+oduit --env dev agent manifest-show sale
+```
+
+### plan-update
+
+Build a read-only update plan with impact, risk metadata, and runtime mutation
+policy details.
+
+```bash
+oduit --env dev agent plan-update sale
+```
+
+### prepare-addon-change
+
+Bundle the common read-only planning steps for one addon change into a single
+structured payload.
+
+```bash
+oduit --env dev agent prepare-addon-change my_partner --model res.partner --field email3
+oduit --env dev agent prepare-addon-change my_partner --model res.partner --field email3 --types form,tree
+```
+
+This command aggregates environment context, addon inspection, update planning,
+source-location hints, addon model inventory, addon test inventory, and
+best-effort runtime metadata queries for the requested model.
+
+### list-addon-models
+
+Return the models declared or extended by one addon.
+
+```bash
+oduit --env dev agent list-addon-models my_partner
+```
+
+### find-model-extensions
+
+Return where a model is declared and extended across addons, plus installed
+field and view extension metadata from the database.
+
+```bash
+oduit --env dev agent find-model-extensions crm.stage --summary
+```
+
+### get-model-views
+
+Fetch primary and extension `ir.ui.view` records for a model directly from
+the database.
+
+```bash
+oduit --env dev agent get-model-views crm.stage --types form,tree
+oduit --env dev agent get-model-views crm.stage --types form,tree --summary
+```
+
+### locate-model
+
+Locate likely Python source files for a model extension inside one addon. The
+payload now includes `resolution`, `ambiguous`, and candidate `evidence`
+so agents can distinguish confirmed matches from ambiguous source hints.
+
+```bash
+oduit --env dev agent locate-model res.partner --module my_partner
+```
+
+### locate-field
+
+Locate an existing field definition or suggest the best insertion point. The
+payload includes explicit `resolution` and ambiguity metadata, plus per-
+candidate evidence for exact field matches.
+
+```bash
+oduit --env dev agent locate-field res.partner email3 --module my_partner
+```
+
+### list-addon-tests
+
+Return likely test files for an addon, optionally ranked by model or field
+references.
+
+```bash
+oduit --env dev agent list-addon-tests my_partner --model res.partner --field email3
+```
+
+### recommend-tests
+
+Map changed addon files to recommended tests and suggested `--test-tags`.
+
+```bash
+oduit --env dev agent recommend-tests --module my_partner --paths models/res_partner.py,views/res_partner_views.xml
+```
+
+### doctor
+
+Return doctor diagnostics through the standard agent envelope.
+
+```bash
+oduit --env dev agent doctor
+```
+
+### list-addons
+
+Return structured addon inventory with filters and duplicate indicators.
+
+```bash
+oduit --env dev agent list-addons --exclude category:Theme
+```
+
+### dependency-graph
+
+Return dependency graph nodes, edges, cycles, and install order data.
+
+```bash
+oduit --env dev agent dependency-graph --modules sale,stock
+```
+
+### explain-install-order
+
+Explain the dependency cycle blocking install-order for automation workflows.
+
+```bash
+oduit --env dev agent explain-install-order --modules sale
+```
+
+The payload includes requested modules, the ordered cycle path, ordered
+dependency edges, module metadata, and remediation guidance.
+
+### resolve-config
+
+Return the resolved configuration with sensitive values redacted. The payload
+includes both the compatibility `effective_config` view and the canonical
+sectioned `normalized_config` view, plus `config_shape` metadata and any
+legacy-flat deprecation warnings.
+
+```bash
+oduit --env dev agent resolve-config
+```
+
+### resolve-addon-root
+
+Resolve a module name to one or more addon root candidates before editing.
+
+```bash
+oduit --env dev agent resolve-addon-root sale
+```
+
+### get-addon-files
+
+Return a deterministic addon file inventory, optionally filtered by glob
+patterns.
+
+```bash
+oduit --env dev agent get-addon-files sale
+oduit --env dev agent get-addon-files sale --globs models/*.py,views/*.xml
+```
+
+### check-addons-installed
+
+Return runtime installed-state checks for one or more addons.
+
+```bash
+oduit --env dev agent check-addons-installed --modules sale,stock
+```
+
+### check-model-exists
+
+Check whether a model exists in source discovery and, when available, runtime
+metadata.
+
+```bash
+oduit --env dev agent check-model-exists res.partner --module my_partner
+```
+
+### check-field-exists
+
+Check whether a field exists in runtime metadata and source, or return the best
+source insertion hint when it does not.
+
+```bash
+oduit --env dev agent check-field-exists res.partner email3 --module my_partner
+```
+
+### list-duplicates
+
+Return duplicate addon-name analysis through the standard envelope.
+
+```bash
+oduit --env dev agent list-duplicates
+```
+
+### test-summary
+
+Run tests and emit a normalized summary payload. This stays read-only unless
+`--install` or `--update` is requested.
+
+```bash
+oduit --env dev agent test-summary --module sale --test-tags /sale
+oduit --env dev agent test-summary --allow-mutation --install sale --test-tags /sale
+```
+
+### preflight-addon-change
+
+Run a cheap read-only addon-change preflight that bundles inspection, doctor,
+duplicate checks, install-state lookup, source discovery, and likely test
+inventory before editing.
+
+```bash
+oduit --env dev agent preflight-addon-change sale --model res.partner --field email3
+```
+
+### validate-addon-change
+
+Run one end-to-end addon verification pass and return aggregate sub-results for
+inspection, config health, duplicate checks, optional install or update, the
+full module test suite, and optional discovered test inventory.
+
+```bash
+oduit --env dev agent validate-addon-change sale --allow-mutation --update
+oduit --env dev agent validate-addon-change sale --allow-mutation --install-if-needed --discover-tests
+```
+
+Controlled source mutations require `--allow-mutation`. Runtime DB mutation
+commands only need it when the active config requires explicit confirmation. See
+{doc}`agent_contract` for the mutation rules and `--dry-run` expectations.
+
+```bash
+oduit --env dev agent install-module sale --dry-run
+oduit --env dev agent update-module sale --allow-mutation
+oduit --env dev agent create-addon my_module --allow-mutation
+oduit --env dev agent i18n-export sale --language de_DE --output - --dry-run
+oduit --env dev agent i18n-import /tmp/sale-de.po --language de_DE --allow-mutation
+oduit --env dev agent i18n-loadlang en es_AR sr@latin --allow-mutation
+oduit --env dev agent export-lang sale --allow-mutation --language de_DE
+```
+
+### query-model
+
+Run a structured read-only model query through `OdooQuery`.
+
+```bash
+oduit --env dev agent query-model res.partner --fields name,email --limit 5
+```
+
+Other read helpers follow the same pattern:
+
+```bash
+oduit --env dev agent read-record res.partner 7 --fields name,email
+oduit --env dev agent search-count res.partner --domain-json '[["is_company", "=", true]]'
+oduit --env dev agent get-model-fields res.partner --attributes string,type
+oduit --env dev agent get-model-views res.partner --types form,tree --summary
+```
+
+For the recommended end-to-end coding-agent loop, use {doc}`agent_contract`.
+Keep arbitrary code execution as a trusted fallback only; `OdooCodeExecutor`
+and `execute_python_code()` still require explicit `allow_unsafe=True`.
+
+## Common Workflows
+
+### Development Workflow
+
+```bash
+# Start development server
+oduit --env dev run
+
+# In another terminal: Install module
+oduit --env dev install my_module
+
+# Run tests
+oduit --env dev test --test-tags /my_module --compact
+
+# Update after changes
+oduit --env dev update my_module --compact
+```
+
+### Testing Workflow
+
+```bash
+# Install module and run tests with coverage
+oduit --env test install sale --without-demo all
+oduit --env test test --test-tags /sale --coverage sale
+
+# Run specific test file
+oduit --env test test --test-file tests/test_sale_flow.py
+```
+
+### Translation Workflow
+
+```bash
+# Export translations
+oduit --env dev --odoo-series 19.0 i18n export my_module --language de_DE --output /tmp/my_module-de.po --allow-mutation
+
+# Import translations
+oduit --env dev i18n import /tmp/my_module-de.po --language de_DE --overwrite --allow-mutation
+
+# Load available languages into the database
+oduit --env dev i18n loadlang en es_AR sr@latin --allow-mutation
+
+# Update module with translation overwrite
+oduit --env dev update my_module --i18n-overwrite --language de_DE
+```
+
+### Production Deployment
+
+```bash
+# Install modules without demo data
+oduit --env production install sale,purchase,stock --without-demo all
+
+# Update modules
+oduit --env production update sale,purchase,stock
+
+# Run server
+oduit --env production run
+```
+
+## Error Handling
+
+### Exit Codes
+
+The CLI uses standard exit codes:
+
+- `0`: Success
+- `1`: Error (configuration error, operation failed, etc.)
+
+When an error occurs, the CLI will:
+
+1. Print an error message describing the issue
+2. Exit with code 1
+3. Optionally output JSON error details (when `--json` is used)
+
+### Troubleshooting
+
+**Configuration not found:**
+
+```bash
+# Check available environments
+ls ~/.config/oduit/
+
+# Print current config
+oduit --env dev print-config
+```
+
+**Module not found:**
+
+```bash
+# List available modules
+oduit --env dev list-addons
+```
+
+**Test failures:**
+
+```bash
+# Run with verbose output
+oduit --env dev --verbose test --test-tags /my_module
+
+# Run with compact output to focus on failures
+oduit --env dev test --test-tags /my_module --compact
+```
+
+## API Reference
+
+- {doc}`api/cli_types` documents the CLI enums and dataclasses.
+- {doc}`api/cli_app` documents the canonical Typer composition root.
+- {doc}`api/cli_typer` documents the compatibility facade.
+
+## See Also
+
+- {doc}`quickstart` - Getting started with oduit
+- {doc}`configuration` - Configuration file reference
+- {doc}`api/odoo_operations` - OdooOperations API (used internally by CLI)
+- {doc}`examples` - Python API usage examples

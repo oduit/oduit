@@ -2,8 +2,8 @@ from pathlib import Path
 
 from oduit.cli.app import agent_app
 from oduit.cli.command_inventory import (
-    render_agent_inventory_rst,
-    render_cli_inventory_rst,
+    render_agent_inventory_markdown,
+    render_cli_inventory_markdown,
     render_public_api_agent_section_markdown,
     render_public_api_cli_section_markdown,
 )
@@ -16,7 +16,6 @@ DOC_FILES = [
     ROOT / "examples" / "execute_python_example.py",
     ROOT / "examples" / "module_manifest_example.py",
     *sorted((ROOT / "docs").rglob("*.md")),
-    *sorted((ROOT / "docs").rglob("*.rst")),
 ]
 
 
@@ -33,6 +32,20 @@ def _extract_markdown_section(content: str, header: str) -> str:
             end_index = index
             break
     return "\n".join(lines[start_index:end_index]).strip()
+
+
+def test_sphinx_docs_are_markdown_only() -> None:
+    rst_files = sorted((ROOT / "docs").rglob("*.rst"))
+
+    assert not rst_files, "\n".join(str(path.relative_to(ROOT)) for path in rst_files)
+
+
+def test_sphinx_conf_uses_myst_markdown_only_sources() -> None:
+    content = (ROOT / "docs" / "conf.py").read_text(encoding="utf-8")
+
+    assert '"myst_parser"' in content
+    assert '".md": "myst"' in content
+    assert '".rst": "restructuredtext"' not in content
 
 
 def test_docs_do_not_reference_removed_or_stale_api_symbols() -> None:
@@ -103,7 +116,7 @@ def test_docs_do_not_show_run_command_timeout_signature() -> None:
 def test_raw_executor_examples_keep_allow_unsafe_opt_in() -> None:
     targets = [
         ROOT / "README.md",
-        ROOT / "docs/api/odoo_code_executor.rst",
+        ROOT / "docs/api/odoo_code_executor.md",
         ROOT / "examples" / "code_executor_example.py",
     ]
     failures: list[str] = []
@@ -129,7 +142,7 @@ def test_raw_executor_examples_keep_allow_unsafe_opt_in() -> None:
 def test_execute_python_code_docs_note_shell_interface_requirement() -> None:
     targets = [
         ROOT / "README.md",
-        ROOT / "docs/api/odoo_operations.rst",
+        ROOT / "docs/api/odoo_operations.md",
         ROOT / "examples" / "README.md",
         ROOT / "examples" / "execute_python_example.py",
     ]
@@ -147,7 +160,7 @@ def test_execute_python_code_docs_note_shell_interface_requirement() -> None:
 
 
 def test_agent_contract_page_covers_required_topics() -> None:
-    content = (ROOT / "docs" / "agent_contract.rst").read_text()
+    content = (ROOT / "docs" / "agent_contract.md").read_text()
     required_markers = [
         "Using oduit from a coding agent",
         "single source of truth",
@@ -173,22 +186,22 @@ def test_agent_contract_page_covers_required_topics() -> None:
     ]
 
     failures = [marker for marker in required_markers if marker not in content]
-    assert not failures, "Missing markers in docs/agent_contract.rst:\n" + "\n".join(
+    assert not failures, "Missing markers in docs/agent_contract.md:\n" + "\n".join(
         failures
     )
 
 
 def test_generated_command_inventory_pages_match_renderer() -> None:
     assert (
-        ROOT / "docs" / "command_inventory.rst"
-    ).read_text() == render_cli_inventory_rst()
-    assert (ROOT / "docs" / "agent_command_inventory.rst").read_text() == (
-        render_agent_inventory_rst()
+        ROOT / "docs" / "command_inventory.md"
+    ).read_text() == render_cli_inventory_markdown()
+    assert (ROOT / "docs" / "agent_command_inventory.md").read_text() == (
+        render_agent_inventory_markdown()
     )
 
 
 def test_installation_docs_match_packaging_metadata() -> None:
-    content = (ROOT / "docs" / "installation.rst").read_text()
+    content = (ROOT / "docs" / "installation.md").read_text()
     assert "Python 3.10 or higher" in content
     assert 'pip install -e ".[dev]"' not in content
     assert "typing-extensions" not in content
@@ -197,9 +210,9 @@ def test_installation_docs_match_packaging_metadata() -> None:
 
 
 def test_cli_api_docs_mark_canonical_and_compatibility_modules() -> None:
-    cli_app_content = (ROOT / "docs" / "api" / "cli_app.rst").read_text()
-    cli_typer_content = (ROOT / "docs" / "api" / "cli_typer.rst").read_text()
-    api_index_content = (ROOT / "docs" / "api.rst").read_text()
+    cli_app_content = (ROOT / "docs" / "api" / "cli_app.md").read_text()
+    cli_typer_content = (ROOT / "docs" / "api" / "cli_typer.md").read_text()
+    api_index_content = (ROOT / "docs" / "api.md").read_text()
 
     assert "canonical Typer composition root" in cli_app_content
     assert "compatibility facade" in cli_typer_content
@@ -214,20 +227,20 @@ def test_readme_documents_odoo_conf_migration() -> None:
 
 
 def test_configuration_docs_document_odoo_conf_migration() -> None:
-    text = (ROOT / "docs" / "configuration.rst").read_text(encoding="utf-8")
+    text = (ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
     assert "odoo.conf" in text
     assert "--from-conf" in text
 
 
 def test_migration_guide_is_in_toctree() -> None:
-    index = (ROOT / "docs" / "index.rst").read_text(encoding="utf-8")
+    index = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
     assert "migrate-odoo-conf" in index
 
 
 def test_readme_and_quickstart_show_agent_verification_loop() -> None:
     targets = [
         ROOT / "README.md",
-        ROOT / "docs" / "quickstart.rst",
+        ROOT / "docs" / "quickstart.md",
     ]
     required_markers = [
         "oduit --env dev agent context",
@@ -254,7 +267,7 @@ def test_readme_and_quickstart_show_agent_verification_loop() -> None:
 def test_runtime_addon_docs_use_explicit_installed_inventory_command() -> None:
     targets = [
         ROOT / "README.md",
-        ROOT / "docs" / "cli.rst",
+        ROOT / "docs" / "cli.md",
         ROOT / "docs" / "maintainer" / "public_api.md",
     ]
     missing = [
@@ -271,8 +284,8 @@ def test_runtime_addon_docs_use_explicit_installed_inventory_command() -> None:
 def test_runtime_inspection_docs_cover_new_command_surface() -> None:
     targets = [
         ROOT / "README.md",
-        ROOT / "docs" / "cli.rst",
-        ROOT / "docs" / "quickstart.rst",
+        ROOT / "docs" / "cli.md",
+        ROOT / "docs" / "quickstart.md",
     ]
     required_markers = [
         "oduit --env dev exec \"env['res.partner']._table\"",
@@ -297,9 +310,9 @@ def test_runtime_inspection_docs_cover_new_command_surface() -> None:
 
 
 def test_api_docs_include_odoo_inspector_surface() -> None:
-    api_index = (ROOT / "docs" / "api.rst").read_text()
-    inspector_doc = (ROOT / "docs" / "api" / "odoo_inspector.rst").read_text()
-    operations_doc = (ROOT / "docs" / "api" / "odoo_operations.rst").read_text()
+    api_index = (ROOT / "docs" / "api.md").read_text()
+    inspector_doc = (ROOT / "docs" / "api" / "odoo_inspector.md").read_text()
+    operations_doc = (ROOT / "docs" / "api" / "odoo_operations.md").read_text()
 
     assert "api/odoo_inspector" in api_index
     assert "OdooInspector" in inspector_doc
@@ -346,9 +359,9 @@ def test_agent_contract_change_log_exists() -> None:
 def test_operation_set_docs_cover_current_cli_surface() -> None:
     targets = [
         ROOT / "README.md",
-        ROOT / "docs" / "cli.rst",
-        ROOT / "docs" / "quickstart.rst",
-        ROOT / "docs" / "configuration.rst",
+        ROOT / "docs" / "cli.md",
+        ROOT / "docs" / "quickstart.md",
+        ROOT / "docs" / "configuration.md",
         ROOT / "skills" / "oduit" / "SKILL.md",
     ]
     required_markers = [

@@ -23,10 +23,23 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.todo",
     "sphinx.ext.coverage",
+    "myst_parser",
 ]
 
+source_suffix = {
+    ".md": "myst",
+}
+
+root_doc = "index"
+
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "README.md",
+    "maintainer/*.md",
+]
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
@@ -56,3 +69,21 @@ intersphinx_mapping = {
 }
 
 todo_include_todos = True
+
+nitpick_ignore_regex = [
+    ("py:class", r"manifestoo_core\.odoo_series\.OdooSeries"),
+    ("py:class", r"typer\.models\.Context"),
+    ("py:class", r"dict\[str.*"),
+    ("py:class", r"list\[dict\[str.*"),
+    ("py:class", r"'?Mapping\[str.*"),
+    ("py:class", r"Dictionary with .*"),
+    ("py:class", r"Dict containing .*"),
+    ("py:class", r"Formatted version string"),
+    (
+        "py:class",
+        r"oduit\.(config_provider\.ConfigProvider|base_process_manager\.BaseProcessManager|documentation_policy\.DocumentationDirectoryPolicy|manifest\.Manifest(?:Error)?|manifest_collection\.ManifestCollection|source_locator\.SourceScanCache|cli_types\.SortingChoice)",
+    ),
+    ("py:exc", r"ManifestError"),
+    ("py:exc", r"ManifestNotFoundError"),
+    ("py:exc", r"InvalidManifestError"),
+]

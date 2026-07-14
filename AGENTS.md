@@ -288,8 +288,8 @@ When adding new operational behavior, prefer the existing builder + operation me
 If public behavior changes, update the relevant docs:
 
 - `README.md` for user-facing workflows
-- `docs/cli.rst` for CLI behavior
-- `docs/configuration.rst` for config changes
+- `docs/cli.md` for CLI behavior
+- `docs/configuration.md` for config changes
 - API docs for public module/class changes
 
 Do not add aspirational docs that describe behavior the code does not implement.

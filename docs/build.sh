@@ -38,7 +38,7 @@ rm -rf _build/
 
 # Build documentation
 echo -e "${YELLOW}Building HTML documentation...${NC}"
-sphinx-build -b html . _build/html
+sphinx-build -E -a -n -W --keep-going -b html . _build/html
 
 # Build PDF documentation (if latex is available)
 if command -v pdflatex &> /dev/null; then

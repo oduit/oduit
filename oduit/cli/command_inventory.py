@@ -237,68 +237,68 @@ def get_agent_command_inventory() -> list[CommandInventoryEntry]:
     return entries
 
 
-def render_cli_inventory_rst() -> str:
-    """Render the canonical top-level CLI command inventory page."""
+def render_cli_inventory_markdown() -> str:
+    """Render the canonical top-level CLI inventory as MyST Markdown."""
     lines = [
-        "CLI command inventory",
-        "=====================",
+        "# CLI command inventory",
         "",
         "This page is generated from the canonical Typer registration surface in",
-        "``oduit.cli.app``.",
+        "`oduit.cli.app`.",
         "",
-        ".. list-table:: Canonical top-level CLI commands",
-        "   :header-rows: 1",
+        "```{list-table} Canonical top-level CLI commands",
+        ":header-rows: 1",
         "",
-        "   * - Command",
-        "     - Stability tier",
-        "     - Summary",
+        "* - Command",
+        "  - Stability tier",
+        "  - Summary",
     ]
     for entry in get_top_level_command_inventory():
         lines.extend(
             [
-                f"   * - ``{entry.name}``",
-                f"     - ``{entry.tier}``",
-                f"     - {entry.summary}",
+                f"* - `{entry.name}`",
+                f"  - `{entry.tier}`",
+                f"  - {entry.summary}",
             ]
         )
+    lines.append("```")
     return "\n".join(lines) + "\n"
 
 
-def render_agent_inventory_rst() -> str:
-    """Render the canonical agent command inventory page."""
+def render_agent_inventory_markdown() -> str:
+    """Render the canonical agent command inventory as MyST Markdown."""
     lines = [
-        "Agent command inventory",
-        "=======================",
+        "# Agent command inventory",
         "",
         "This page is generated from the canonical agent command registration",
-        "surface in ``oduit.cli.app``.",
+        "surface in `oduit.cli.app`.",
         "",
         "Command tiers:",
         "",
     ]
     for tier, description in COMMAND_TIER_DESCRIPTIONS.items():
-        lines.append(f"* ``{tier}``: {description}")
+        lines.append(f"- `{tier}`: {description}")
     lines.extend(
         [
             "",
-            ".. list-table:: Canonical `oduit agent` commands",
-            "   :header-rows: 1",
+            "```{list-table} Canonical `oduit agent` commands",
+            ":header-rows: 1",
             "",
-            "   * - Command",
-            "     - Stability tier",
-            "     - Safety level",
-            "     - Summary",
+            "* - Command",
+            "  - Stability tier",
+            "  - Safety level",
+            "  - Summary",
         ]
     )
     for entry in get_agent_command_inventory():
         lines.extend(
             [
-                f"   * - ``{entry.name}``",
-                f"     - ``{entry.tier}``",
-                f"     - ``{entry.safety_level}``",
-                f"     - {entry.summary}",
+                f"* - `{entry.name}`",
+                f"  - `{entry.tier}`",
+                f"  - `{entry.safety_level}`",
+                f"  - {entry.summary}",
             ]
         )
+    lines.append("```")
     return "\n".join(lines) + "\n"
 
 

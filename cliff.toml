@@ -6,23 +6,19 @@
 # A Tera template to be rendered for each release in the changelog.
 # See https://keats.github.io/tera/docs/#introduction
 header = """
-Changelog
-=========
+# Changelog
 
 """
 body = """
 {% if version %}\
-{{ version | trim_start_matches(pat="v") }}
-----------
+## {{ version | trim_start_matches(pat="v") }}
 
 {% else %}\
-Unreleased
-----------
+## Unreleased
 
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
-{{ group | striptags | trim }}
-~~~~~~~~~~~~~~~~~~~~~
+### {{ group | striptags | trim }}
 {% for commit in commits %}
 - {% if commit.scope %}({{ commit.scope }}) {% endif %}\
 {% if commit.breaking %}**BREAKING:** {% endif %}\
@@ -43,7 +39,7 @@ postprocessors = [
 # render body even when there are no releases to process
 # render_always = true
 # output file path
-output = "docs/changelog.rst"
+output = "docs/changelog.md"
 
 [git]
 # Parse commits according to the conventional commits specification.

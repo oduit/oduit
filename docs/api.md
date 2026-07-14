@@ -1,0 +1,56 @@
+# API Reference
+
+This section contains the complete API reference for oduit.
+
+## Core Modules
+
+```{toctree}
+:maxdepth: 2
+
+api/process_manager
+api/config_loader
+api/odoo_operations
+api/odoo_inspector
+api/api_models
+api/odoo_code_executor
+api/odoo_query
+api/module_manager
+api/manifest
+api/manifest_collection
+api/addons_path_manager
+api/demo_process_manager
+api/operation_sets
+```
+
+## Command Line Interface
+
+`oduit.cli.app` is the canonical CLI composition root. `oduit.cli_typer` is
+documented below only as a compatibility facade for older imports.
+
+```{toctree}
+:maxdepth: 2
+
+api/cli_app
+api/cli_typer
+api/cli_types
+```
+
+## Utilities
+
+```{toctree}
+:maxdepth: 2
+
+api/operation_result
+api/output
+api/exceptions
+api/builders
+api/utils
+```
+
+## Complete API
+
+```{toctree}
+:maxdepth: 1
+
+api/modules
+```

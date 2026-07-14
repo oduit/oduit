@@ -495,7 +495,7 @@ intended.
 `oduit agent ...` is the primary documented automation surface for external
 coding agents.
 
-Use [`docs/agent_contract.rst`](docs/agent_contract.rst) as the canonical guide
+Use [`docs/agent_contract.md`](docs/agent_contract.md) as the canonical guide
 for:
 
 - command sequence
@@ -503,7 +503,7 @@ for:
 - payload expectations
 - failure handling
 
-Use [`docs/agent_command_inventory.rst`](docs/agent_command_inventory.rst) for
+Use [`docs/agent_command_inventory.md`](docs/agent_command_inventory.md) for
 the generated command matrix and stability tiers, and
 [`docs/maintainer/agent_contract_changes.md`](docs/maintainer/agent_contract_changes.md)
 for machine-facing contract changes.

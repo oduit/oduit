@@ -34,7 +34,7 @@ This directory contains the Sphinx documentation for oduit.
    make html
 
    # Or using sphinx-build directly
-   sphinx-build -b html . _build/html
+   sphinx-build -E -a -n -W --keep-going -b html . _build/html
    ```
 
 4. **View the documentation:**
@@ -63,16 +63,16 @@ This will start a local server with automatic rebuilding when files change.
 ```
 docs/
 ├── conf.py              # Sphinx configuration
-├── index.rst            # Main documentation page
-├── installation.rst     # Installation guide
-├── quickstart.rst       # Quick start guide
-├── configuration.rst    # Configuration documentation
-├── examples.rst         # Usage examples
-├── changelog.rst        # Project changelog
+├── index.md             # Main documentation page
+├── installation.md      # Installation guide
+├── quickstart.md        # Quick start guide
+├── configuration.md     # Configuration documentation
+├── examples.md          # Usage examples
+├── changelog.md         # Project changelog
 ├── api/                 # API documentation
-│   ├── modules.rst      # Complete API reference
-│   ├── process_manager.rst
-│   ├── config_loader.rst
+│   ├── modules.md       # Complete API reference
+│   ├── process_manager.md
+│   ├── config_loader.md
 │   └── ...
 ├── _static/             # Static files (CSS, images)
 ├── _templates/          # Custom templates
@@ -84,9 +84,9 @@ docs/
 
 ### Adding New Documentation
 
-1. Create new `.rst` files in the appropriate directory
-2. Add them to the `toctree` in `index.rst` or relevant parent file
-3. Use Sphinx directives for cross-references and code examples
+1. Create new `.md` files in the appropriate directory
+2. Add them to the `toctree` in `index.md` or the relevant parent file
+3. Use MyST fenced directives and Sphinx roles for cross-references and code examples
 4. Run the build to verify formatting
 
 ### API Documentation
@@ -94,7 +94,7 @@ docs/
 API documentation is automatically generated from docstrings using Sphinx autodoc.
 To add new modules:
 
-1. Add the module to `api/modules.rst`
+1. Add the module to `api/modules.md`
 2. Create a dedicated file in `api/` for detailed documentation
 3. Add usage examples and cross-references
 
@@ -109,4 +109,4 @@ To add new modules:
 **Getting Help:**
 
 - Check the Sphinx documentation: https://www.sphinx-doc.org/
-- For reStructuredText syntax: https://docutils.sourceforge.io/rst.html
+- For MyST syntax and directives: https://myst-parser.readthedocs.io/

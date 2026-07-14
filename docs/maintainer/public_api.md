@@ -3,7 +3,7 @@
 This file is the maintainer-facing inventory of the current public surface.
 Use it when updating README, CLI docs, and API examples.
 
-Use `docs/agent_contract.rst` as the canonical workflow and payload reference
+Use `docs/agent_contract.md` as the canonical workflow and payload reference
 for external coding agents. Keep the inventory below in sync with
 `oduit agent --help`.
 Use `docs/maintainer/agent_contract_changes.md` to record machine-facing
