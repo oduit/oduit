@@ -1,30 +1,55 @@
 # Changelog
 
-## Unreleased
+## 0.4.8
 
 ### Added
 
-- Add missing parameter to db-create (with_demo, country and language)
-- Update init command and fix it for odoo < 19
-- Introduce sets for installing, updating or testing multiple addons at once
-- Improve set command group, set kind to set a role, allow to fill sets from commands
-- Allow to assure that each addon is process in sets
-- Add version-aware Odoo 18/19 i18n export, import, and loadlang commands for
-  the classic CLI, agent CLI, Python API, demo mode, and inventories
+- Add i18n support for odoo19
 
 ### Fixed
 
-- Demo process manager and pytest
-- Pytest
-- Pytest fix
-- Windows pytest fix
-- Keep `export-lang` as a compatibility alias while moving translation
-  workflows to the new `i18n` command family
+- Inventory fixed
 
 ### Documentation
 
 - Update changelog
-- Document the Odoo 18/19 i18n compatibility surface and agent mutation rules
+
+- Switch to markdown for docs
+
+### Miscellaneous
+
+- Fix mypy
+
+- Fix pre-commit
+
+## 0.4.7
+
+### Added
+
+- Add missing parameter to db-create (with_demo, country and language)
+
+- Update init command and fix it for odoo < 19
+
+- Introduce sets for installing, updating or testing multiple addons at once
+
+- Improve set command group, set kind to set a role, allow to fill sets from commands
+
+- Allow to assure that each addon is process in sets
+
+### Fixed
+
+- Demo process manager and pytest
+
+- Pytest
+
+- Pytest fix
+
+- Windows pytest fix
+
+### Documentation
+
+- Update changelog
+
 - Update docs regarding new set commands
 
 ## 0.4.6
@@ -32,25 +57,37 @@
 ### Added
 
 - Add technical documentation schema
+
 - Update skills
+
 - Improve technical docu
+
 - Improved documentation, schemas and skill
+
 - Speed up documentation
+
 - Improved technical doc creation flow
+
 - Add allowed addon dirs
+
 - Evidence blocks introduced for technical docu
+
 - Create seperate evidence doc file
 
 ### Fixed
 
 - Unit test
+
 - Fix windows ci test
+
 - Rename addon to a more generic name
+
 - Timout for doc creation
 
 ### Documentation
 
 - Update changelog
+
 - Update skills and docs
 
 ### Miscellaneous
@@ -62,8 +99,11 @@
 ### Fixed
 
 - Duplicate detection fix
+
 - Code executor fixed for odoo 19
+
 - Test integration test
+
 - Adapt to changed output of odoo 19
 
 ### Documentation
@@ -83,7 +123,9 @@
 ### Added
 
 - Add script for benchmark output
+
 - Reduce the inspect addon output
+
 - Better migration workflow for existing odoo.conf files
 
 ### Documentation
@@ -95,8 +137,11 @@
 ### Added
 
 - Improved dependency cycle detection
+
 - Allow stdin for install update and install order
+
 - Add stdin for commands that consume addon naems directly
+
 - Add skill and explain install order
 
 ### Fixed
@@ -112,11 +157,13 @@
 ### Added
 
 - Hide commands on default for agent commands
+
 - Dedpulicate agent output
 
 ### Fixed
 
 - Fix failing unit test
+
 - Failing unit test
 
 ### Documentation
@@ -128,13 +175,17 @@
 ### Added
 
 - Add documentation commands
+
 - Add path parameter for shorting long paths
+
 - Docs support multi-addon bundle
 
 ### Fixed
 
 - Use res.partner as example
+
 - Fix unit test
+
 - Windows test
 
 ### Documentation
@@ -146,55 +197,89 @@
 ### Added
 
 - Start working on agent mode
+
 - Improve agent capabilities
+
 - Add api models for better parsing available odoo models
+
 - New find-model-extensions command
+
 - Add summary
+
 - Add command for getting model views
+
 - Improved right management for agents
+
 - New command validate-addon-change
+
 - Cleanup after refactoring
+
 - Add command to get installed addons
+
 - Add uninstall command
+
 - New addon-info command
+
 - Improved structure
+
 - New runtime inspection and review commands
+
 - Adapt new rjntime inspection for agent mode
+
 - Add mutation policy
+
 - Edit config command
+
 - New right management, db risk level removed
+
 - Use next port when http port is blocked
 
 ### Fixed
 
 - Improve test parsing for agents
+
 - Better error output
+
 - Integration tests
+
 - Unit test
+
 - Fix for windows
+
 - Integration test
 
 ### Documentation
 
 - Update changelog
+
 - Update doc
+
 - Update readme
+
 - Use common odoo model
+
 - Add example for model and view inspection
+
 - Update doc for agent commands
 
 ### Refactor
 
 - Part 1
+
 - Part 2
+
 - Part 3
+
 - Part 4
+
 - Part 5
+
 - Part 6
 
 ### Miscellaneous
 
 - Fix package
+
 - Add missing logs
 
 ## 0.3.0
@@ -202,22 +287,27 @@
 ### Added
 
 - Add allow_unsafe=True is required to execute code
+
 - Several small improvements
+
 - Add doctor and other usefull cli commands, rewrite documentation
 
 ### Fixed
 
 - Fix broken unit test
+
 - Unit test and mpy
 
 ### Documentation
 
 - Add changelog
+
 - Update README
 
 ### Miscellaneous
 
 - Fix mypy oduit
+
 - Fix mypy and pre-commit
 
 ## 0.2.2
@@ -225,9 +315,12 @@
 ### Added
 
 - Improved print-config and .oduit.toml support for examples
+
 - Get odoo version
+
 - Improve json odoo version output
-- 151. Improved list-addons with include/exclude filters and new list-manifest and list-manifest-values command
+
+- (cli) Improved list-addons with include/exclude filters and new list-manifest and list-manifest-values command
 
 ### Testing
 
@@ -236,12 +329,19 @@
 ### Miscellaneous
 
 - Add integration test to github action
+
 - Fix path
+
 - Fix pre-commit and add missing pytest
+
 - Fix test discovery
+
 - Change working dir
+
 - Improve integration test
+
 - Fix oduit.toml location
+
 - Add integration test for odoo 18
 
 ## 0.2.1
@@ -253,8 +353,11 @@
 ### Fixed
 
 - Exit code for install and update cli
+
 - Cli test returns results and correct exit code
+
 - Mypy parser fixes
+
 - Mypy parser fixes
 
 ### Miscellaneous
@@ -266,17 +369,28 @@
 ### Added
 
 - Improved list-addons command
+
 - Addon path manager and manifest_collection has been added
+
 - Add tree option
+
 - Add depth parameter
+
 - New parameter
+
 - Add manifestoo-core
+
 - Detect odoo series
+
 - Add sorting modules
+
 - Do not repeat version in tree
+
 - Improved tree layout
+
 - List-missing added to cli
-- Exclude addons beginning with [test] and allow to exclude core and enterprise addons
+
+- Exclude addons beginning with test\_ and allow to exclude core and enterprise addons
 
 ### Fixed
 
@@ -295,23 +409,29 @@
 ### Added
 
 - Short json parameter
-- 151. More parameters
+
+- (cli) More parameters
+
 - Improve lang option
 
 ### Fixed
 
-- 151. Add error message
+- (cli) Add error message
 
 ### Documentation
 
 - Improve readme and doc, adding more urls to project
+
 - Fix api doc links
+
 - Improve doc with no-index
 
 ### Miscellaneous
 
 - Fix doc build
+
 - Fix link
+
 - Fix pre-commit
 
 ## 0.1.6
@@ -323,6 +443,7 @@
 ### Documentation
 
 - Automatically generate changelog through cliff
+
 - Add pypi badge
 
 ## 0.1.5
@@ -336,6 +457,7 @@
 ### Added
 
 - Better help screen for cli tool
+
 - (db) Move drop_db into own function
 
 ## 0.1.3
@@ -357,6 +479,7 @@
 ### Fixed
 
 - Path for windows
+
 - Use a more robust approach
 
 ## 0.1.1
@@ -368,6 +491,7 @@
 ### Documentation
 
 - Fix build
+
 - Fix documentation
 
 ### Testing
@@ -377,9 +501,13 @@
 ### Miscellaneous
 
 - Add codecov workflow
+
 - Add readthedocs.yml
+
 - Fix pre-commit
+
 - Fix actions
+
 - Add codecov badge
 
 ## 0.1.0
@@ -399,4 +527,5 @@
 ### Miscellaneous
 
 - Initial release
+
 - Pre-commit and readme cleanup
