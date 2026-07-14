@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import typer
 
@@ -41,7 +41,7 @@ def _fail_i18n_command(
     error_type: str = "CommandError",
     remediation: list[str] | None = None,
     details: dict[str, Any] | None = None,
-) -> None:
+) -> NoReturn:
     print_command_error_result_fn(
         global_config,
         operation,
@@ -511,7 +511,7 @@ def export_lang_compat_command(
 
     module_manager = module_manager_cls(env_config["addons_path"])
     module_path = module_manager.find_module_path(module)
-    if not module_path:
+    if module_path is None:
         _fail_i18n_command(
             global_config=global_config,
             operation=operation,
