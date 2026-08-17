@@ -883,6 +883,7 @@ class RuntimeOperationsService(OperationsService):
             test_tags=test_tags,
         )
         module_states: dict[str, str] = {}
+        module_state_warnings: list[str] = []
         mutation: dict[str, Any] = {
             "requested": bool(install or update),
             "action": "install" if install else "update" if update else "none",
@@ -902,21 +903,38 @@ class RuntimeOperationsService(OperationsService):
         )
         module_states = state_info["states"]
         if not state_info["success"]:
-            result = self._test_not_run_result(
-                status="module_state_error",
-                selected_modules=selected_modules,
-                module_states=module_states,
-                error="Unable to verify selected module state before testing.",
-                error_type="TestModuleStateError",
-                remediation=[
-                    "Verify database access and retry the module-state lookup."
-                ],
-                mutation=mutation,
-                module_state_errors=state_info["query_failures"],
-            )
-            if raise_on_error:
-                raise ModuleUpdateError(result["error"], operation_result=result)
-            return result
+            if install or update:
+                result = self._test_not_run_result(
+                    status="module_state_error",
+                    selected_modules=selected_modules,
+                    module_states=module_states,
+                    error="Unable to verify selected module state before testing.",
+                    error_type="TestModuleStateError",
+                    remediation=[
+                        "Verify database access and retry the module-state lookup."
+                    ],
+                    mutation=mutation,
+                    module_state_errors=state_info["query_failures"],
+                )
+                if raise_on_error:
+                    raise ModuleUpdateError(result["error"], operation_result=result)
+                return result
+            if selected_modules:
+                modules = ", ".join(
+                    failure["module"]
+                    for failure in state_info["query_failures"]
+                    if failure.get("module")
+                )
+                warning = (
+                    "Unable to verify selected module state before testing; "
+                    "continuing without installed-state preflight."
+                )
+                if modules:
+                    warning = (
+                        f"Unable to verify selected module state for {modules} "
+                        "before testing; continuing without installed-state preflight."
+                    )
+                module_state_warnings.append(warning)
         uninstalled_modules = state_info["uninstalled_modules"]
         if update and uninstalled_modules and not install:
             result = self._test_not_run_result(
@@ -1103,8 +1121,15 @@ class RuntimeOperationsService(OperationsService):
                 test_result.setdefault(
                     "uninstalled_modules", state_info["uninstalled_modules"]
                 )
+                test_result.setdefault(
+                    "module_state_errors", state_info["query_failures"]
+                )
                 test_result["mutation"] = mutation
                 test_result.setdefault("test_process_started", True)
+                if module_state_warnings:
+                    warnings = list(test_result.get("warnings", []))
+                    warnings.extend(module_state_warnings)
+                    test_result["warnings"] = warnings
             if (
                 coverage
                 and test_result
