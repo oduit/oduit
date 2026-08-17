@@ -4563,3 +4563,53 @@ def test_agent_technical_doc_diff_returns_read_only_payload(tmp_path: Path) -> N
     assert payload["operation"] == "technical_doc_diff"
     assert payload["read_only"] is True
     assert payload["data"]["entries"][0]["diff"] == "---"
+
+
+def test_agent_test_summary_reports_uninstalled_module(tmp_path: Path) -> None:
+    runner = CliRunner()
+    config = _agent_config(tmp_path, str(tmp_path / "addons"))
+    loader = _loader_with_config(config, tmp_path)
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.run_tests.return_value = {
+            "success": False,
+            "status": "module_uninstalled",
+            "error_type": "TestModuleUninstalled",
+            "tests_run": False,
+            "test_process_started": False,
+            "selected_modules": ["x_sale"],
+            "uninstalled_modules": ["x_sale"],
+            "module_states": {"x_sale": "uninstalled"},
+            "total_tests": 0,
+            "passed_tests": 0,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "return_code": None,
+            "error": (
+                "Tests were not run because selected module(s) are not "
+                "installed: x_sale"
+            ),
+        }
+        mock_ops_class.return_value = ops
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "test-summary",
+                "--module",
+                "x_sale",
+                "--test-tags",
+                "/x_sale",
+            ],
+        )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["error_code"] == "runtime.test_module_uninstalled"
+    assert payload["data"]["status"] == "module_uninstalled"
+    assert payload["data"]["tests_run"] is False

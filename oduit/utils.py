@@ -24,6 +24,15 @@ _SIMPLE_ERROR_CODES = {
     "QueryError": "runtime.query_failed",
     "ConnectionError": "runtime.query_failed",
     "TestFailure": "runtime.test_failure",
+    "TestModuleUninstalled": "runtime.test_module_uninstalled",
+    "TestModuleStateError": "runtime.test_module_state_error",
+    "TestMutationFailed": "runtime.test_mutation_failed",
+    "ModuleNotInstalledAfterMutation": (
+        "runtime.test_module_not_installed_after_mutation"
+    ),
+    "NoTestsMatched": "runtime.test_no_match",
+    "TestsSkipped": "runtime.test_skipped",
+    "NoTestsExecuted": "runtime.test_no_tests_executed",
     "ModuleOperationError": "runtime.module_operation_failed",
 }
 

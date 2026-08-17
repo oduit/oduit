@@ -1438,3 +1438,21 @@ def test_query_delegation_methods_return_typed_results(
 
     assert isinstance(result, result_class)
     assert result.success is True
+
+
+def test_run_tests_blocks_uninstalled_module_before_process(tmp_path: Path) -> None:
+    ops = OdooOperations(_config(tmp_path, str(tmp_path / "addons")))
+    state = AddonInstallState(
+        success=True,
+        operation="get_addon_install_state",
+        module="x_sale",
+        record_found=True,
+        state="uninstalled",
+        installed=False,
+    )
+    with patch.object(ops, "get_addon_install_state", return_value=state):
+        with patch.object(ops.process_manager, "run_operation") as run_operation:
+            result = ops.run_tests(module="x_sale", test_tags="/x_sale")
+    assert result["status"] == "module_uninstalled"
+    assert result["tests_run"] is False
+    run_operation.assert_not_called()

@@ -702,4 +702,13 @@ class TestDatabaseCommandBuilder:
         cmd = builder.native_db_init_command(without_demo=True).build()
 
         assert "--with-demo" not in cmd
+
         assert "--without-demo=all" not in cmd
+
+    def test_test_tag_module_metadata_strips_selector_suffix(self, config_provider):
+        operation = (
+            OdooTestCommandBuilder(config_provider)
+            .test_tags("/x_sale:TestClass.test_method")
+            .build_operation()
+        )
+        assert operation.modules == ["x_sale"]

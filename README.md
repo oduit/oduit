@@ -464,6 +464,8 @@ Runtime DB mutation policy is controlled by explicit config flags:
 This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`, `i18n import`, `i18n loadlang`) and agent runtime mutation commands. Source mutations such as `create-addon`, `i18n export`, and `export-lang` still use their own explicit mutation gate.
 Plain `test` runs stay read-only; only `test --install/--update`, `agent test-summary --install/--update`, and `agent validate-addon-change` with install/update options enter the runtime DB mutation path.
 
+A successful test result is proof that at least one test executed. Zero-test results are non-success and identify whether the module was uninstalled, no tests matched, or the runner skipped execution. Plain tests never install modules automatically. When `--install` or `--update` is explicitly requested, oduit performs the mutation, verifies the installed state, and only then starts the test process.
+
 ## Inspection and Agent Workflows
 
 Use the first-class inspection commands before dropping to raw shell snippets.

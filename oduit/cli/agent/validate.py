@@ -112,6 +112,7 @@ def build_validate_addon_change_payload(
     sub_results: dict[str, dict[str, Any]],
     completed_steps: list[str],
     failed_step: str | None,
+    verified_installed_state: dict[str, Any] | None = None,
 ) -> tuple[
     dict[str, Any],
     bool,
@@ -135,6 +136,7 @@ def build_validate_addon_change_payload(
             "discover_tests": discover_tests,
         },
         "installed_state": installed_state,
+        "verified_installed_state": verified_installed_state,
         "mutation_action": mutation_action,
         "sub_results": sub_results,
         "verification_summary": {
@@ -617,6 +619,7 @@ def agent_validate_addon_change_command(
     ops = odoo_operations_cls(global_config.env_config, verbose=False)
     resolved_test_tags = test_tags or f"/{module}"
     mutation_action = {"action": "none", "performed": False}
+    verified_installed_state: dict[str, Any] | None = None
     sub_results, completed_steps, failed_step, installed_state = (
         run_validate_addon_change_preflight_fn(
             ops,
@@ -632,8 +635,21 @@ def agent_validate_addon_change_command(
     if failed_step is None:
         assert installed_state is not None
         should_install = install_if_needed and not installed_state["installed"]
-        should_update = update and not should_install
-        if should_install:
+        should_update = update and installed_state["installed"]
+        if update and not install_if_needed and not installed_state["installed"]:
+            module_action_started = time.perf_counter()
+            result = {
+                "success": False,
+                "error": f"Module '{module}' is not installed; update cannot run.",
+                "error_type": "TestModuleUninstalled",
+                "status": "module_uninstalled",
+            }
+            mutation_action = {
+                "action": "update",
+                "performed": False,
+                "reason": "module_not_installed",
+            }
+        elif should_install:
             module_action_started = time.perf_counter()
             result = ops.install_module(
                 module,
@@ -720,6 +736,82 @@ def agent_validate_addon_change_command(
             if not action_success:
                 failed_step = "module_action"
         completed_steps.append("module_action")
+        action_success = result is None or bool(result.get("success", False))
+        if result is not None and action_success and mutation_action.get("performed"):
+            verification_started = time.perf_counter()
+            verified_result = ops.get_addon_install_state(module)
+            if not verified_result.success:
+                sub_results["installed_state_after_mutation"] = _with_duration(
+                    agent_sub_result_fn(
+                        success=False,
+                        data={"module": module},
+                        error=verified_result.error
+                        or "Failed to verify installed state",
+                        error_type=verified_result.error_type or "TestModuleStateError",
+                        remediation=[
+                            "Verify database access and retry state verification."
+                        ],
+                    ),
+                    verification_started,
+                )
+                failed_step = "installed_state_after_mutation"
+            else:
+                verified_installed_state = {
+                    "module": module,
+                    "record_found": verified_result.record_found,
+                    "state": verified_result.state,
+                    "installed": verified_result.installed,
+                }
+                mutation_action["verified"] = verified_result.installed
+                sub_results["installed_state_after_mutation"] = _with_duration(
+                    agent_sub_result_fn(
+                        success=verified_result.installed,
+                        data=verified_installed_state,
+                        error=(
+                            None
+                            if verified_result.installed
+                            else f"Module '{module}' is not installed after mutation."
+                        ),
+                        error_type=(
+                            None
+                            if verified_result.installed
+                            else "ModuleNotInstalledAfterMutation"
+                        ),
+                        remediation=(
+                            []
+                            if verified_result.installed
+                            else [
+                                (
+                                    "Inspect the mutation output and verify "
+                                    "the database state."
+                                )
+                            ]
+                        ),
+                    ),
+                    verification_started,
+                )
+                completed_steps.append("installed_state_after_mutation")
+                if not verified_result.installed:
+                    failed_step = "installed_state_after_mutation"
+        if result is None and not installed_state["installed"]:
+            failed_step = "module_tests"
+            sub_results["module_tests"] = _with_duration(
+                agent_sub_result_fn(
+                    success=False,
+                    data={
+                        "status": "module_uninstalled",
+                        "tests_run": False,
+                        "test_process_started": False,
+                    },
+                    error=(
+                        f"Tests were not run because module '{module}' "
+                        "is not installed."
+                    ),
+                    error_type="TestModuleUninstalled",
+                    remediation=["Install the module explicitly before testing."],
+                ),
+                module_action_started,
+            )
 
     if failed_step is None:
         module_tests_started = time.perf_counter()
@@ -792,6 +884,7 @@ def agent_validate_addon_change_command(
             resolved_test_tags=resolved_test_tags,
             discover_tests=discover_tests,
             installed_state=installed_state,
+            verified_installed_state=verified_installed_state,
             mutation_action=mutation_action,
             sub_results=sub_results,
             completed_steps=completed_steps,

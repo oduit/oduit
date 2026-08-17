@@ -237,9 +237,13 @@ def build_agent_test_summary_details(
 ) -> tuple[dict[str, Any], list[str], list[str]]:
     """Normalize ``run_tests()`` output for agent-facing summaries."""
     selected_modules = list(
-        dict.fromkeys(value for value in [module, install, update, coverage] if value)
+        result.get("selected_modules")
+        or dict.fromkeys(
+            value for value in [module, install, update, coverage] if value
+        )
     )
     failures = list(result.get("failures", []))
+    error_details = list(result.get("error_details", []))
     error_output_excerpt = (
         build_error_output_excerpt_fn(result)
         if not result.get("success", False)
@@ -259,12 +263,39 @@ def build_agent_test_summary_details(
         }
         for failure in failures
     ]
-    suggested_next_steps: list[str] = []
-    if failures:
+    status = result.get("status")
+    suggested_next_steps: list[str] = list(result.get("remediation", []))
+    status_remediation = {
+        "module_uninstalled": "Install the selected module explicitly before testing.",
+        "module_state_error": (
+            "Verify database access and retry the module-state lookup."
+        ),
+        "no_tests_matched": "Check the test selector and confirm matching tests exist.",
+        "tests_skipped": (
+            "Inspect skip evidence and test decorators or runner conditions."
+        ),
+        "no_tests_executed": (
+            "Confirm that the requested test operation selects executable tests."
+        ),
+        "failed": (
+            "Inspect the aggregate Odoo test result and the first "
+            "failure/error excerpt."
+        ),
+    }
+    if (
+        status in status_remediation
+        and status_remediation[status] not in suggested_next_steps
+    ):
+        suggested_next_steps.append(status_remediation[status])
+    if (
+        failures
+        and "Inspect the first failure traceback and reproduce it locally."
+        not in suggested_next_steps
+    ):
         suggested_next_steps.append(
             "Inspect the first failure traceback and reproduce it locally."
         )
-    if selected_modules:
+    if selected_modules and not suggested_next_steps and status not in {"passed", None}:
         suggested_next_steps.append(
             f"Retest the selected module set: {', '.join(selected_modules)}."
         )
@@ -275,6 +306,17 @@ def build_agent_test_summary_details(
 
     data = {
         "selected_modules": selected_modules,
+        "uninstalled_modules": result.get("uninstalled_modules", []),
+        "module_states": result.get("module_states", {}),
+        "status": status,
+        "tests_run": result.get("tests_run", False),
+        "test_process_started": result.get("test_process_started", False),
+        "mutation": result.get("mutation"),
+        "aggregate_test_line": result.get("aggregate_test_line"),
+        "test_summary_source": result.get("test_summary_source"),
+        "diagnostic_excerpts": result.get("diagnostic_excerpts", []),
+        "error_details": error_details,
+        "skip_evidence": result.get("skip_evidence", []),
         "selection": {
             "module": module,
             "install": install,

@@ -913,6 +913,51 @@ AssertionError: 1 != 2
         self.assertEqual(builder.result["operation"], "install")
         self.assertEqual(builder.result["custom_field"], "value")
 
+    def test_zero_tests_are_not_successful(self):
+        builder = OperationResult("test", module="test_module")
+        builder.set_success(True, 0).set_custom_data(test_tags="/test_module")
+        builder.parse_and_merge_test_results(
+            "odoo.tests.result: 0 failed, 0 error(s) of 0 tests when loading database 'db'"
+        )
+        self.assertFalse(builder.result["success"])
+        self.assertEqual(builder.result["status"], "no_tests_matched")
+        self.assertFalse(builder.result["tests_run"])
+        self.assertEqual(builder.result["return_code"], 0)
+
+    def test_positive_test_run_is_passed(self):
+        builder = OperationResult("test", module="test_module")
+        builder.set_success(True, 0)
+        builder.parse_and_merge_test_results(
+            "odoo.tests.result: 0 failed, 0 error(s) of 5 tests when loading database 'db'"
+        )
+        self.assertTrue(builder.result["success"])
+        self.assertEqual(builder.result["status"], "passed")
+        self.assertTrue(builder.result["tests_run"])
+
+    def test_aggregate_and_error_blocks_are_retained(self):
+        builder = OperationResult("test", module="test_module")
+        builder.set_success(True, 0)
+        builder.parse_and_merge_test_results(
+            "ERROR: TestCase.test_error\nValueError: broken\n"
+            "odoo.tests.result: 1 failed, 4 error(s) of 171 tests"
+        )
+        self.assertEqual(builder.result["error_tests"], 4)
+        self.assertEqual(builder.result["failed_tests"], 1)
+        self.assertIn(
+            "1 failed, 4 error(s) of 171 tests", builder.result["aggregate_test_line"]
+        )
+        self.assertEqual(
+            builder.result["error_details"][0]["test_name"], "TestCase.test_error"
+        )
+        self.assertFalse(builder.result["success"])
+
+    def test_skip_evidence_has_distinct_status(self):
+        builder = OperationResult("test", module="test_module")
+        builder.set_success(True, 0)
+        builder.parse_and_merge_test_results("odoo.tests: test skipped")
+        self.assertEqual(builder.result["status"], "tests_skipped")
+        self.assertFalse(builder.result["tests_run"])
+
 
 if __name__ == "__main__":
     unittest.main()

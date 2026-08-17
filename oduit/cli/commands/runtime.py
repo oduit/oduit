@@ -466,6 +466,22 @@ def test_command(
             exclude_fields=exclude_fields,
         )
         print(json.dumps(result_json))
+    elif not result.get("success"):
+        status_messages = {
+            "module_uninstalled": (
+                "Tests were not run: selected module is not installed."
+            ),
+            "no_tests_matched": (
+                "Tests were not run successfully: no tests matched the selection."
+            ),
+            "tests_skipped": (
+                "Test process completed but no tests executed; "
+                "skip evidence was detected."
+            ),
+            "no_tests_executed": "Test process completed without executing tests.",
+        }
+        message = status_messages.get(result.get("status"))
+        print_error(message or result.get("error") or "Tests failed")
 
     if not result.get("success"):
         raise typer.Exit(1)

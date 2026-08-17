@@ -30,6 +30,21 @@ def _split_module_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def extract_test_tag_modules(test_tags: str | None) -> list[str]:
+    """Return module names from positive, module-specific Odoo test tags."""
+    if not test_tags:
+        return []
+    modules: list[str] = []
+    for raw_tag in test_tags.split(","):
+        tag = raw_tag.strip()
+        if not tag.startswith("/") or tag.startswith("-/") or len(tag) == 1:
+            continue
+        module = tag[1:].split(":", 1)[0].strip()
+        if re.fullmatch(r"[A-Za-z0-9_]+", module) and module not in modules:
+            modules.append(module)
+    return modules
+
+
 def _dedupe_preserving_order(values: Sequence[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -165,6 +180,7 @@ class CommandOperation:
     test_tags: str | None = None
     extra_args: list[str] = field(default_factory=list)
     is_odoo_command: bool = True
+    test_file: str | None = None
 
     # Result handling metadata
     expected_result_fields: dict[str, Any] = field(default_factory=dict)
@@ -842,6 +858,14 @@ class OdooTestCoverageCommandBuilder(BaseOdooCommandBuilder):
             operation_type="test",
             database=self.config.get_optional("db_name"),
             modules=[self._module],
+            test_file=next(
+                (
+                    str(part.get("value"))
+                    for part in self._command_parts
+                    if part.get("key") == "test-file"
+                ),
+                None,
+            ),
             test_tags=test_tags,
             is_odoo_command=True,
             expected_result_fields={
@@ -896,9 +920,7 @@ class OdooTestCommandBuilder(BaseOdooCommandBuilder):
         for part in self._command_parts:
             if part.get("key") == "test-tags":
                 test_tags = part.get("value")
-                # Extract module from test-tags like "/module_name"
-                if test_tags and test_tags.startswith("/"):
-                    modules = [test_tags[1:]]
+                modules = extract_test_tag_modules(test_tags)
             # Also extract modules from install (-i) and update (-u) parameters
             elif part.get("key") in ("i", "u"):
                 module_value = part.get("value")
@@ -910,6 +932,14 @@ class OdooTestCommandBuilder(BaseOdooCommandBuilder):
             operation_type="test",
             database=self.config.get_optional("db_name"),
             modules=modules,
+            test_file=next(
+                (
+                    str(part.get("value"))
+                    for part in self._command_parts
+                    if part.get("key") == "test-file"
+                ),
+                None,
+            ),
             test_tags=test_tags,
             is_odoo_command=True,
             expected_result_fields={

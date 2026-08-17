@@ -19,6 +19,7 @@ from ..builders import (
     ShellCommandBuilder,
     UpdateCommandBuilder,
     VersionCommandBuilder,
+    extract_test_tag_modules,
     odoo_series_major,
 )
 from ..exceptions import (
@@ -158,6 +159,97 @@ class RuntimeOperationsService(OperationsService):
             candidate_socket.bind((probe_host, 0))
             return int(candidate_socket.getsockname()[1])
 
+    @staticmethod
+    def _resolve_selected_test_modules(
+        *,
+        module: str | None,
+        install: str | None,
+        update: str | None,
+        coverage: str | None,
+        test_tags: str | None,
+    ) -> list[str]:
+        """Resolve only module names that can be safely preflighted."""
+        values: list[str] = []
+        for raw_value in (module, install, update, coverage):
+            if raw_value:
+                values.extend(
+                    item.strip() for item in raw_value.split(",") if item.strip()
+                )
+        values.extend(extract_test_tag_modules(test_tags))
+        return list(dict.fromkeys(values))
+
+    def _query_test_module_states(self, selected_modules: list[str]) -> dict[str, Any]:
+        states: dict[str, str] = {}
+        installed_modules: list[str] = []
+        uninstalled_modules: list[str] = []
+        query_failures: list[dict[str, Any]] = []
+        for module in selected_modules:
+            state_result = self.operations.get_addon_install_state(module)
+            if not state_result.success:
+                query_failures.append(
+                    {
+                        "module": module,
+                        "error": state_result.error or "Module state lookup failed",
+                        "error_type": state_result.error_type or "QueryError",
+                    }
+                )
+                continue
+            state = state_result.state or "unknown"
+            states[module] = state
+            if state_result.installed:
+                installed_modules.append(module)
+            else:
+                uninstalled_modules.append(module)
+        return {
+            "success": not query_failures,
+            "states": states,
+            "installed_modules": installed_modules,
+            "uninstalled_modules": uninstalled_modules,
+            "query_failures": query_failures,
+        }
+
+    @staticmethod
+    def _test_not_run_result(
+        *,
+        status: str,
+        selected_modules: list[str],
+        module_states: dict[str, str],
+        error: str,
+        error_type: str,
+        remediation: list[str],
+        mutation: dict[str, Any] | None = None,
+        module_state_errors: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "success": False,
+            "return_code": None,
+            "operation": "test",
+            "status": status,
+            "tests_run": False,
+            "test_process_started": False,
+            "total_tests": 0,
+            "passed_tests": 0,
+            "failed_tests": 0,
+            "error_tests": 0,
+            "failures": [],
+            "error_details": [],
+            "selected_modules": selected_modules,
+            "module_states": module_states,
+            "uninstalled_modules": [
+                module
+                for module, state in module_states.items()
+                if state != "installed"
+            ],
+            "module_state_errors": module_state_errors or [],
+            "mutation": mutation,
+            "aggregate_test_line": None,
+            "diagnostic_excerpts": [],
+            "warnings": [],
+            "remediation": remediation,
+            "error": error,
+            "error_type": error_type,
+        }
+
     def _build_test_operation(
         self,
         *,
@@ -182,11 +274,6 @@ class RuntimeOperationsService(OperationsService):
         else:
             builder = OdooTestCommandBuilder(config)
 
-        if install:
-            builder.test_module(install, install=True)
-        elif update:
-            builder.test_module(update, install=False)
-
         if test_file:
             builder.test_file(test_file)
         if test_tags:
@@ -200,7 +287,9 @@ class RuntimeOperationsService(OperationsService):
         elif log_level and isinstance(log_level, str):
             builder.log_level(log_level)
         builder.workers(0)
-        return builder.build_operation()
+        operation = builder.build_operation()
+        operation.test_file = test_file
+        return operation
 
     @staticmethod
     def _add_http_port_retry_metadata(
@@ -768,7 +857,7 @@ class RuntimeOperationsService(OperationsService):
             suppress_output=suppress_output,
         )
 
-    def run_tests(
+    def run_tests(  # noqa: C901
         self,
         module: str | None = None,
         stop_on_error: bool = False,
@@ -782,33 +871,173 @@ class RuntimeOperationsService(OperationsService):
         raise_on_error: bool = False,
         log_level: str | None = None,
     ) -> dict:
-        """Run tests for a module
-
-        Args:
-            module: Module name for testing (optional)
-            stop_on_error: Stop execution on first error (optional)
-            install: Module to install before testing (optional)
-            update: Module to update before testing (optional)
-            coverage: Module name to generate coverage report for (optional)
-            test_file: Specific test file to run (optional)
-            test_tags: Test tags to filter tests (optional)
-            compact: Use compact output format (optional)
-            suppress_output: Suppress all output (for programmatic use)
-            raise_on_error: Raise exception on failure instead of returning error
-            log_level: Set Odoo log level (optional)
-
-        Returns:
-            Dictionary with operation result including test statistics and failures
-
-        Raises:
-            ModuleUpdateError: If raise_on_error=True and operation fails
-        """
+        """Run tests after state preflight and any explicit mutation."""
         if self.operations.verbose and module and not suppress_output:
             print_info(f"Testing module: {module}")
 
-        test_result = None
+        selected_modules = self._resolve_selected_test_modules(
+            module=module,
+            install=install,
+            update=update,
+            coverage=coverage,
+            test_tags=test_tags,
+        )
+        module_states: dict[str, str] = {}
+        mutation: dict[str, Any] = {
+            "requested": bool(install or update),
+            "action": "install" if install else "update" if update else "none",
+            "module": install or update,
+            "performed": False,
+        }
+        state_info = (
+            self._query_test_module_states(selected_modules)
+            if selected_modules
+            else {
+                "success": True,
+                "states": {},
+                "installed_modules": [],
+                "uninstalled_modules": [],
+                "query_failures": [],
+            }
+        )
+        module_states = state_info["states"]
+        if not state_info["success"]:
+            result = self._test_not_run_result(
+                status="module_state_error",
+                selected_modules=selected_modules,
+                module_states=module_states,
+                error="Unable to verify selected module state before testing.",
+                error_type="TestModuleStateError",
+                remediation=[
+                    "Verify database access and retry the module-state lookup."
+                ],
+                mutation=mutation,
+                module_state_errors=state_info["query_failures"],
+            )
+            if raise_on_error:
+                raise ModuleUpdateError(result["error"], operation_result=result)
+            return result
+        uninstalled_modules = state_info["uninstalled_modules"]
+        if update and uninstalled_modules and not install:
+            result = self._test_not_run_result(
+                status="module_uninstalled",
+                selected_modules=selected_modules,
+                module_states=module_states,
+                error=(
+                    "Tests were not run because selected module(s) are not installed: "
+                    + ", ".join(uninstalled_modules)
+                ),
+                error_type="TestModuleUninstalled",
+                remediation=["Install the module explicitly before testing."],
+                mutation=mutation,
+            )
+            if raise_on_error:
+                raise ModuleUpdateError(result["error"], operation_result=result)
+            return result
+        if not install and not update and uninstalled_modules:
+            result = self._test_not_run_result(
+                status="module_uninstalled",
+                selected_modules=selected_modules,
+                module_states=module_states,
+                error=(
+                    "Tests were not run because selected module(s) are not installed: "
+                    + ", ".join(uninstalled_modules)
+                ),
+                error_type="TestModuleUninstalled",
+                remediation=[
+                    "Install the module explicitly, or select an installed module."
+                ],
+                mutation=mutation,
+            )
+            if raise_on_error:
+                raise ModuleUpdateError(result["error"], operation_result=result)
+            return result
+
+        if install or update:
+            action = "install" if install else "update"
+            module_value = install or update
+            assert module_value is not None
+            before_states = dict(module_states)
+            if install:
+                mutation_result = self.install_module(
+                    module_value,
+                    suppress_output=suppress_output,
+                    compact=compact,
+                    log_level=log_level,
+                )
+            else:
+                mutation_result = self.update_module(
+                    module_value,
+                    suppress_output=suppress_output,
+                    compact=compact,
+                    log_level=log_level,
+                )
+            mutation.update(
+                {
+                    "performed": True,
+                    "process_success": bool(mutation_result.get("success", False)),
+                    "before_state": before_states,
+                }
+            )
+            if not mutation_result.get("success", False):
+                result = self._test_not_run_result(
+                    status="mutation_failed",
+                    selected_modules=selected_modules,
+                    module_states=module_states,
+                    error=mutation_result.get("error", f"Module {action} failed."),
+                    error_type="TestMutationFailed",
+                    remediation=["Inspect the mutation result before retrying tests."],
+                    mutation=mutation,
+                )
+                if raise_on_error:
+                    raise ModuleUpdateError(result["error"], operation_result=result)
+                return result
+            state_info = (
+                self._query_test_module_states(selected_modules)
+                if selected_modules
+                else state_info
+            )
+            module_states = state_info["states"]
+            if not state_info["success"]:
+                result = self._test_not_run_result(
+                    status="module_state_error",
+                    selected_modules=selected_modules,
+                    module_states=module_states,
+                    error="Unable to verify module state after mutation.",
+                    error_type="TestModuleStateError",
+                    remediation=[
+                        "Verify database access and retry the module-state lookup."
+                    ],
+                    mutation=mutation,
+                    module_state_errors=state_info["query_failures"],
+                )
+                if raise_on_error:
+                    raise ModuleUpdateError(result["error"], operation_result=result)
+                return result
+            mutation["after_state"] = dict(module_states)
+            mutation["verified_installed"] = not state_info["uninstalled_modules"]
+            if state_info["uninstalled_modules"]:
+                result = self._test_not_run_result(
+                    status="module_not_installed_after_mutation",
+                    selected_modules=selected_modules,
+                    module_states=module_states,
+                    error=(
+                        "Module mutation succeeded but selected module(s) "
+                        "remain uninstalled: "
+                        + ", ".join(state_info["uninstalled_modules"])
+                    ),
+                    error_type="ModuleNotInstalledAfterMutation",
+                    remediation=[
+                        "Inspect the mutation output and verify the database state."
+                    ],
+                    mutation=mutation,
+                )
+                if raise_on_error:
+                    raise ModuleUpdateError(result["error"], operation_result=result)
+                return result
+
+        test_result: dict[str, Any] | None = None
         coverage_result = None
-        operation: CommandOperation | None = None
         configured_http_port = self._coerce_http_port(
             self.operations.config.get_optional("http_port")
         )
@@ -821,11 +1050,8 @@ class RuntimeOperationsService(OperationsService):
             for attempt_index in range(self._TEST_HTTP_PORT_RETRY_LIMIT):
                 if current_http_port is not None:
                     attempted_ports.append(current_http_port)
-
                 operation = self._build_test_operation(
                     module=module,
-                    install=install,
-                    update=update,
                     coverage=coverage,
                     test_file=test_file,
                     test_tags=test_tags,
@@ -833,93 +1059,73 @@ class RuntimeOperationsService(OperationsService):
                     log_level=log_level,
                     http_port_override=current_http_port,
                 )
+                operation.modules = selected_modules or operation.modules
+                operation.test_file = test_file
                 test_result = self.operations.process_manager.run_operation(
                     operation,
                     verbose=self.operations.verbose,
                     suppress_output=suppress_output,
                 )
-
                 output = test_result.get("stdout") or test_result.get("output") or ""
                 if test_result.get("success") or not self._is_http_port_conflict(
                     output
                 ):
                     break
-
                 if attempt_index == self._TEST_HTTP_PORT_RETRY_LIMIT - 1:
                     break
-
                 conflicting_http_port = self._extract_conflicting_http_port(output)
-                attempted_http_port = current_http_port
-                if attempted_http_port is None:
-                    attempted_http_port = (
-                        conflicting_http_port or configured_http_port or 8069
-                    )
+                attempted_http_port = (
+                    current_http_port
+                    or conflicting_http_port
+                    or configured_http_port
+                    or 8069
+                )
+                if not attempted_ports or attempted_ports[-1] != attempted_http_port:
                     attempted_ports.append(attempted_http_port)
-
                 next_http_port = self._find_available_http_port(
                     (conflicting_http_port or attempted_http_port) + 1,
                     host=http_interface,
                 )
-                retry_warning = (
+                retry_warnings.append(
                     f"HTTP port {attempted_http_port} is busy during test execution; "
                     f"retrying with {next_http_port}."
                 )
-                retry_warnings.append(retry_warning)
                 if not suppress_output:
-                    print_warning(retry_warning)
+                    print_warning(retry_warnings[-1])
                 current_http_port = next_http_port
 
             if test_result is not None:
                 self._add_http_port_retry_metadata(
-                    test_result,
-                    attempted_ports,
-                    retry_warnings,
+                    test_result, attempted_ports, retry_warnings
                 )
-
-            if coverage and test_result and test_result.get("success"):
+                test_result.setdefault("selected_modules", selected_modules)
+                test_result.setdefault("module_states", module_states)
+                test_result.setdefault(
+                    "uninstalled_modules", state_info["uninstalled_modules"]
+                )
+                test_result["mutation"] = mutation
+                test_result.setdefault("test_process_started", True)
+            if (
+                coverage
+                and test_result
+                and test_result.get("success")
+                and test_result.get("tests_run", True)
+            ):
                 coverage_bin = self.operations.config.get_required("coverage_bin")
-
-                cmd2 = [coverage_bin, "report", "-m"]
                 coverage_result = self.operations.process_manager.run_command(
-                    cmd2,
+                    [coverage_bin, "report", "-m"],
                     verbose=self.operations.verbose,
                     suppress_output=suppress_output,
                 )
-
-            if not suppress_output and _output_module._formatter.format_type == "json":
-                test_success = (
-                    test_result.get("success", False) if test_result else False
+            if (
+                test_result
+                and coverage_result is not None
+                and not coverage_result.get("success", False)
+            ):
+                test_result["success"] = False
+                test_result["error"] = (
+                    test_result.get("error") or "Coverage report failed"
                 )
-                test_additional_fields = {
-                    "stop_on_error": stop_on_error,
-                    "install": install,
-                    "update": update,
-                    "coverage": coverage,
-                    "compact": compact,
-                    "verbose": self.operations.verbose,
-                    "test_success": test_success,
-                }
-
-                if coverage_result is not None:
-                    coverage_success = (
-                        coverage_result.get("success", False)
-                        if coverage_result
-                        else False
-                    )
-                    test_additional_fields["coverage_success"] = coverage_success
-
-                    overall_success = (
-                        test_result.get("success", False) if test_result else False
-                    ) and (
-                        coverage_result.get("success", False)
-                        if coverage_result
-                        else True
-                    )
-                    test_additional_fields["success"] = overall_success
-
-                if test_result:
-                    test_result.update(test_additional_fields)
-
         except ConfigError as e:
             test_result = {
                 "success": False,
@@ -936,13 +1142,11 @@ class RuntimeOperationsService(OperationsService):
             "success": False,
             "error": "Test execution failed",
         }
-
         if raise_on_error and not final_result.get("success", False):
             raise ModuleUpdateError(
                 final_result.get("error", "Module test failed"),
                 operation_result=final_result,
             )
-
         return final_result
 
     def get_odoo_version(

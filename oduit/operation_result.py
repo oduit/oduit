@@ -7,7 +7,22 @@
 import re
 import time
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, Any
+
+
+class TestRunStatus(str, Enum):
+    MODULE_STATE_ERROR = "module_state_error"
+    MODULE_UNINSTALLED = "module_uninstalled"
+    MUTATION_FAILED = "mutation_failed"
+    MODULE_NOT_INSTALLED_AFTER_MUTATION = "module_not_installed_after_mutation"
+    NO_TESTS_MATCHED = "no_tests_matched"
+    TESTS_SKIPPED = "tests_skipped"
+    NO_TESTS_EXECUTED = "no_tests_executed"
+    PASSED = "passed"
+    FAILED = "failed"
+    EXECUTION_ERROR = "execution_error"
+
 
 if TYPE_CHECKING:
     from .builders import CommandOperation
@@ -150,6 +165,7 @@ class OperationResult:
             operation_type=command_operation.operation_type,
             modules=command_operation.modules,
             test_tags=command_operation.test_tags,
+            test_file=command_operation.test_file,
             extra_args=command_operation.extra_args,
             is_odoo_command=command_operation.is_odoo_command,
             expected_result_fields=command_operation.expected_result_fields,
@@ -352,19 +368,52 @@ class OperationResult:
                 self.set_error(
                     f"Module installation failed: {error_msg}", "InstallationError"
                 )
-
-        # Handle semantic success logic for test operations
-        elif self.result["operation"] == "test" and (
-            parsed_results.get("failed_tests", 0) > 0
-            or parsed_results.get("error_tests", 0) > 0
-        ):
-            self.set_success(False, self.result.get("return_code", 1))
+        elif self.result["operation"] == "test":
             failed = parsed_results.get("failed_tests", 0)
             errors = parsed_results.get("error_tests", 0)
-            self.set_error(
-                f"Tests failed: {failed} failed, {errors} errors", "TestFailure"
-            )
-
+            total = parsed_results.get("total_tests", 0)
+            problems = parsed_results.get("test_problems", [])
+            return_code = self.result.get("return_code")
+            self.result["test_process_started"] = True
+            self.result["tests_run"] = bool(total > 0 or problems)
+            if return_code not in (None, 0):
+                status = TestRunStatus.EXECUTION_ERROR
+                if not self.result.get("error"):
+                    self.set_error("Test process failed", "ExecutionError")
+            elif failed > 0 or errors > 0 or problems:
+                status = TestRunStatus.FAILED
+                if not self.result.get("error"):
+                    self.set_error(
+                        f"Tests failed: {failed} failed, {errors} errors",
+                        "TestFailure",
+                    )
+            elif total > 0:
+                status = TestRunStatus.PASSED
+                self.result["success"] = True
+            elif parsed_results.get("skip_evidence"):
+                status = TestRunStatus.TESTS_SKIPPED
+                self.set_error(
+                    (
+                        "Test process completed but no tests executed; "
+                        "skip evidence was detected."
+                    ),
+                    "TestsSkipped",
+                )
+            elif self.result.get("test_tags") or self.result.get("test_file"):
+                status = TestRunStatus.NO_TESTS_MATCHED
+                self.set_error(
+                    "No tests matched the requested test selection.",
+                    "NoTestsMatched",
+                )
+            else:
+                status = TestRunStatus.NO_TESTS_EXECUTED
+                self.set_error(
+                    "The test process completed without executing tests.",
+                    "NoTestsExecuted",
+                )
+            self.result["status"] = status.value
+            if status != TestRunStatus.PASSED:
+                self.result["success"] = False
         return self
 
     def _parse_install_results(self, output: str) -> dict[str, Any]:
@@ -511,15 +560,21 @@ class OperationResult:
 
         return install_info
 
-    def _parse_test_failure(self, lines: list[str], start_index: int) -> dict[str, Any]:
-        """Parse one traceback block starting at a FAIL header."""
+    def _parse_test_problem(
+        self,
+        lines: list[str],
+        start_index: int,
+        *,
+        kind: str = "failure",
+    ) -> dict[str, Any]:
+        """Parse one FAIL or ERROR traceback block."""
         line = self._normalize_test_failure_line(lines[start_index])
-        fail_match = re.search(r"FAIL:\s+(.+)", line)
-        if fail_match is None:
+        header_match = re.search(r"(FAIL|ERROR):\s+(.+)", line)
+        if header_match is None:
             return {}
-
-        failure_info: dict[str, Any] = {
-            "test_name": fail_match.group(1),
+        problem: dict[str, Any] = {
+            "kind": kind,
+            "test_name": header_match.group(2),
             "traceback": [],
             "file": None,
             "line": None,
@@ -535,26 +590,23 @@ class OperationResult:
         expect_source_line = False
         expect_function_name = False
         j = start_index + 1
-
         while j < len(lines):
             raw_next_line = lines[j]
             next_line = self._clean_test_log_line(raw_next_line).strip()
             if (
                 not next_line
                 or "Starting" in lines[j]
+                or re.search(r"(?:FAIL|ERROR):\s+.+", next_line)
                 or ("INFO" in next_line and "ERROR" not in next_line)
                 or re.search(
-                    r"odoo\.(?:tests\.result|modules\.loading):\s+\d+\s+failed,"
-                    r"\s+\d+\s+error\(s\)\s+of\s+\d+\s+tests",
+                    r"odoo\.(?:tests\.result|modules\.loading):\s+\d+\s+failed,\s+\d+\s+error\(s\)\s+of\s+\d+\s+tests",
                     next_line,
                 )
             ):
                 break
-
             clean_line = self._normalize_test_failure_line(next_line)
-            failure_info["traceback"].append(clean_line)
-            failure_info["raw_failure_excerpt"].append(clean_line)
-
+            problem["traceback"].append(clean_line)
+            problem["raw_failure_excerpt"].append(clean_line)
             file_match = re.search(
                 r'File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+(.+))?',
                 clean_line,
@@ -565,112 +617,113 @@ class OperationResult:
                     "line": int(file_match.group(2)),
                     "function": file_match.group(3),
                 }
-                failure_info["locations"].append(location)
-                if failure_info["file"] is None:
-                    failure_info["file"] = location["file"]
-                    failure_info["line"] = location["line"]
-                    failure_info["function_name"] = location["function"]
+                problem["locations"].append(location)
+                if problem["file"] is None:
+                    problem["file"] = location["file"]
+                    problem["line"] = location["line"]
+                    problem["function_name"] = location["function"]
                 expect_source_line = True
                 expect_function_name = location["function"] is None
                 j += 1
                 continue
-
             if expect_function_name and clean_line.startswith("in "):
                 function_name = clean_line.removeprefix("in ").strip()
-                if function_name:
-                    failure_info["locations"][-1]["function"] = function_name
-                    if failure_info["function_name"] is None:
-                        failure_info["function_name"] = function_name
+                if function_name and problem["locations"]:
+                    problem["locations"][-1]["function"] = function_name
+                    if problem["function_name"] is None:
+                        problem["function_name"] = function_name
                 expect_function_name = False
                 j += 1
                 continue
             expect_function_name = False
-
-            is_error_line = any(
-                error_type in clean_line
-                for error_type in [
-                    "AssertionError",
-                    "ValueError",
-                    "TypeError",
-                    "Error:",
-                ]
+            is_error_line = bool(
+                re.search(
+                    r"(?:[A-Za-z_][\w.]*\.(?:Error|Exception)|[A-Za-z_][\w]*(?:Error|Exception))(?::|$)",
+                    clean_line,
+                )
+                or re.search(r"(?:psycopg2\.errors\.|odoo\.exceptions\.)", clean_line)
             )
             if (
                 expect_source_line
-                and clean_line not in ("Traceback (most recent call last):",)
+                and clean_line != "Traceback (most recent call last):"
                 and not is_error_line
             ):
-                failure_info["source_lines"].append(clean_line)
-                if failure_info["source_line"] is None:
-                    failure_info["source_line"] = clean_line
+                problem["source_lines"].append(clean_line)
+                if problem["source_line"] is None:
+                    problem["source_line"] = clean_line
                 expect_source_line = False
-
             if is_error_line:
-                failure_info["error_message"] = clean_line
+                problem["error_message"] = clean_line
                 expect_source_line = False
-
             j += 1
-
-        failure_info["broken_line_count"] = len(failure_info["locations"]) + len(
-            failure_info["source_lines"]
+        problem["broken_line_count"] = len(problem["locations"]) + len(
+            problem["source_lines"]
         )
-        if failure_info["file"] and failure_info["line"] is not None:
-            excerpt = f"{failure_info['file']}:{failure_info['line']}"
-            if failure_info["source_line"]:
-                excerpt = f"{excerpt}: {failure_info['source_line']}"
-            failure_info["failure_excerpt"] = excerpt
-
-        if not failure_info["locations"] or failure_info["error_message"] is None:
-            failure_info["parser_warning"] = (
-                f"Partially parsed failure '{failure_info['test_name']}'; "
+        if problem["file"] and problem["line"] is not None:
+            excerpt = f"{problem['file']}:{problem['line']}"
+            if problem["source_line"]:
+                excerpt = f"{excerpt}: {problem['source_line']}"
+            problem["failure_excerpt"] = excerpt
+        if not problem["locations"] or problem["error_message"] is None:
+            problem["parser_warning"] = (
+                f"Partially parsed {kind} '{problem['test_name']}'; "
                 "preserved raw_failure_excerpt."
             )
+        return problem
 
-        return failure_info
+    def _parse_test_failure(self, lines: list[str], start_index: int) -> dict[str, Any]:
+        """Backward-compatible wrapper for parsing a failure block."""
+        return self._parse_test_problem(lines, start_index, kind="failure")
 
     def _parse_test_results(self, output: str) -> dict[str, Any]:
-        """Parse Odoo test output to extract test statistics and error details"""
+        """Parse test statistics, problem blocks, and runner evidence."""
         test_info: dict[str, Any] = {
             "total_tests": 0,
             "passed_tests": 0,
             "failed_tests": 0,
             "error_tests": 0,
             "failures": [],
+            "error_details": [],
+            "test_problems": [],
+            "aggregate_test_line": None,
+            "test_summary_source": None,
+            "test_stats_lines": [],
+            "skip_evidence": [],
             "warnings": [],
         }
-
-        if not output:
-            return test_info
-
-        lines = output.split("\n")
-
+        lines = output.split("\n") if output else []
         authoritative_result_seen = False
+        legacy_summary_seen = False
 
-        def _apply_summary(failed: int, errors: int, total: int) -> None:
+        def _apply_summary(
+            failed: int, errors: int, total: int, raw_line: str, source: str
+        ) -> None:
             test_info["failed_tests"] = failed
             test_info["error_tests"] = errors
             test_info["total_tests"] = total
             test_info["passed_tests"] = max(total - failed - errors, 0)
+            if source == "odoo.tests.result" or not authoritative_result_seen:
+                test_info["aggregate_test_line"] = self._clean_test_log_line(
+                    raw_line
+                ).strip()
+                test_info["test_summary_source"] = source
 
-        # Extract test statistics from authoritative Odoo test loggers first.
-        # Fall back to legacy loading summaries only when no
-        # odoo.tests.result line exists.
         for raw_line in lines:
             line = self._clean_test_log_line(raw_line)
             stats_match = re.search(
                 r"odoo\.tests\.stats:\s+[\w.]+:\s+(\d+)\s+tests\s+[\d.]+s\s+\d+\s+queries",
                 line,
             )
-            if stats_match:
-                test_info["total_tests"] = int(stats_match.group(1))
-
             legacy_stats_match = re.search(
                 r"odoo\.modules\.loading:\s+[\w.]+:\s+(\d+)\s+tests\s+[\d.]+s\s+\d+\s+queries",
                 line,
             )
-            if legacy_stats_match and test_info["total_tests"] == 0:
-                test_info["total_tests"] = int(legacy_stats_match.group(1))
-
+            if stats_match or legacy_stats_match:
+                if len(test_info["test_stats_lines"]) < 10:
+                    test_info["test_stats_lines"].append(line.strip())
+                stats_match = stats_match or legacy_stats_match
+                if test_info["total_tests"] == 0 and stats_match:
+                    test_info["total_tests"] = int(stats_match.group(1))
             result_match = re.search(
                 r"odoo\.tests\.result:\s+(\d+)\s+failed,\s+(\d+)\s+error\(s\)\s+of\s+(\d+)\s+tests",
                 line,
@@ -680,36 +733,72 @@ class OperationResult:
                     int(result_match.group(1)),
                     int(result_match.group(2)),
                     int(result_match.group(3)),
+                    raw_line,
+                    "odoo.tests.result",
                 )
                 authoritative_result_seen = True
                 continue
-
             if authoritative_result_seen:
                 continue
-
             legacy_result_match = re.search(
                 r"odoo\.modules\.loading:\s+(\d+)\s+failed,\s+(\d+)\s+error\(s\)\s+of\s+(\d+)\s+tests",
                 line,
             )
-            if legacy_result_match:
+            if legacy_result_match and not legacy_summary_seen:
                 _apply_summary(
                     int(legacy_result_match.group(1)),
                     int(legacy_result_match.group(2)),
                     int(legacy_result_match.group(3)),
+                    raw_line,
+                    "odoo.modules.loading",
                 )
+                legacy_summary_seen = True
+            if re.search(
+                r"(?:test|tests|unittest|odoo).*\b(?:skip|skipped|SkipTest)",
+                line,
+                re.IGNORECASE,
+            ):
+                if len(test_info["skip_evidence"]) < 10:
+                    test_info["skip_evidence"].append(line.strip())
 
-        # Extract failure details - look for FAIL patterns
         for i, raw_line in enumerate(lines):
             line = self._clean_test_log_line(raw_line)
-            # Look for failure headers like: "FAIL: FastAPIDemoCase.test_no_key"
-            # or "ERROR ... FAIL: AdvancedTestCase.test_workflow"
-            if re.search(r"FAIL:\s+(.+)", line):
-                failure = self._parse_test_failure(lines, i)
-                parser_warning = failure.pop("parser_warning", None)
+            if re.search(r"(?:FAIL|ERROR):\s+.+", line):
+                problem = self._parse_test_problem(
+                    lines, i, kind="failure" if "FAIL:" in line else "error"
+                )
+                parser_warning = problem.pop("parser_warning", None)
                 if parser_warning:
                     test_info["warnings"].append(parser_warning)
-                test_info["failures"].append(failure)
+                if problem:
+                    test_info["test_problems"].append(problem)
+                    if problem.get("kind") == "failure":
+                        test_info["failures"].append(problem)
+                    else:
+                        test_info["error_details"].append(problem)
 
+        test_info["failed_tests"] = max(
+            test_info["failed_tests"], len(test_info["failures"])
+        )
+        test_info["error_tests"] = max(
+            test_info["error_tests"], len(test_info["error_details"])
+        )
+        if test_info["test_summary_source"] is None and test_info["total_tests"] > 0:
+            test_info["passed_tests"] = max(
+                test_info["total_tests"]
+                - test_info["failed_tests"]
+                - test_info["error_tests"],
+                0,
+            )
+        test_info["diagnostic_excerpts"] = [
+            {
+                "kind": problem.get("kind"),
+                "test_name": problem.get("test_name"),
+                "excerpt": "\n".join(problem.get("raw_failure_excerpt", [])[:8]),
+                "error_message": problem.get("error_message"),
+            }
+            for problem in test_info["test_problems"][:5]
+        ]
         return test_info
 
     def _check_for_failure_patterns(

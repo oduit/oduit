@@ -185,3 +185,32 @@ def test_agent_fail_uses_canonical_error_shape() -> None:
     assert "generated_at" not in payload
     assert "timestamp" in payload["meta"]
     assert "generated_at" not in payload["meta"]
+
+
+def test_build_agent_test_summary_details_propagates_semantic_status() -> None:
+    data, _, remediation = build_agent_test_summary_details(
+        {
+            "success": False,
+            "status": "module_uninstalled",
+            "tests_run": False,
+            "test_process_started": False,
+            "selected_modules": ["x_sale"],
+            "uninstalled_modules": ["x_sale"],
+            "module_states": {"x_sale": "uninstalled"},
+            "total_tests": 0,
+            "error_details": [],
+            "diagnostic_excerpts": [],
+            "return_code": None,
+        },
+        module="x_sale",
+        install=None,
+        update=None,
+        coverage=None,
+        test_file=None,
+        test_tags="/x_sale",
+        build_error_output_excerpt_fn=build_error_output_excerpt,
+    )
+    assert data["status"] == "module_uninstalled"
+    assert data["tests_run"] is False
+    assert data["uninstalled_modules"] == ["x_sale"]
+    assert any("Install the selected module" in item for item in remediation)

@@ -235,6 +235,12 @@ Rules:
 - `agent_needs_mutation_flag = true` requires `--allow-mutation` for agent
   runtime DB mutation.
 - Plain `test-summary` without `--install` or `--update` is read-only.
+- A `test-summary` result is valid proof only when `success=true`, `tests_run=true`, and `total_tests > 0`.
+- `module_uninstalled` is a blocker, not a passing test. Do not silently install it.
+- Use `validate-addon-change --allow-mutation --install-if-needed ...` when installation is intentionally required.
+- Inspect `aggregate_test_line` and `diagnostic_excerpts` when tests fail.
+- Zero-test results are non-success and distinguish `module_uninstalled`, `no_tests_matched`, `tests_skipped`, and `no_tests_executed`.
+- Explicit `--install` or `--update` is performed and verified before the test process starts.
 
 Never widen destructive behavior silently. If a task needs installation, update,
 uninstall, cron triggering, source generation, or translation export, call that
