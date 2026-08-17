@@ -18,6 +18,19 @@ def _with_duration(sub_result: dict[str, Any], started_at: float) -> dict[str, A
     return timed_result
 
 
+def _addon_install_state_data(
+    module: str,
+    state_result: Any,
+) -> dict[str, Any]:
+    """Normalize one addon install-state lookup into payload data."""
+    return {
+        "module": module,
+        "record_found": state_result.record_found,
+        "state": state_result.state,
+        "installed": state_result.installed,
+    }
+
+
 def _summarize_sub_results(
     sub_results: dict[str, dict[str, Any]],
 ) -> tuple[
@@ -291,12 +304,7 @@ def run_validate_addon_change_preflight(
         )
         return sub_results, completed_steps, "installed_state", installed_state
 
-    installed_state = {
-        "module": module,
-        "record_found": state_result.record_found,
-        "state": state_result.state,
-        "installed": state_result.installed,
-    }
+    installed_state = _addon_install_state_data(module, state_result)
     sub_results["installed_state"] = _with_duration(
         agent_sub_result_fn(
             success=True,
@@ -738,14 +746,54 @@ def agent_validate_addon_change_command(
         completed_steps.append("module_action")
         action_success = result is None or bool(result.get("success", False))
         if result is not None and action_success and mutation_action.get("performed"):
-            if all(key in result for key in ("record_found", "state", "installed")):
-                verified_installed_state = {
-                    "module": module,
-                    "record_found": bool(result.get("record_found")),
-                    "state": result.get("state"),
-                    "installed": bool(result.get("installed")),
-                }
+            installed_state_after_mutation_started = time.perf_counter()
+            verified_result = ops.get_addon_install_state(module)
+            if not verified_result.success:
+                sub_results["installed_state_after_mutation"] = _with_duration(
+                    agent_sub_result_fn(
+                        success=False,
+                        data={"module": module},
+                        error=verified_result.error,
+                        error_type=verified_result.error_type,
+                        remediation=[
+                            "Verify database access and retry the post-mutation "
+                            "module-state lookup.",
+                        ],
+                    ),
+                    installed_state_after_mutation_started,
+                )
+                failed_step = "installed_state_after_mutation"
+            else:
+                verified_installed_state = _addon_install_state_data(
+                    module, verified_result
+                )
                 mutation_action["verified"] = verified_installed_state["installed"]
+                verification_success = verified_installed_state["installed"]
+                verification_error = None
+                verification_error_type = None
+                verification_remediation: list[str] = []
+                if not verification_success:
+                    failed_step = "installed_state_after_mutation"
+                    verification_error = (
+                        f"Module '{module}' is not installed after "
+                        f"{mutation_action['action']}."
+                    )
+                    verification_error_type = "ModuleNotInstalledAfterMutation"
+                    verification_remediation = [
+                        "Inspect the mutation result and retry once the module can "
+                        "be read back as installed.",
+                    ]
+                sub_results["installed_state_after_mutation"] = _with_duration(
+                    agent_sub_result_fn(
+                        success=verification_success,
+                        data=verified_installed_state,
+                        remediation=verification_remediation,
+                        error=verification_error,
+                        error_type=verification_error_type,
+                    ),
+                    installed_state_after_mutation_started,
+                )
+                completed_steps.append("installed_state_after_mutation")
         if result is None and not installed_state["installed"]:
             failed_step = "module_tests"
             sub_results["module_tests"] = _with_duration(

@@ -6,7 +6,7 @@ import stat
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -3262,7 +3262,7 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
             remediation=[],
         )
         ops.list_duplicates.return_value = {}
-        ops.get_addon_install_state.return_value = AddonInstallState(
+        initial_state = AddonInstallState(
             success=True,
             operation="get_addon_install_state",
             module="x_sale",
@@ -3270,6 +3270,15 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
             state="installed",
             installed=True,
         )
+        verified_state = AddonInstallState(
+            success=True,
+            operation="get_addon_install_state",
+            module="x_sale",
+            record_found=True,
+            state="installed",
+            installed=True,
+        )
+        ops.get_addon_install_state.side_effect = [initial_state, verified_state]
         ops.update_module.return_value = {
             "success": True,
             "operation": "update_module",
@@ -3314,13 +3323,30 @@ def test_agent_validate_addon_change_aggregates_runtime_verification(
     assert payload["type"] == "addon_change_validation"
     assert payload["safety_level"] == "controlled_runtime_mutation"
     assert data["requested_actions"]["test_tags"] == "/x_sale"
+    assert data["installed_state"]["installed"] is True
+    assert data["verified_installed_state"] == {
+        "module": "x_sale",
+        "record_found": True,
+        "state": "installed",
+        "installed": True,
+    }
     assert data["mutation_action"]["action"] == "update"
+    assert data["mutation_action"]["performed"] is True
+    assert data["mutation_action"]["verified"] is True
+    assert data["sub_results"]["installed_state_after_mutation"]["success"] is True
+    assert (
+        data["sub_results"]["installed_state_after_mutation"]["data"]["installed"]
+        is True
+    )
     assert data["sub_results"]["module_tests"]["success"] is True
     assert data["sub_results"]["discovered_tests"]["data"]["executed"] is False
     for step in data["sub_results"].values():
         assert isinstance(step["duration_ms"], int)
         assert step["duration_ms"] >= 0
-    ops.get_addon_install_state.assert_called_once_with("x_sale")
+    assert ops.get_addon_install_state.call_args_list == [
+        call("x_sale"),
+        call("x_sale"),
+    ]
     ops.update_module.assert_called_once()
     ops.run_tests.assert_called_once_with(
         module="x_sale",
@@ -3739,14 +3765,24 @@ def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> Non
             remediation=[],
         )
         ops.list_duplicates.return_value = {}
-        ops.get_addon_install_state.return_value = AddonInstallState(
-            success=True,
-            operation="get_addon_install_state",
-            module="x_sale",
-            record_found=True,
-            state="uninstalled",
-            installed=False,
-        )
+        ops.get_addon_install_state.side_effect = [
+            AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="x_sale",
+                record_found=True,
+                state="uninstalled",
+                installed=False,
+            ),
+            AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="x_sale",
+                record_found=True,
+                state="installed",
+                installed=True,
+            ),
+        ]
         ops.install_module.return_value = {
             "success": True,
             "operation": "install_module",
@@ -3784,7 +3820,18 @@ def test_agent_validate_addon_change_installs_when_needed(tmp_path: Path) -> Non
     data = _payload_data(payload)
     assert data["installed_state"]["installed"] is False
     assert data["mutation_action"]["action"] == "install"
-    ops.get_addon_install_state.assert_called_once_with("x_sale")
+    assert data["verified_installed_state"] == {
+        "module": "x_sale",
+        "record_found": True,
+        "state": "installed",
+        "installed": True,
+    }
+    assert data["mutation_action"]["verified"] is True
+    assert data["sub_results"]["installed_state_after_mutation"]["success"] is True
+    assert ops.get_addon_install_state.call_args_list == [
+        call("x_sale"),
+        call("x_sale"),
+    ]
     ops.install_module.assert_called_once()
     ops.update_module.assert_not_called()
 
@@ -4019,6 +4066,92 @@ def test_agent_validate_addon_change_surfaces_module_action_failure(
     ops.run_tests.assert_not_called()
 
 
+def test_agent_validate_addon_change_surfaces_post_mutation_state_failure(
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _agent_config(tmp_path, str(addons_dir))
+    loader = _loader_with_config(config, tmp_path)
+
+    with (
+        patch("oduit.cli.app.ConfigLoader", return_value=loader),
+        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
+    ):
+        ops = MagicMock()
+        ops.inspect_addon.return_value = MagicMock(
+            to_dict=lambda: {"module": "x_sale", "exists": True},
+            warnings=[],
+            remediation=[],
+        )
+        ops.list_duplicates.return_value = {}
+        ops.get_addon_install_state.side_effect = [
+            AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="x_sale",
+                record_found=True,
+                state="installed",
+                installed=True,
+            ),
+            AddonInstallState(
+                success=False,
+                operation="get_addon_install_state",
+                module="x_sale",
+                record_found=False,
+                state="unknown",
+                installed=False,
+                error="database unavailable after update",
+                error_type="QueryError",
+            ),
+        ]
+        ops.update_module.return_value = {
+            "success": True,
+            "operation": "update_module",
+            "return_code": 0,
+        }
+        ops.get_odoo_version.return_value = {"success": True, "version": "17.0"}
+        ops.db_exists.return_value = {"success": True, "exists": True}
+        mock_ops_class.return_value = ops
+
+        result = runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "agent",
+                "validate-addon-change",
+                "x_sale",
+                "--allow-mutation",
+                "--update",
+            ],
+        )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    data = _payload_data(payload)
+    assert payload["success"] is False
+    assert payload["error"] == "database unavailable after update"
+    assert payload["error_type"] == "QueryError"
+    assert data["verification_summary"]["failed_step"] == (
+        "installed_state_after_mutation"
+    )
+    assert data["mutation_action"]["action"] == "update"
+    assert data["mutation_action"]["performed"] is True
+    assert data["verified_installed_state"] is None
+    assert data["sub_results"]["installed_state_after_mutation"]["success"] is False
+    assert (
+        data["sub_results"]["installed_state_after_mutation"]["error"]
+        == "database unavailable after update"
+    )
+    assert ops.get_addon_install_state.call_args_list == [
+        call("x_sale"),
+        call("x_sale"),
+    ]
+    ops.run_tests.assert_not_called()
+
+
 def test_agent_validate_addon_change_surfaces_test_failure(tmp_path: Path) -> None:
     runner = CliRunner()
     addons_dir = tmp_path / "addons"
@@ -4246,14 +4379,24 @@ def test_agent_validate_addon_change_prefers_install_when_update_is_requested(
             remediation=[],
         )
         ops.list_duplicates.return_value = {}
-        ops.get_addon_install_state.return_value = AddonInstallState(
-            success=True,
-            operation="get_addon_install_state",
-            module="x_sale",
-            record_found=False,
-            state="uninstalled",
-            installed=False,
-        )
+        ops.get_addon_install_state.side_effect = [
+            AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="x_sale",
+                record_found=False,
+                state="uninstalled",
+                installed=False,
+            ),
+            AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="x_sale",
+                record_found=True,
+                state="installed",
+                installed=True,
+            ),
+        ]
         ops.install_module.return_value = {
             "success": True,
             "operation": "install_module",
@@ -4293,7 +4436,18 @@ def test_agent_validate_addon_change_prefers_install_when_update_is_requested(
         "action": "install",
         "performed": True,
         "reason": "module_not_installed",
+        "verified": True,
     }
+    assert payload["data"]["verified_installed_state"] == {
+        "module": "x_sale",
+        "record_found": True,
+        "state": "installed",
+        "installed": True,
+    }
+    assert ops.get_addon_install_state.call_args_list == [
+        call("x_sale"),
+        call("x_sale"),
+    ]
     ops.install_module.assert_called_once()
     ops.update_module.assert_not_called()
 

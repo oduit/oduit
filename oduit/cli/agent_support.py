@@ -249,53 +249,6 @@ def build_registration_helpers(
             ),
         )
 
-    def build_validate_addon_change_payload_fn(
-        module: str,
-        *,
-        install_if_needed: bool,
-        update: bool,
-        resolved_test_tags: str | None,
-        discover_tests: bool,
-        installed_state: dict[str, Any] | None,
-        verified_installed_state: dict[str, Any] | None = None,
-        mutation_action: dict[str, Any],
-        sub_results: dict[str, dict[str, Any]],
-        completed_steps: list[str],
-        failed_step: str | None,
-    ) -> tuple[
-        dict[str, Any],
-        bool,
-        list[str],
-        list[dict[str, Any]],
-        list[str],
-        str | None,
-        str | None,
-    ]:
-        return cast(
-            tuple[
-                dict[str, Any],
-                bool,
-                list[str],
-                list[dict[str, Any]],
-                list[str],
-                str | None,
-                str | None,
-            ],
-            build_validate_addon_change_payload_impl_fn(
-                module,
-                install_if_needed=install_if_needed,
-                update=update,
-                resolved_test_tags=resolved_test_tags,
-                discover_tests=discover_tests,
-                installed_state=installed_state,
-                verified_installed_state=verified_installed_state,
-                mutation_action=mutation_action,
-                sub_results=sub_results,
-                completed_steps=completed_steps,
-                failed_step=failed_step,
-            ),
-        )
-
     def run_validate_addon_change_preflight_fn(
         ops: Any,
         global_config: GlobalConfig,
@@ -362,7 +315,9 @@ def build_registration_helpers(
         agent_require_mutation_fn=agent_require_mutation_fn,
         agent_require_runtime_db_mutation_fn=agent_require_runtime_db_mutation_fn,
         build_agent_test_summary_details_fn=build_agent_test_summary_details_fn,
-        build_validate_addon_change_payload_fn=build_validate_addon_change_payload_fn,
+        build_validate_addon_change_payload_fn=(
+            build_validate_addon_change_payload_impl_fn
+        ),
         run_validate_addon_change_preflight_fn=run_validate_addon_change_preflight_fn,
         build_validate_addon_change_discovery_result_fn=(
             build_validate_addon_change_discovery_result_fn
