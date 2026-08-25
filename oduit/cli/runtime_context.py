@@ -91,6 +91,7 @@ class AppCommandImplementations:
     set_inspect_command_impl: Any
     set_list_command_impl: Any
     create_db_command_impl: Any
+    extension_db_command_impl: Any
     list_db_command_impl: Any
     list_env_command_impl: Any
     print_config_command_impl: Any

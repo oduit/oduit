@@ -1352,6 +1352,16 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         escaped = value.replace("'", "''")
         return f"'{escaped}'"
 
+    @staticmethod
+    def _sql_identifier(value: str) -> str:
+        """Escape a value for use as a PostgreSQL identifier."""
+        normalized = str(value).strip()
+        if not normalized:
+            raise ValueError("PostgreSQL extension name must not be empty")
+        if "\x00" in normalized:
+            raise ValueError("PostgreSQL extension name must not contain NUL")
+        return '"' + normalized.replace('"', '""') + '"'
+
     def drop_command(self) -> "DatabaseCommandBuilder":
         """Build database drop command"""
         self.config.validate_keys(["db_name"], "database drop command")
@@ -1375,11 +1385,30 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         self._set_command(f'psql -c "CREATE ROLE \\"{db_user}\\"";')
         return self
 
-    def create_extension_command(self, extension: str) -> "DatabaseCommandBuilder":
-        """Build database create role command"""
-        self.config.validate_keys(["db_user"], "database create role command")
-
-        self._set_command(f'psql -c "CREATE EXTENSION \\"{extension}\\"";')
+    def create_extension_command(
+        self, extension: str, db_user: str | None = None
+    ) -> "DatabaseCommandBuilder":
+        """Build an idempotent command to enable an extension in db_name."""
+        self.config.validate_keys(["db_name"], "database extension command")
+        db_name = self.config.get_required("db_name")
+        query = "CREATE EXTENSION IF NOT EXISTS " f"{self._sql_identifier(extension)};"
+        tokens = [
+            "psql",
+            "-X",
+            "-d",
+            str(db_name),
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            query,
+        ]
+        if self.with_sudo:
+            self._set_command(self._shell_join(tokens))
+        else:
+            connection_tokens = self._get_psql_connection_tokens(db_user)
+            self._append_raw_tokens(
+                self._with_password_env([*tokens, *connection_tokens])
+            )
         return self
 
     def alter_role_command(

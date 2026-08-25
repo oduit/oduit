@@ -47,6 +47,7 @@ TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
     "uninstall": HUMAN_ORIENTED,
     "test": HUMAN_ORIENTED,
     "create-db": HUMAN_ORIENTED,
+    "extension-db": HUMAN_ORIENTED,
     "list-db": HUMAN_ORIENTED,
     "list-env": HUMAN_ORIENTED,
     "print-config": HUMAN_ORIENTED,

@@ -235,6 +235,7 @@ from .commands.addons import (
 from .commands.addons import print_manifest_command as _print_manifest_command_impl
 from .commands.database import create_db_command as _create_db_command_impl
 from .commands.database import edit_config_command as _edit_config_command_impl
+from .commands.database import extension_db_command as _extension_db_command_impl
 from .commands.database import list_db_command as _list_db_command_impl
 from .commands.database import list_env_command as _list_env_command_impl
 from .commands.database import print_config_command as _print_config_command_impl
@@ -532,6 +533,7 @@ _app_registration_context = AppRegistrationContext(
         set_inspect_command_impl=_set_inspect_command_impl,
         set_list_command_impl=_set_list_command_impl,
         create_db_command_impl=_create_db_command_impl,
+        extension_db_command_impl=_extension_db_command_impl,
         list_db_command_impl=_list_db_command_impl,
         list_env_command_impl=_list_env_command_impl,
         print_config_command_impl=_print_config_command_impl,

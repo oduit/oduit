@@ -71,6 +71,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     set_inspect_command_impl = context.implementations.set_inspect_command_impl
     set_list_command_impl = context.implementations.set_list_command_impl
     create_db_command_impl = context.implementations.create_db_command_impl
+    extension_db_command_impl = context.implementations.extension_db_command_impl
     list_db_command_impl = context.implementations.list_db_command_impl
     list_env_command_impl = context.implementations.list_env_command_impl
     print_config_command_impl = context.implementations.print_config_command_impl
@@ -609,6 +610,14 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "--password",
             help="Password for the new database admin user",
         ),
+        extensions: list[str] = typer.Option(
+            [],
+            "--extension",
+            help=(
+                "PostgreSQL extension to install after database initialization; "
+                "repeat for multiple extensions"
+            ),
+        ),
     ) -> None:
         """Create database."""
         create_db_command_impl(
@@ -626,6 +635,47 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             language=language,
             username=username,
             password=password,
+            extensions=extensions,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+        )
+
+    @app.command("extension-db")
+    def extension_db(
+        ctx: typer.Context,
+        extension: str = typer.Argument(
+            ...,
+            help="PostgreSQL extension to install in the configured database",
+        ),
+        with_sudo: bool = typer.Option(
+            False,
+            "--with-sudo",
+            help="Install the extension as the local PostgreSQL administrator",
+        ),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help=(
+                "Confirm runtime database mutation when mutation-flag protection "
+                "is enabled"
+            ),
+        ),
+        db_user: str | None = typer.Option(
+            None,
+            "--db-user",
+            help="PostgreSQL connection user when not using sudo",
+        ),
+    ) -> None:
+        """Enable a PostgreSQL extension in the configured database."""
+        extension_db_command_impl(
+            ctx,
+            extension=extension,
+            with_sudo=with_sudo,
+            allow_mutation=allow_mutation,
+            db_user=db_user,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,

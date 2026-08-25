@@ -958,6 +958,32 @@ AssertionError: 1 != 2
         self.assertEqual(builder.result["status"], "tests_skipped")
         self.assertFalse(builder.result["tests_run"])
 
+    def test_parse_database_extension_privilege_error(self):
+        builder = OperationResult("install", module="ai_azure_openai")
+        result = builder._parse_install_results(
+            'psycopg2.errors.InsufficientPrivilege: permission denied to create extension "vector"'
+        )
+        self.assertFalse(result["success"])
+        self.assertEqual(
+            result["database_extension_errors"][0]["reason"],
+            "insufficient_privilege",
+        )
+        self.assertEqual(
+            result["database_extension_errors"][0]["remediation"],
+            "oduit extension-db vector --with-sudo",
+        )
+
+    def test_parse_database_extension_unavailable_error(self):
+        builder = OperationResult("install", module="ai_azure_openai")
+        result = builder._parse_install_results(
+            'ERROR: extension "vector" is not available'
+        )
+        self.assertFalse(result["success"])
+        self.assertEqual(
+            result["database_extension_errors"][0]["reason"],
+            "not_available",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

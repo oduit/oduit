@@ -200,6 +200,134 @@ class TestDatabaseOperationsService(unittest.TestCase):
         self.assertIn("-i", init_command)
         self.assertIn("base", init_command)
 
+    def test_create_db_installs_extension_after_legacy_init(self):
+        ops = self._build_ops()
+        result = ops.create_db(
+            extension="vector", suppress_output=True, with_sudo=False
+        )
+        self.assertTrue(result["success"])
+        calls = ops.process_manager.run_operation.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertIn("createdb", " ".join(calls[0].args[0].command))
+        self.assertIn(
+            'CREATE EXTENSION IF NOT EXISTS "vector";', calls[1].args[0].command
+        )
+        self.assertEqual(result["extensions"], ["vector"])
+
+    def test_create_db_odoo19_installs_extension_after_native_init(self):
+        ops = self._build_ops()
+        result = ops.create_db(
+            extensions=["vector"],
+            suppress_output=True,
+            with_sudo=False,
+            odoo_series=SimpleNamespace(value="19.0"),
+        )
+        self.assertTrue(result["success"])
+        self.assertIn("init", ops.process_manager.run_command.call_args.args[0])
+        extension_operation = ops.process_manager.run_operation.call_args.args[0]
+        self.assertIn(
+            'CREATE EXTENSION IF NOT EXISTS "vector";', extension_operation.command
+        )
+
+    def test_create_db_extension_failure_reports_database_created(self):
+        ops = self._build_ops()
+        ops.process_manager.run_operation.side_effect = [
+            {"success": True, "return_code": 0},
+            {
+                "success": False,
+                "return_code": 1,
+                "stderr": 'permission denied to create extension "vector"',
+            },
+        ]
+        result = ops.create_db(
+            extensions=["vector"], suppress_output=True, with_sudo=False
+        )
+        self.assertFalse(result["success"])
+        self.assertTrue(result["database_created"])
+        self.assertIn("Database was created", result["error"])
+        self.assertEqual(
+            result["extension_results"][0]["error_type"],
+            "ExtensionInsufficientPrivilege",
+        )
+
+    def test_create_db_supports_multiple_extensions_in_order(self):
+        ops = self._build_ops()
+        result = ops.create_db(
+            extensions=["vector", "pg_trgm", "vector"],
+            suppress_output=True,
+            with_sudo=False,
+        )
+        operations = [
+            call.args[0] for call in ops.process_manager.run_operation.call_args_list
+        ]
+        self.assertEqual(len(operations), 3)
+        self.assertIn("createdb", " ".join(operations[0].command))
+        self.assertIn('"vector"', operations[1].command[9])
+        self.assertIn('"pg_trgm"', operations[2].command[9])
+        self.assertEqual(result["extensions"], ["vector", "pg_trgm"])
+
+    def test_create_db_preserves_legacy_singular_extension_argument(self):
+        ops = self._build_ops()
+        result = ops.create_db(
+            extension="vector", suppress_output=True, with_sudo=False
+        )
+        self.assertEqual(result["extensions"], ["vector"])
+        self.assertEqual(len(result["extension_results"]), 1)
+
+    def test_install_db_extension_success(self):
+        ops = self._build_ops()
+        result = ops.install_db_extension(
+            "vector", with_sudo=False, suppress_output=True
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["operation"], "install_db_extension")
+        self.assertEqual(result["database"], "test_db")
+        self.assertEqual(result["extension"], "vector")
+        self.assertFalse(result["with_sudo"])
+        operation = ops.process_manager.run_operation.call_args.args[0]
+        self.assertIn('CREATE EXTENSION IF NOT EXISTS "vector";', operation.command)
+
+    def test_install_db_extension_failure_classifies_privilege(self):
+        ops = self._build_ops()
+        ops.process_manager.run_operation.return_value = {
+            "success": False,
+            "return_code": 1,
+            "stdout": "",
+            "stderr": 'permission denied to create extension "vector"',
+        }
+        result = ops.install_db_extension("vector", suppress_output=True)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error_type"], "ExtensionInsufficientPrivilege")
+        self.assertIn("--with-sudo", result["remediation"][0])
+
+    def test_install_db_extension_raise_on_error_attaches_result(self):
+        from oduit.exceptions import DatabaseOperationError
+
+        ops = self._build_ops()
+        ops.process_manager.run_operation.return_value = {
+            "success": False,
+            "return_code": 1,
+            "stdout": "",
+            "stderr": 'extension "vector" is not available',
+        }
+        with self.assertRaises(DatabaseOperationError) as context:
+            ops.install_db_extension(
+                "vector", suppress_output=True, raise_on_error=True
+            )
+        self.assertEqual(
+            context.exception.operation_result["error_type"],
+            "ExtensionNotAvailable",
+        )
+
+    def test_install_db_extension_forwards_db_user(self):
+        ops = self._build_ops()
+        ops.install_db_extension(
+            "vector", with_sudo=False, db_user="custom", suppress_output=True
+        )
+        operation = ops.process_manager.run_operation.call_args.args[0]
+        self.assertIn("-U", operation.command)
+        self.assertIn("custom", operation.command)
+
 
 if __name__ == "__main__":
     unittest.main()

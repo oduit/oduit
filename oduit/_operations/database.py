@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from textwrap import dedent
 from typing import Any
 
@@ -174,6 +175,125 @@ class DatabaseOperationsService(OperationsService):
                 f"Warning: {warning}: {command_result.get('stderr', '').strip()}"
             )
 
+    @staticmethod
+    def _classify_extension_failure(
+        extension: str, stdout: str, stderr: str, error: str = ""
+    ) -> tuple[str, list[str]]:
+        output = "\n".join((stderr, stdout, error))
+        lowered = output.lower()
+        if (
+            "permission denied to create extension" in lowered
+            or "must be superuser to create this extension" in lowered
+            or "insufficientprivilege" in lowered
+        ):
+            return (
+                "ExtensionInsufficientPrivilege",
+                [
+                    f"Retry with `oduit extension-db {extension} --with-sudo`.",
+                    (
+                        "Or grant the configured PostgreSQL role the privileges "
+                        "required by the extension."
+                    ),
+                ],
+            )
+        if (
+            "is not available" in lowered and "extension" in lowered
+        ) or "could not open extension control file" in lowered:
+            return (
+                "ExtensionNotAvailable",
+                [
+                    "Install the PostgreSQL server package for the extension first,",
+                    f"then rerun `oduit extension-db {extension} --with-sudo`.",
+                ],
+            )
+        if "database" in lowered and (
+            "does not exist" in lowered or "not found" in lowered
+        ):
+            return (
+                "DatabaseNotFound",
+                ["Create the configured database first or correct db_name."],
+            )
+        return ("DatabaseExtensionError", [])
+
+    def install_db_extension(
+        self,
+        extension: str,
+        *,
+        with_sudo: bool = True,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        db_user: str | None = None,
+    ) -> dict:
+        """Enable a PostgreSQL extension in the configured database."""
+        db_name = self.operations.config.get_optional("db_name", "unknown")
+        try:
+            operation = (
+                DatabaseCommandBuilder(self.operations.config, with_sudo=with_sudo)
+                .create_extension_command(extension, db_user=db_user)
+                .build_operation()
+            )
+            if self.operations.verbose and not suppress_output:
+                print_info(
+                    "Installing PostgreSQL extension "
+                    f"{extension!r} in database {db_name!r}"
+                )
+            process_result = self.operations.process_manager.run_operation(
+                operation,
+                verbose=self.operations.verbose,
+                suppress_output=suppress_output,
+            )
+            process_result = process_result or {}
+            success = bool(process_result.get("success", False))
+            stdout = process_result.get("stdout", "")
+            stderr = process_result.get("stderr", "")
+            process_error = process_result.get("error", "")
+            final_result = {
+                "success": success,
+                "return_code": process_result.get("return_code", 0 if success else 1),
+                "operation": "install_db_extension",
+                "database": db_name,
+                "extension": str(extension).strip(),
+                "with_sudo": with_sudo,
+                "command": operation.command,
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+            if not success:
+                error_type, remediation = self._classify_extension_failure(
+                    str(extension).strip(), stdout, stderr, str(process_error)
+                )
+                final_result["error"] = (
+                    str(process_error).strip()
+                    or stderr.strip()
+                    or stdout.strip()
+                    or "PostgreSQL extension installation failed"
+                )
+                final_result["error_type"] = error_type
+                final_result["remediation"] = remediation
+        except (ConfigError, ValueError) as error:
+            final_result = {
+                "success": False,
+                "return_code": 1,
+                "operation": "install_db_extension",
+                "database": db_name,
+                "extension": str(extension).strip(),
+                "with_sudo": with_sudo,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            }
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(error), 1)
+                else:
+                    print_error(str(error))
+
+        if raise_on_error and not final_result.get("success", False):
+            raise DatabaseOperationError(
+                final_result.get("error", "Database extension installation failed"),
+                operation_result=final_result,
+            )
+        return final_result
+
     def db_exists(
         self,
         with_sudo: bool = True,
@@ -345,7 +465,7 @@ class DatabaseOperationsService(OperationsService):
 
         return final_result
 
-    def create_db(
+    def create_db(  # noqa: C901
         self,
         with_sudo: bool = True,
         suppress_output: bool = False,
@@ -361,6 +481,7 @@ class DatabaseOperationsService(OperationsService):
         username: str = "admin",
         password: str = "admin",
         odoo_series: Any | None = None,
+        extensions: Sequence[str] | None = None,
     ) -> dict:
         """Create database and return operation result
 
@@ -369,7 +490,8 @@ class DatabaseOperationsService(OperationsService):
             suppress_output: Suppress all output (for programmatic use)
             create_role: Create database role before creating database
             alter_role: Alter database role before creating database
-            extension: Create extension in database (e.g., 'postgis')
+            extension: Create one extension in the database (compatibility argument)
+            extensions: Create multiple extensions after database initialization
             raise_on_error: Raise exception on failure instead of returning error
             db_user: Database user for role operations (optional)
             with_demo: Initialize with demo data
@@ -393,13 +515,20 @@ class DatabaseOperationsService(OperationsService):
         db_name = self.operations.config.get_optional("db_name", "unknown")
         use_native_db_init = (self._series_major(odoo_series) or 0) >= 19
 
+        requested_extensions: list[str] = []
+        if extension:
+            requested_extensions.append(extension)
+        for requested in extensions or []:
+            if requested and requested not in requested_extensions:
+                requested_extensions.append(requested)
+
         create_result = None
         init_result = None
         country_result = None
         admin_result = None
+        extension_results: list[dict] = []
         cmd_role = None
         cmd_alter = None
-        cmd_extension = None
 
         if create_role:
             builder = DatabaseCommandBuilder(
@@ -411,11 +540,6 @@ class DatabaseOperationsService(OperationsService):
                 self.operations.config, with_sudo=with_sudo
             )
             cmd_alter = builder.alter_role_command(db_user=db_user).build()
-        if extension is not None:
-            builder = DatabaseCommandBuilder(
-                self.operations.config, with_sudo=with_sudo
-            )
-            cmd_extension = builder.create_extension_command(extension).build()
 
         create_operation = None
         if not use_native_db_init:
@@ -448,10 +572,6 @@ class DatabaseOperationsService(OperationsService):
 
             self._run_optional_command(cmd_role, "Role creation command failed")
             self._run_optional_command(cmd_alter, "Role alteration command failed")
-            self._run_optional_command(
-                cmd_extension,
-                "Extension creation command failed",
-            )
 
             if use_native_db_init:
                 init_result = self._run_native_create_init(
@@ -473,6 +593,25 @@ class DatabaseOperationsService(OperationsService):
                     password=password,
                     language=language,
                 )
+            if (
+                init_result
+                and init_result.get("success", False)
+                and (
+                    use_native_db_init
+                    or create_result
+                    and create_result.get("success", False)
+                )
+            ):
+                for requested_extension in requested_extensions:
+                    extension_result = self.install_db_extension(
+                        requested_extension,
+                        with_sudo=with_sudo,
+                        suppress_output=suppress_output,
+                        db_user=db_user,
+                    )
+                    extension_results.append(extension_result)
+                    if not extension_result.get("success", False):
+                        break
 
             success, return_code = self._merge_create_db_results(
                 create_result if not use_native_db_init else None,
@@ -493,6 +632,17 @@ class DatabaseOperationsService(OperationsService):
                 "without_demo": (not with_demo),
                 "username": username,
                 "password_set": bool(password),
+                "extensions": requested_extensions,
+                "extension_results": extension_results,
+                "database_created": bool(
+                    init_result
+                    and init_result.get("success", False)
+                    and (
+                        use_native_db_init
+                        or create_result
+                        and create_result.get("success", False)
+                    )
+                ),
             }
 
             if create_result:
@@ -529,6 +679,37 @@ class DatabaseOperationsService(OperationsService):
                         normalized_error or "Database operation failed"
                     )
                     break
+
+            failed_extension = next(
+                (
+                    result
+                    for result in extension_results
+                    if not result.get("success", False)
+                ),
+                None,
+            )
+            if failed_extension:
+                failed_name = failed_extension["extension"]
+                final_result["success"] = False
+                final_result["return_code"] = (
+                    failed_extension.get("return_code", 1) or 1
+                )
+                final_result["error"] = (
+                    f"Database was created, but PostgreSQL extension "
+                    f"{failed_name!r} could not be installed."
+                )
+                final_result["error_type"] = failed_extension.get(
+                    "error_type", "DatabaseExtensionError"
+                )
+                final_result["remediation"] = failed_extension.get(
+                    "remediation",
+                    [f"Retry with `oduit extension-db {failed_name} --with-sudo`."],
+                )
+                failed_index = extension_results.index(failed_extension)
+                if failed_index + 1 < len(requested_extensions):
+                    final_result["extensions_not_attempted"] = requested_extensions[
+                        failed_index + 1 :
+                    ]
 
         except ConfigError as e:
             final_result = {

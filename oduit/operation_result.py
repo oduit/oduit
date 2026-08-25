@@ -416,6 +416,46 @@ class OperationResult:
                 self.result["success"] = False
         return self
 
+    @staticmethod
+    def _parse_database_extension_errors(output: str) -> list[dict[str, str]]:
+        """Extract actionable PostgreSQL extension prerequisite failures."""
+        lowered = output.lower()
+        errors: list[dict[str, str]] = []
+        extension_names = re.findall(
+            r"extension\s+[\"']([^\"']+)[\"']", output, re.IGNORECASE
+        )
+        extension = extension_names[0] if extension_names else "unknown"
+        if "permission denied to create extension" in lowered or (
+            "psycopg2.errors.insufficientprivilege" in lowered
+            and "extension" in lowered
+        ):
+            errors.append(
+                {
+                    "extension": extension,
+                    "reason": "insufficient_privilege",
+                    "remediation": f"oduit extension-db {extension} --with-sudo",
+                }
+            )
+        elif (
+            re.search(
+                r"extension\s+[\"'][^\"']+[\"']\s+is not available",
+                output,
+                re.IGNORECASE,
+            )
+            or "could not open extension control file" in lowered
+        ):
+            errors.append(
+                {
+                    "extension": extension,
+                    "reason": "not_available",
+                    "remediation": (
+                        "Install the PostgreSQL server package for the extension "
+                        f"first, then run `oduit extension-db {extension} --with-sudo`."
+                    ),
+                }
+            )
+        return errors
+
     def _parse_install_results(self, output: str) -> dict[str, Any]:
         """Parse Odoo install output to extract installation errors and dependencies"""
         install_info: dict[str, Any] = {
@@ -427,6 +467,7 @@ class OperationResult:
             "failed_modules": [],
             "dependency_errors": [],
             "error_messages": [],
+            "database_extension_errors": [],
         }
 
         if not output:
@@ -558,6 +599,11 @@ class OperationResult:
             target_modules = self.result.get("modules", [])
             install_info["modules_installed"] = list(target_modules)
 
+        install_info["database_extension_errors"] = (
+            self._parse_database_extension_errors(output)
+        )
+        if install_info["database_extension_errors"]:
+            install_info["success"] = False
         return install_info
 
     def _parse_test_problem(

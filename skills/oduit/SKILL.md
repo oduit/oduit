@@ -209,7 +209,9 @@ Runtime database mutation commands:
 - `uninstall-module`
 - `test-summary` when called with `--install` or `--update`
 - `validate-addon-change` when called with install/update options
+- `extension-db` and `create-db` when creating or enabling database extensions
 - `inspect-cron --trigger`
+- `extension-db` targets the configured `db_name`; `create-db --extension` installs requested extensions after initialization. Both are explicit runtime DB mutations. Use `--with-sudo` only when intentionally running as the local PostgreSQL administrator. The PostgreSQL server extension package must already be installed, and oduit never installs it or implicitly elevates module installation. For Odoo AI/pgvector, explicitly enable `vector` before installing `ai_azure_openai`.
 
 Source mutation commands:
 

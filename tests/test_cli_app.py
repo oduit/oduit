@@ -592,6 +592,151 @@ class TestCLICommands(unittest.TestCase):
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
+    def test_extension_db_calls_operation(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.install_db_extension.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "extension-db", "vector"])
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.install_db_extension.assert_called_once_with(
+            "vector", with_sudo=False, db_user=None
+        )
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_extension_db_with_sudo_and_db_user(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.install_db_extension.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "extension-db",
+                "vector",
+                "--with-sudo",
+                "--db-user",
+                "custom",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.install_db_extension.assert_called_once_with(
+            "vector", with_sudo=True, db_user="custom"
+        )
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_extension_db_failure_returns_nonzero(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.install_db_extension.return_value = {
+            "success": False,
+            "error": "extension failed",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "extension-db", "vector"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("extension failed", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_extension_db_requires_mutation_flag_when_policy_requires_it(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "needs_mutation_flag": True,
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "extension-db", "vector"])
+
+        self.assertEqual(result.exit_code, 1)
+        mock_odoo_ops.assert_not_called()
+        self.assertIn("needs_mutation_flag=true", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("builtins.input")
+    def test_create_db_forwards_extensions(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+        mock_ops_instance.create_db.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+        mock_input.return_value = "y"
+
+        result = self.runner.invoke(
+            app,
+            [
+                "--env",
+                "dev",
+                "create-db",
+                "--extension",
+                "vector",
+                "--extension",
+                "pg_trgm",
+            ],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(
+            mock_ops_instance.create_db.call_args.kwargs["extensions"],
+            ["vector", "pg_trgm"],
+        )
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("builtins.input")
+    def test_create_db_extension_failure_returns_nonzero(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+        mock_ops_instance.create_db.return_value = {
+            "success": False,
+            "error": "Database was created, but extension failed",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+        mock_input.return_value = "y"
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "create-db", "--extension", "vector"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
     @patch("builtins.input")
     def test_create_db_with_confirmation(
         self, mock_input, mock_config_loader_class, mock_odoo_ops

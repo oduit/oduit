@@ -33,6 +33,9 @@ This page is generated from the canonical Typer registration surface in
 * - `create-db`
   - `human_oriented`
   - Create database.
+* - `extension-db`
+  - `human_oriented`
+  - Enable a PostgreSQL extension in the configured database.
 * - `list-db`
   - `human_oriented`
   - List all databases.

@@ -358,6 +358,69 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
         ]
         self.assertEqual(result, expected)
 
+    def test_build_create_extension_command_without_sudo(self):
+        config_provider = ConfigProvider(
+            {
+                "db_name": "test_db",
+                "db_user": "odoo",
+                "db_password": "secret",
+                "db_host": "127.0.0.1",
+                "db_port": 5432,
+            }
+        )
+        command = (
+            DatabaseCommandBuilder(config_provider, with_sudo=False)
+            .create_extension_command("vector")
+            .build()
+        )
+        self.assertEqual(
+            command,
+            [
+                "env",
+                "PGPASSWORD=secret",
+                "psql",
+                "-X",
+                "-d",
+                "test_db",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-c",
+                'CREATE EXTENSION IF NOT EXISTS "vector";',
+                "-h",
+                "127.0.0.1",
+                "-p",
+                "5432",
+                "-U",
+                "odoo",
+            ],
+        )
+
+    def test_build_create_extension_command_with_sudo_uses_postgres(self):
+        config_provider = ConfigProvider({"db_name": "test_db", "db_user": "odoo"})
+        command = (
+            DatabaseCommandBuilder(config_provider)
+            .create_extension_command("vector")
+            .build()
+        )
+        self.assertEqual(
+            command[:7], ["sudo", "-S", "su", "-", "postgres", "-c", command[6]]
+        )
+        self.assertIn("psql -X -d test_db", command[6])
+        self.assertIn('CREATE EXTENSION IF NOT EXISTS "vector";', command[6])
+        self.assertNotIn("-U odoo", command[6])
+
+    def test_create_extension_identifier_escaping_and_validation(self):
+        provider = ConfigProvider({"db_name": "test_db"})
+        builder = DatabaseCommandBuilder(provider, with_sudo=False)
+        command = builder.create_extension_command('a"b').build()
+        self.assertIn('CREATE EXTENSION IF NOT EXISTS "a""b";', command)
+
+        for extension in ("", "  ", "bad\x00name"):
+            with self.assertRaises(ValueError):
+                DatabaseCommandBuilder(
+                    provider, with_sudo=False
+                ).create_extension_command(extension)
+
 
 class TestOdooOperations(unittest.TestCase):
     def test_parse_install_results_unmet_dependencies(self):

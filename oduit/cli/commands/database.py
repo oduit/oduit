@@ -32,6 +32,7 @@ def create_db_command(
     language: str | None,
     username: str,
     password: str,
+    extensions: list[str],
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
@@ -124,7 +125,7 @@ def create_db_command(
             creation_confirmed = True
 
     if creation_confirmed:
-        odoo_operations.create_db(
+        result = odoo_operations.create_db(
             create_role=create_role,
             alter_role=alter_role,
             with_sudo=with_sudo,
@@ -136,9 +137,51 @@ def create_db_command(
             username=username,
             password=password,
             odoo_series=global_config.odoo_series,
+            extensions=extensions,
         )
+        if global_config.format == OutputFormat.JSON:
+            print(json.dumps(output_result_to_json(result)))
+        if not result.get("success", False):
+            raise typer.Exit(1) from None
     else:
         print_info("Database creation cancelled.")
+
+
+def extension_db_command(
+    ctx: typer.Context,
+    *,
+    extension: str,
+    with_sudo: bool,
+    allow_mutation: bool,
+    db_user: str | None,
+    resolve_command_env_config_fn: Any,
+    build_odoo_operations_fn: Any,
+    require_cli_runtime_db_mutation_fn: Any,
+    print_command_error_result_fn: Any,
+    confirmation_required_error_fn: Any,
+) -> None:
+    """Enable a PostgreSQL extension in the configured database."""
+    global_config, env_config = resolve_command_env_config_fn(ctx)
+    require_cli_runtime_db_mutation_fn(
+        global_config=global_config,
+        env_config=env_config,
+        allow_mutation=allow_mutation,
+        operation="extension_db",
+        action=f"PostgreSQL extension installation ({extension})",
+        print_command_error_result_fn=print_command_error_result_fn,
+        confirmation_required_error_fn=confirmation_required_error_fn,
+    )
+    result = build_odoo_operations_fn(global_config).install_db_extension(
+        extension,
+        with_sudo=with_sudo,
+        db_user=db_user,
+    )
+    if global_config.format == OutputFormat.JSON:
+        print(json.dumps(output_result_to_json(result)))
+    elif not result.get("success", False):
+        print_error(result.get("error", "PostgreSQL extension installation failed"))
+    if not result.get("success", False):
+        raise typer.Exit(1) from None
 
 
 def list_db_command(

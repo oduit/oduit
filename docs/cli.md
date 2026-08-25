@@ -414,6 +414,7 @@ oduit --env dev create-db [OPTIONS]
 - `--drop`: Drop database if it exists before creating
 - `--non-interactive`: Run without confirmation prompt (use with caution)
 - `--db-user TEXT`: Specify the database user (overrides config setting)
+- `--extension TEXT`: Install a PostgreSQL extension after initialization; repeat for multiple extensions
 - `--allow-mutation`: Optional confirmation flag when `needs_mutation_flag = true`
 
 **Examples:**
@@ -448,6 +449,17 @@ This command will prompt for confirmation before creating the database
 unless you pass ``--non-interactive``. In non-interactive mode, the command
 fails fast instead of auto-confirming.
 ```
+
+### extension-db
+
+Enable a PostgreSQL server extension in the configured `db_name`. The SQL is idempotent and the server extension package/control files must already be installed; oduit does not install operating-system packages.
+
+```bash
+oduit --env dev extension-db vector
+oduit --env dev extension-db vector --with-sudo
+```
+
+This is an explicit runtime database mutation and follows the mutation policy. `--with-sudo` runs PostgreSQL extension creation as the local PostgreSQL administrator. For Odoo AI/pgvector, enable `vector` before installing `ai_azure_openai`.
 
 ### list-db
 

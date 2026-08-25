@@ -6,7 +6,7 @@
 
 import os
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
@@ -293,6 +293,23 @@ class OdooOperations:
             log_level=log_level,
         )
 
+    def install_db_extension(
+        self,
+        extension: str,
+        with_sudo: bool = True,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        db_user: str | None = None,
+    ) -> dict:
+        """Enable a PostgreSQL extension in the configured database."""
+        return self._database_service.install_db_extension(
+            extension,
+            with_sudo=with_sudo,
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
+            db_user=db_user,
+        )
+
     def db_exists(
         self,
         with_sudo: bool = True,
@@ -337,6 +354,7 @@ class OdooOperations:
         username: str = "admin",
         password: str = "admin",
         odoo_series: OdooSeries | None = None,
+        extensions: Sequence[str] | None = None,
     ) -> dict:
         """Create database and return operation result"""
         return self._database_service.create_db(
@@ -354,6 +372,7 @@ class OdooOperations:
             username=username,
             password=password,
             odoo_series=odoo_series,
+            extensions=extensions,
         )
 
     def list_db(

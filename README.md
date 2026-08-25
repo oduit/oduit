@@ -344,6 +344,9 @@ oduit --env dev shell
 oduit --env dev --non-interactive create-db
 oduit --env dev create-db --without-demo --country DE --language de_DE
 oduit --env dev create-db --with-demo --username admin --password admin
+oduit --env dev extension-db vector --with-sudo
+oduit --env dev create-db --extension vector --with-sudo
+oduit --env dev create-db --extension vector --extension pg_trgm --with-sudo
 oduit --env dev create-addon my_custom_module --allow-mutation
 
 # Internationalization
@@ -366,6 +369,8 @@ oduit --env dev install-order --from-set snapshot --save-set ordered_snapshot
 series. On Odoo 19+, oduit uses native `odoo-bin db init`. On older Odoo
 versions, oduit emulates equivalent behavior with `createdb` plus
 `-i base --stop-after-init` and post-init updates.
+
+`extension-db` enables a requested PostgreSQL server extension in the configured `db_name`; it does not install an operating-system package. The SQL is idempotent, and `--with-sudo` explicitly runs it as the local PostgreSQL administrator. The PostgreSQL extension package/control files must already be installed. Extension setup is a runtime database mutation and follows the mutation policy. For the Odoo AI/pgvector workflow, run `oduit --env dev extension-db vector --with-sudo` before installing `ai_azure_openai`; oduit does not add implicit sudo or extension creation to module installation.
 
 ## Internationalization
 
@@ -461,7 +466,7 @@ Runtime DB mutation policy is controlled by explicit config flags:
 - `agent_write_protect_db`: block agent runtime DB mutation even when human mutation is allowed
 - `agent_needs_mutation_flag`: require `--allow-mutation` for agent runtime DB mutations
 
-This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`, `i18n import`, `i18n loadlang`) and agent runtime mutation commands. Source mutations such as `create-addon`, `i18n export`, and `export-lang` still use their own explicit mutation gate.
+This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`, `extension-db`, `i18n import`, `i18n loadlang`) and agent runtime mutation commands. Source mutations such as `create-addon`, `i18n export`, and `export-lang` still use their own explicit mutation gate.
 Plain `test` runs stay read-only; only `test --install/--update`, `agent test-summary --install/--update`, and `agent validate-addon-change` with install/update options enter the runtime DB mutation path.
 
 A successful test result is proof that at least one test executed. Zero-test results are non-success and identify whether the module was uninstalled, no tests matched, or the runner skipped execution. Plain tests never install modules automatically. When `--install` or `--update` is explicitly requested, oduit performs the mutation, verifies the installed state, and only then starts the test process.
