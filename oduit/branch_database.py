@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
 import re
 import tempfile
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -352,6 +352,32 @@ def branch_database_environment_key(
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
 
 
+@contextmanager
+def _exclusive_file_lock(lock_file: Any) -> Iterator[None]:
+    if os.name == "nt":
+        import msvcrt
+
+        lock_file.seek(0, os.SEEK_END)
+        if lock_file.tell() == 0:
+            lock_file.write(b"\0")
+            lock_file.flush()
+        lock_file.seek(0)
+        msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 class BranchDatabaseStateStore:
     """Versioned registry for databases created by branch management."""
 
@@ -459,11 +485,11 @@ class BranchDatabaseStateStore:
 
     def _update(self, updater: Callable[[dict[str, Any]], None]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.lock_path.open("a", encoding="utf-8") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            state = self._read()
-            updater(state)
-            self._write(state)
+        with self.lock_path.open("a+b") as lock_file:
+            with _exclusive_file_lock(lock_file):
+                state = self._read()
+                updater(state)
+                self._write(state)
 
     def record_created(
         self,
