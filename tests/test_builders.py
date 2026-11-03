@@ -638,6 +638,40 @@ class TestDatabaseCommandBuilder:
 
         assert cmd == ["psql", "-l", "-U", "custom_user"]
 
+    def test_collation_health_command_uses_configured_connection_options(
+        self, config_provider
+    ):
+        config = config_provider.get_full_config().copy()
+        config.update({"db_host": "localhost", "db_port": 5432})
+        builder = DatabaseCommandBuilder(ConfigProvider(config), with_sudo=False)
+        command = builder.collation_health_command().build()
+
+        assert command[:6] == [
+            "env",
+            "PGPASSWORD=password",
+            "psql",
+            "-X",
+            "-A",
+            "-t",
+        ]
+        assert "-v" in command
+        assert "ON_ERROR_STOP=1" in command
+        assert "-d" in command
+        assert command[command.index("-d") + 1] == "postgres"
+        assert command[command.index("-h") + 1] == "localhost"
+        assert command[command.index("-p") + 1] == "5432"
+        assert command[command.index("-U") + 1] == "odoo"
+
+        query = command[command.index("-c") + 1]
+        assert "pg_database_collation_actual_version(oid)" in query
+        assert "datcollversion" in query
+        assert "'template1', 'postgres'" in query
+        assert "test_db" not in query
+
+        operation = builder.build_operation()
+        assert operation.operation_type == "collation_health"
+        assert not operation.is_odoo_command
+
     def test_legacy_init_base_command_with_demo_and_language(self, config_provider):
         """Test legacy init command includes expected server init flags."""
         builder = DatabaseCommandBuilder(config_provider, with_sudo=False)

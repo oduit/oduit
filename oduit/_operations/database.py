@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Sequence
 from textwrap import dedent
@@ -290,6 +291,121 @@ class DatabaseOperationsService(OperationsService):
         if raise_on_error and not final_result.get("success", False):
             raise DatabaseOperationError(
                 final_result.get("error", "Database extension installation failed"),
+                operation_result=final_result,
+            )
+        return final_result
+
+    def collation_health(
+        self,
+        with_sudo: bool = True,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        db_user: str | None = None,
+    ) -> dict:
+        """Check recorded and actual collation versions for template1 and postgres."""
+        try:
+            operation = (
+                DatabaseCommandBuilder(self.operations.config, with_sudo=with_sudo)
+                .collation_health_command(db_user=db_user)
+                .build_operation()
+            )
+            if self.operations.verbose and not suppress_output:
+                print_info("Checking PostgreSQL collation versions...")
+
+            process_result = self.operations.process_manager.run_operation(
+                operation,
+                verbose=self.operations.verbose,
+                suppress_output=suppress_output,
+            )
+            process_result = process_result or {}
+            stdout = process_result.get("stdout", "")
+            stderr = process_result.get("stderr", "")
+            success = bool(process_result.get("success", False))
+            final_result = {
+                "success": success,
+                "healthy": None,
+                "template1_stale": None,
+                "postgres_stale": None,
+                "databases": {},
+                "return_code": process_result.get("return_code", 0 if success else 1),
+                "operation": "collation_health",
+                "command": operation.command,
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+
+            if not success:
+                final_result["error"] = (
+                    str(process_result.get("error") or stderr or stdout).strip()
+                    or "PostgreSQL collation health check failed"
+                )
+                final_result["error_type"] = "CollationHealthCheckError"
+            else:
+                try:
+                    records = [
+                        json.loads(line)
+                        for line in stdout.splitlines()
+                        if line.lstrip().startswith("{")
+                    ]
+                    by_database = {record["database"]: record for record in records}
+                    missing = {"template1", "postgres"} - by_database.keys()
+                    if missing:
+                        names = ", ".join(sorted(missing))
+                        raise ValueError(
+                            "Collation query omitted expected database(s): " + names
+                        )
+                    databases = {
+                        name: {
+                            "recorded_version": by_database[name]["recorded_version"],
+                            "actual_version": by_database[name]["actual_version"],
+                            "stale": (
+                                by_database[name]["recorded_version"]
+                                != by_database[name]["actual_version"]
+                            ),
+                        }
+                        for name in ("template1", "postgres")
+                    }
+                    template1_stale = databases["template1"]["stale"]
+                    postgres_stale = databases["postgres"]["stale"]
+                    final_result.update(
+                        {
+                            "healthy": not template1_stale and not postgres_stale,
+                            "template1_stale": template1_stale,
+                            "postgres_stale": postgres_stale,
+                            "databases": databases,
+                        }
+                    )
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+                    final_result.update(
+                        {
+                            "success": False,
+                            "healthy": None,
+                            "return_code": 1,
+                            "error": str(error),
+                            "error_type": "CollationHealthCheckError",
+                        }
+                    )
+        except ConfigError as error:
+            final_result = {
+                "success": False,
+                "healthy": None,
+                "template1_stale": None,
+                "postgres_stale": None,
+                "databases": {},
+                "return_code": 1,
+                "operation": "collation_health",
+                "error": str(error),
+                "error_type": "ConfigError",
+            }
+            if not suppress_output:
+                if _output_module._formatter.format_type == "json":
+                    print_error_result(str(error), 1)
+                else:
+                    print_error(str(error))
+
+        if raise_on_error and not final_result.get("success", False):
+            raise DatabaseOperationError(
+                final_result.get("error", "PostgreSQL collation health check failed"),
                 operation_result=final_result,
             )
         return final_result

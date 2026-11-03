@@ -439,16 +439,44 @@ oduit --env dev create-db --with-sudo
 oduit --env dev create-db --drop --create-role --non-interactive
 ```
 
-```{note}
-The command checks if the database exists before attempting to create it.
-Use ``--drop`` to automatically drop an existing database before creating.
-```
+````{note}
+The command checks whether the configured database exists. Before checking the target, it performs a read-only PostgreSQL collation check for `template1` and `postgres`. A stale `template1` or failed health check stops the command before any drop or creation. A mismatch in `postgres` is diagnostic information. Oduit does not rebuild PostgreSQL objects or refresh recorded collation versions.
+Use ``--drop`` only when dropping the configured target is intentional and recoverable.
 
 ```{warning}
 This command will prompt for confirmation before creating the database
 unless you pass ``--non-interactive``. In non-interactive mode, the command
 fails fast instead of auto-confirming.
+````
+
+#### Collation preflight and administrator repair
+
+The preflight compares each database's recorded `datcollversion` with `pg_database_collation_actual_version(oid)`. Inspect the configured cluster with this read-only query:
+
+```sql
+SELECT datname, datcollversion, pg_database_collation_actual_version(oid)
+FROM pg_database
+WHERE datname IN ('template1', 'postgres')
+ORDER BY datname;
 ```
+
+If `template1` is stale, `create-db` fails before checking or dropping the configured target. A failed health query also blocks the command. Oduit never runs `REINDEX` or `ALTER DATABASE ... REFRESH COLLATION VERSION`.
+
+For a stale cluster, have a PostgreSQL administrator:
+
+1. Confirm whether the configured Odoo target exists, whether a previous `--drop` removed it, and whether it needs restoration from backup.
+2. Choose a maintenance window and rebuild affected collation-dependent objects in each affected database, such as `template1` and `postgres`. `REINDEX DATABASE` may be appropriate after assessing scope, locks, and service impact.
+3. Only after rebuilding objects, refresh recorded versions for the repaired databases, for example:
+
+   ```sql
+   ALTER DATABASE template1 REFRESH COLLATION VERSION;
+   ALTER DATABASE postgres REFRESH COLLATION VERSION;
+   ```
+
+4. Rerun the read-only version query and confirm recorded and actual versions match.
+5. Retry the intended `create-db` command without `--drop`. Use `--drop` only if dropping the configured target is intentional and recoverable.
+
+If maintenance fails or the target was removed, stop retries and follow the PostgreSQL administrator's backup and recovery procedure.
 
 ### extension-db
 

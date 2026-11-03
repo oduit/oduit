@@ -310,6 +310,21 @@ class OdooOperations:
             db_user=db_user,
         )
 
+    def check_db_collation_health(
+        self,
+        with_sudo: bool = True,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        db_user: str | None = None,
+    ) -> dict:
+        """Check recorded and actual PostgreSQL collation versions."""
+        return self._database_service.collation_health(
+            with_sudo=with_sudo,
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
+            db_user=db_user,
+        )
+
     def db_exists(
         self,
         with_sudo: bool = True,

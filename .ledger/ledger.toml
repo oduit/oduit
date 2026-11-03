@@ -1,0 +1,22 @@
+schema_version = 3
+
+[project]
+uuid = "8c7611f2-9b62-4e66-979e-f61738e82cd9"
+name = "oduit"
+
+[ledgers.planledger.mounts.data]
+storage = "external"
+root = "../ledger"
+
+[ledgers.taskledger.mounts.data]
+storage = "external"
+root = "../ledger"
+
+[ledgers.taskledger.mounts.runtime]
+storage = "user-data"
+
+[ledgers.taskledger.mounts.logs]
+storage = "user-data"
+
+[ledgers.taskledger.mounts.indexes]
+storage = "cache"

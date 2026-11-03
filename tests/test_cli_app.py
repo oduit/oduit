@@ -111,6 +111,25 @@ class TestCLICommands(unittest.TestCase):
             "python_bin": "/usr/bin/python3",
         }
 
+    def _set_healthy_collation(self, operations):
+        operations.check_db_collation_health.return_value = {
+            "success": True,
+            "template1_stale": False,
+            "postgres_stale": False,
+            "databases": {
+                "template1": {
+                    "recorded_version": "2.44",
+                    "actual_version": "2.44",
+                    "stale": False,
+                },
+                "postgres": {
+                    "recorded_version": "2.44",
+                    "actual_version": "2.44",
+                    "stale": False,
+                },
+            },
+        }
+
     def assert_common_json_envelope(
         self,
         payload: dict,
@@ -687,6 +706,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_ops_instance.create_db.return_value = {"success": True}
         mock_odoo_ops.return_value = mock_ops_instance
@@ -721,6 +741,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_ops_instance.create_db.return_value = {
             "success": False,
@@ -746,6 +767,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "y"
@@ -775,6 +797,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "y"
@@ -813,6 +836,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "y"
@@ -870,6 +894,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "n"
@@ -893,6 +918,7 @@ class TestCLICommands(unittest.TestCase):
         mock_config_loader_class.return_value = mock_loader_instance
 
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": True, "success": True}
         mock_ops_instance.drop_db.return_value = {"success": True}
         mock_ops_instance.create_db.return_value = {"success": True}
@@ -906,9 +932,134 @@ class TestCLICommands(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         mock_ops_instance.db_exists.assert_called_once()
+        mock_ops_instance.check_db_collation_health.assert_called_once()
+        method_names = [call[0] for call in mock_ops_instance.method_calls]
+        self.assertLess(
+            method_names.index("check_db_collation_health"),
+            method_names.index("db_exists"),
+        )
         mock_ops_instance.drop_db.assert_called_once()
         mock_ops_instance.create_db.assert_called_once()
         self.assertNotIn("Database creation cancelled", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("builtins.input")
+    def test_create_db_stale_template_blocks_drop_and_create(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.check_db_collation_health.return_value = {
+            "success": True,
+            "healthy": False,
+            "template1_stale": True,
+            "postgres_stale": True,
+            "databases": {
+                "template1": {
+                    "recorded_version": "2.42",
+                    "actual_version": "2.44",
+                    "stale": True,
+                },
+                "postgres": {
+                    "recorded_version": "2.42",
+                    "actual_version": "2.44",
+                    "stale": True,
+                },
+            },
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(app, ["--env", "dev", "create-db", "--drop"])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("template1 has a stale collation version", result.output)
+        self.assertIn("recorded '2.42'", result.output)
+        self.assertIn("actual '2.44'", result.output)
+        self.assertIn("postgres also has a collation mismatch", result.output)
+        self.assertIn("rebuild affected collation-dependent objects", result.output)
+        mock_ops_instance.check_db_collation_health.assert_called_once()
+        mock_ops_instance.db_exists.assert_not_called()
+        mock_ops_instance.drop_db.assert_not_called()
+        mock_ops_instance.create_db.assert_not_called()
+        mock_input.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_create_db_collation_check_failure_returns_json_without_mutation(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.check_db_collation_health.return_value = {
+            "success": False,
+            "healthy": None,
+            "error": "connection refused",
+        }
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        result = self.runner.invoke(
+            app, ["--env", "dev", "--json", "create-db", "--drop"]
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        payload = json.loads(result.output)
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["error_type"], "CollationHealthCheckError")
+        self.assertIn("connection refused", payload["error"])
+        self.assertIn("No database was dropped or created", payload["remediation"][-1])
+        mock_ops_instance.db_exists.assert_not_called()
+        mock_ops_instance.drop_db.assert_not_called()
+        mock_ops_instance.create_db.assert_not_called()
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    @patch("builtins.input")
+    def test_create_db_reports_postgres_mismatch_without_blocking(
+        self, mock_input, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = self.mock_config
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.check_db_collation_health.return_value = {
+            "success": True,
+            "healthy": False,
+            "template1_stale": False,
+            "postgres_stale": True,
+            "databases": {
+                "template1": {
+                    "recorded_version": "2.44",
+                    "actual_version": "2.44",
+                    "stale": False,
+                },
+                "postgres": {
+                    "recorded_version": "2.42",
+                    "actual_version": "2.44",
+                    "stale": True,
+                },
+            },
+        }
+        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+        mock_ops_instance.create_db.return_value = {"success": True}
+        mock_odoo_ops.return_value = mock_ops_instance
+        mock_input.return_value = "y"
+
+        result = self.runner.invoke(app, ["--env", "dev", "--json", "create-db"])
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.output.splitlines()[-1])
+        self.assertTrue(payload["success"])
+        self.assertEqual(
+            payload["collation_diagnostics"]["postgres"]["recorded_version"],
+            "2.42",
+        )
+        mock_ops_instance.drop_db.assert_not_called()
+        mock_ops_instance.create_db.assert_called_once()
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
@@ -922,6 +1073,7 @@ class TestCLICommands(unittest.TestCase):
         mock_config_loader_class.return_value = mock_loader_instance
 
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": True, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
         mock_input.return_value = "n"
@@ -947,6 +1099,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
 
@@ -968,6 +1121,7 @@ class TestCLICommands(unittest.TestCase):
         mock_loader_instance.load_config.return_value = self.mock_config
         mock_config_loader_class.return_value = mock_loader_instance
         mock_ops_instance = MagicMock()
+        self._set_healthy_collation(mock_ops_instance)
         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
         mock_odoo_ops.return_value = mock_ops_instance
 
@@ -3566,9 +3720,8 @@ class TestInitCommand(unittest.TestCase):
             "coverage": "/usr/bin/coverage",
         }.get(x)
 
-        with patch("pathlib.Path.mkdir"):
-            with patch("pathlib.Path.write_text"):
-                result = self.runner.invoke(app, ["init", "dev"])
+        with patch("pathlib.Path.mkdir"), patch("pathlib.Path.write_text"):
+            result = self.runner.invoke(app, ["init", "dev"])
 
         self.assertEqual(result.exit_code, 0)
         self.assertIn("created successfully", result.output)
@@ -3636,11 +3789,10 @@ class TestInitCommand(unittest.TestCase):
             "python3": "/usr/bin/python3",
         }.get(x)
 
-        with patch("pathlib.Path.mkdir"):
-            with patch("pathlib.Path.write_text"):
-                result = self.runner.invoke(
-                    app, ["init", "dev", "--from-conf", "/etc/odoo.conf"]
-                )
+        with patch("pathlib.Path.mkdir"), patch("pathlib.Path.write_text"):
+            result = self.runner.invoke(
+                app, ["init", "dev", "--from-conf", "/etc/odoo.conf"]
+            )
 
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Imported configuration", result.output)

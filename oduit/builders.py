@@ -197,17 +197,14 @@ class AbstractCommandBuilder(ABC):
     @abstractmethod
     def build(self) -> list[str]:
         """Build and return the final command as a list of strings"""
-        pass
 
     @abstractmethod
     def build_operation(self) -> CommandOperation:
         """Build and return a structured CommandOperation with metadata"""
-        pass
 
     @abstractmethod
     def reset(self) -> None:
         """Reset the builder to initial state for reuse"""
-        pass
 
     def _set_command(self, command: str) -> "AbstractCommandBuilder":
         """Set a command (like 'shell', 'run', or binary like 'python')"""
@@ -260,9 +257,7 @@ class AbstractCommandBuilder(ABC):
         for part in self._command_parts:
             part_type = part.get("type")
 
-            if part_type == "command":
-                result.append(str(part["value"]))
-            elif part_type == "value":
+            if part_type == "command" or part_type == "value":
                 result.append(str(part["value"]))
             elif part_type == "flag":
                 result.append(f"{part['prefix']}{part['key']}")
@@ -1583,6 +1578,39 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                 self._set_parameter("U", str(db_user), prefix="-", sep=" ")
         return self
 
+    def collation_health_command(
+        self, db_user: str | None = None
+    ) -> "DatabaseCommandBuilder":
+        """Build a read-only check for the template1 and postgres collations."""
+        query = (
+            "SELECT json_build_object("
+            "'database', datname, "
+            "'recorded_version', datcollversion, "
+            "'actual_version', pg_database_collation_actual_version(oid)"
+            ")::text "
+            "FROM pg_database "
+            "WHERE datname IN ('template1', 'postgres') "
+            "ORDER BY datname;"
+        )
+        tokens = [
+            "psql",
+            "-X",
+            "-A",
+            "-t",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-d",
+            "postgres",
+            "-c",
+            query,
+            *self._get_psql_connection_tokens(db_user),
+        ]
+        if self.with_sudo:
+            self._set_command(self._shell_join(self._with_password_env(tokens)))
+        else:
+            self._append_raw_tokens(self._with_password_env(tokens))
+        return self
+
     def exists_db_command(self, db_user: str | None = None) -> "DatabaseCommandBuilder":
         """Build database exists check command"""
         self.config.validate_keys(["db_name"], "database exists command")
@@ -1632,6 +1660,9 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                     break
                 elif "psql -l" in command_value:
                     operation_type = "list_db"
+                    break
+                elif "pg_database_collation_actual_version" in command_value:
+                    operation_type = "collation_health"
                     break
                 elif "from pg_database" in command_value or "grep -qw" in command_value:
                     operation_type = "exists_db"

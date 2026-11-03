@@ -328,6 +328,93 @@ class TestDatabaseOperationsService(unittest.TestCase):
         self.assertIn("-U", operation.command)
         self.assertIn("custom", operation.command)
 
+    def test_collation_health_returns_clean_version_details(self):
+        ops = self._build_ops()
+        ops.process_manager.run_operation.return_value = {
+            "success": True,
+            "return_code": 0,
+            "stdout": (
+                '{"database": "template1", "recorded_version": "2.44", '
+                '"actual_version": "2.44"}\n'
+                '{"database": "postgres", "recorded_version": "2.44", '
+                '"actual_version": "2.44"}\n'
+            ),
+            "stderr": "",
+        }
+
+        result = ops.check_db_collation_health(suppress_output=True)
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["healthy"])
+        self.assertFalse(result["template1_stale"])
+        self.assertFalse(result["postgres_stale"])
+        self.assertEqual(
+            result["databases"]["template1"],
+            {
+                "recorded_version": "2.44",
+                "actual_version": "2.44",
+                "stale": False,
+            },
+        )
+        operation = ops.process_manager.run_operation.call_args.args[0]
+        self.assertEqual(operation.operation_type, "collation_health")
+
+    def test_collation_health_distinguishes_template_and_postgres_mismatches(self):
+        ops = self._build_ops()
+        ops.process_manager.run_operation.return_value = {
+            "success": True,
+            "return_code": 0,
+            "stdout": (
+                'WARNING: database "postgres" has a collation version mismatch\n'
+                '{"database": "template1", "recorded_version": "2.42", '
+                '"actual_version": "2.44"}\n'
+                '{"database": "postgres", "recorded_version": "2.41", '
+                '"actual_version": "2.44"}\n'
+            ),
+            "stderr": "",
+        }
+
+        result = ops.check_db_collation_health(suppress_output=True)
+
+        self.assertTrue(result["success"])
+        self.assertFalse(result["healthy"])
+        self.assertTrue(result["template1_stale"])
+        self.assertTrue(result["postgres_stale"])
+        self.assertEqual(result["databases"]["template1"]["recorded_version"], "2.42")
+        self.assertEqual(result["databases"]["postgres"]["actual_version"], "2.44")
+
+    def test_collation_health_query_failure_is_not_healthy(self):
+        ops = self._build_ops()
+        ops.process_manager.run_operation.return_value = {
+            "success": False,
+            "return_code": 1,
+            "stdout": "",
+            "stderr": "connection refused",
+        }
+
+        result = ops.check_db_collation_health(suppress_output=True)
+
+        self.assertFalse(result["success"])
+        self.assertIsNone(result["healthy"])
+        self.assertIsNone(result["template1_stale"])
+        self.assertEqual(result["error"], "connection refused")
+
+    def test_collation_health_missing_database_result_is_not_healthy(self):
+        ops = self._build_ops()
+        ops.process_manager.run_operation.return_value = {
+            "success": True,
+            "return_code": 0,
+            "stdout": '{"database": "template1", "recorded_version": null, '
+            '"actual_version": null}\n',
+            "stderr": "",
+        }
+
+        result = ops.check_db_collation_health(suppress_output=True)
+
+        self.assertFalse(result["success"])
+        self.assertIsNone(result["healthy"])
+        self.assertIn("postgres", result["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

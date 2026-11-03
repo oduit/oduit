@@ -59,6 +59,90 @@ def create_db_command(
     effective_non_interactive = non_interactive or global_config.non_interactive
     odoo_operations = build_odoo_operations_fn(global_config)
 
+    collation_result = odoo_operations.check_db_collation_health(
+        with_sudo=with_sudo,
+        suppress_output=True,
+        db_user=db_user,
+    )
+    if (
+        not isinstance(collation_result, dict)
+        or not collation_result.get("success", False)
+        or not isinstance(collation_result.get("template1_stale"), bool)
+    ):
+        check_error = (
+            collation_result.get("error", "The check returned incomplete data")
+            if isinstance(collation_result, dict)
+            else "The check returned an invalid result"
+        )
+        message = (
+            "Could not establish PostgreSQL collation health before database "
+            f"creation: {check_error}"
+        )
+        print_command_error_result_fn(
+            global_config,
+            "create_db",
+            message,
+            error_type="CollationHealthCheckError",
+            details={"database": db_name, "check_error": str(check_error)},
+            remediation=[
+                "Check PostgreSQL connectivity and permissions, then retry.",
+                "No database was dropped or created because cluster health is unknown.",
+            ],
+        )
+        raise typer.Exit(1) from None
+
+    if collation_result["template1_stale"]:
+        databases = collation_result.get("databases", {})
+        template1 = databases.get("template1", {})
+        postgres = databases.get("postgres", {})
+        message = (
+            "PostgreSQL template1 has a stale collation version "
+            f"(recorded {template1.get('recorded_version')!r}, "
+            f"actual {template1.get('actual_version')!r})."
+        )
+        if collation_result.get("postgres_stale"):
+            message += (
+                " postgres also has a collation mismatch "
+                f"(recorded {postgres.get('recorded_version')!r}, "
+                f"actual {postgres.get('actual_version')!r})."
+            )
+        print_command_error_result_fn(
+            global_config,
+            "create_db",
+            message,
+            error_type="CollationMismatch",
+            details={
+                "database": db_name,
+                "template1": template1,
+                "postgres": postgres,
+            },
+            remediation=[
+                (
+                    "Have a PostgreSQL administrator rebuild "
+                    "affected collation-dependent objects before "
+                    "refreshing the recorded collation version."
+                ),
+                "Verify recorded and actual versions match, then retry create-db.",
+                (
+                    "Oduit only diagnoses this condition; it does not rebuild "
+                    "objects or refresh collation versions."
+                ),
+                "No database was dropped or created.",
+            ],
+        )
+        raise typer.Exit(1) from None
+
+    postgres_diagnostic = None
+    if collation_result.get("postgres_stale"):
+        postgres_diagnostic = collation_result.get("databases", {}).get("postgres", {})
+        if global_config.format != OutputFormat.JSON:
+            print_warning(
+                "PostgreSQL database 'postgres' has a collation version mismatch "
+                f"(recorded {postgres_diagnostic.get('recorded_version')!r}, "
+                f"actual {postgres_diagnostic.get('actual_version')!r}); "
+                "template1 is healthy, so creation may proceed."
+            )
+
     exists_result = odoo_operations.db_exists(
         with_sudo=with_sudo,
         suppress_output=True,
@@ -139,6 +223,8 @@ def create_db_command(
             odoo_series=global_config.odoo_series,
             extensions=extensions,
         )
+        if postgres_diagnostic is not None:
+            result["collation_diagnostics"] = {"postgres": postgres_diagnostic}
         if global_config.format == OutputFormat.JSON:
             print(json.dumps(output_result_to_json(result)))
         if not result.get("success", False):

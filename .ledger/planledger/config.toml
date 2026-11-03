@@ -1,0 +1,14 @@
+config_version = 1
+
+[ledger]
+code = "pl"
+name = "planledger"
+
+[prompt_profiles.planning_workshop]
+enabled = true
+activation = "always"
+question_policy = "ask_one_at_a_time"
+codebase_first = true
+include_recommended_answer = true
+max_required_questions = 10
+required_question_topics = ["scope", "tests", "rollback", "risks"]
