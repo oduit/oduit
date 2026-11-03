@@ -16,7 +16,7 @@ from .exceptions import ConfigError
 from .mutation_policy import raise_if_legacy_db_risk_level
 
 _BINARY_CONFIG_KEYS = {"python_bin", "odoo_bin", "coverage_bin"}
-_ODUIT_ONLY_TOP_LEVEL_KEYS = {"documentation"}
+_ODUIT_ONLY_TOP_LEVEL_KEYS = {"documentation", "branch_db"}
 _ODUIT_ONLY_FLAT_KEYS = {"documentation_allowed_addon_dirs"}
 
 
@@ -64,9 +64,10 @@ class ConfigProvider:
                 if key not in ("binaries", "odoo_params"):
                     if key in _BINARY_CONFIG_KEYS:
                         self._binaries[key] = value
-                    elif key in _ODUIT_ONLY_TOP_LEVEL_KEYS:
-                        self._other_config[key] = value
-                    elif key in _ODUIT_ONLY_FLAT_KEYS:
+                    elif (
+                        key in _ODUIT_ONLY_TOP_LEVEL_KEYS
+                        or key in _ODUIT_ONLY_FLAT_KEYS
+                    ):
                         self._other_config[key] = value
                     else:
                         self._odoo_params[key] = value
@@ -75,9 +76,7 @@ class ConfigProvider:
             for key, value in self._raw_config.items():
                 if key in _BINARY_CONFIG_KEYS:
                     self._binaries[key] = value
-                elif key in _ODUIT_ONLY_TOP_LEVEL_KEYS:
-                    self._other_config[key] = value
-                elif key in _ODUIT_ONLY_FLAT_KEYS:
+                elif key in _ODUIT_ONLY_TOP_LEVEL_KEYS or key in _ODUIT_ONLY_FLAT_KEYS:
                     self._other_config[key] = value
                 else:
                     self._odoo_params[key] = value
@@ -196,6 +195,7 @@ class ConfigProvider:
                 "needs_mutation_flag",
                 "agent_needs_mutation_flag",
                 "documentation",
+                "branch_db",
                 "documentation_allowed_addon_dirs",
             }
         )

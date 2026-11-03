@@ -886,9 +886,7 @@ def build_operation_set_document(
 
     addon_list = [addon for addon in addons if addon]
     section: dict[str, Any] = {}
-    if kind == "install":
-        section["addons"] = addon_list
-    elif kind == "update":
+    if kind == "install" or kind == "update":
         section["addons"] = addon_list
     else:
         section["install"] = addon_list

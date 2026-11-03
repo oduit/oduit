@@ -60,8 +60,7 @@ def _build_recommended_next_steps(
         if field_data.get("exists") and candidates:
             primary = candidates[0]
             recommendations.append(
-                f"Review the existing `{field_name}` definition in "
-                f"`{primary['path']}`."
+                f"Review the existing `{field_name}` definition in `{primary['path']}`."
             )
         elif insertion_candidate:
             line_hint = insertion_candidate.get("line_hint")

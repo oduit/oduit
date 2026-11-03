@@ -1060,7 +1060,7 @@ class DemoProcessManager(BaseProcessManager):
 
         except Exception as e:
             result_builder.set_error(
-                f"Failed to execute operation: {str(e)}", "OperationError"
+                f"Failed to execute operation: {e!s}", "OperationError"
             )
 
         return result_builder.finalize()

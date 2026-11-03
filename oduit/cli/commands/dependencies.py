@@ -35,8 +35,7 @@ def _resolve_requested_modules(
     module_list, module_source = resolve_module_names(modules)
     if not module_list:
         raise ValueError(
-            "Either provide module names, pipe module names, "
-            "or use --select-dir option"
+            "Either provide module names, pipe module names, or use --select-dir option"
         )
 
     missing_modules = [
@@ -185,8 +184,7 @@ def list_depends_command(
 
     if not module_list and select_dir is None:
         print_error(
-            "Either provide module names, pipe module names, "
-            "or use --select-dir option"
+            "Either provide module names, pipe module names, or use --select-dir option"
         )
         raise typer.Exit(1) from None
 
@@ -703,8 +701,7 @@ def list_missing_command(
 
     if not module_list and select_dir is None:
         print_error(
-            "Either provide module names, pipe module names, "
-            "or use --select-dir option"
+            "Either provide module names, pipe module names, or use --select-dir option"
         )
         raise typer.Exit(1) from None
 

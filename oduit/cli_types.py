@@ -12,6 +12,8 @@ from typing import Any
 
 from manifestoo_core.odoo_series import OdooSeries
 
+from .branch_database import BranchDatabaseResolution
+
 
 class OutputFormat(str, Enum):
     """Output format options."""
@@ -79,6 +81,8 @@ class GlobalConfig:
     verbose: bool = False
     no_http: bool = False
     env_config: dict[str, Any] | None = None
+    base_env_config: dict[str, Any] | None = None
+    branch_database: BranchDatabaseResolution | None = None
     env_name: str | None = None
     odoo_series: OdooSeries | None = None
     config_source: str | None = None

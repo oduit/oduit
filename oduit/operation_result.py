@@ -566,9 +566,7 @@ class OperationResult:
                     # Only set success to False if the error mentions target modules
                     # or if no target modules are specified
                     target_modules = self.result.get("modules", [])
-                    if not target_modules:
-                        install_info["success"] = False
-                    elif any(
+                    if not target_modules or any(
                         target_module in clean_line for target_module in target_modules
                     ):
                         install_info["success"] = False

@@ -421,6 +421,68 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
                     provider, with_sudo=False
                 ).create_extension_command(extension)
 
+    def test_native_duplicate_and_drop_commands_and_operation_metadata(self):
+        config = {
+            "python_bin": "/usr/bin/python3",
+            "odoo_bin": "/opt/odoo/odoo-bin",
+            "config_file": "/etc/odoo.conf",
+            "data_dir": "/var/lib/odoo",
+            "addons_path": "/opt/odoo/addons",
+            "db_name": "branch_db",
+            "db_user": "odoo",
+            "db_password": "secret",
+            "db_host": "localhost",
+            "db_port": 5432,
+            "db_sslmode": "prefer",
+        }
+        provider = ConfigProvider(config)
+        duplicate = (
+            DatabaseCommandBuilder(provider, with_sudo=False)
+            .duplicate_db_command("base_db", "branch_db", neutralize=True)
+            .build_operation()
+        )
+
+        self.assertEqual(
+            duplicate.command[:3], ["/usr/bin/python3", "/opt/odoo/odoo-bin", "db"]
+        )
+        self.assertIn("--config=/etc/odoo.conf", duplicate.command)
+        self.assertIn("--data-dir=/var/lib/odoo", duplicate.command)
+        self.assertIn("--addons-path=/opt/odoo/addons", duplicate.command)
+        self.assertIn("--db_user=odoo", duplicate.command)
+        self.assertIn("--db_password=secret", duplicate.command)
+        self.assertIn("--db_host=localhost", duplicate.command)
+        self.assertIn("--db_port=5432", duplicate.command)
+        self.assertIn("--db_sslmode=prefer", duplicate.command)
+        duplicate_index = duplicate.command.index("duplicate")
+        self.assertEqual(
+            duplicate.command[duplicate_index + 1 : duplicate_index + 3],
+            ["base_db", "branch_db"],
+        )
+        self.assertIn("--neutralize", duplicate.command)
+        self.assertNotIn("--force", duplicate.command)
+        self.assertEqual(duplicate.operation_type, "duplicate_db")
+        self.assertTrue(duplicate.is_odoo_command)
+        self.assertEqual(duplicate.database, "branch_db")
+        self.assertEqual(duplicate.expected_result_fields["source_database"], "base_db")
+
+        forced = (
+            DatabaseCommandBuilder(provider, with_sudo=False)
+            .duplicate_db_command("base_db", "branch_db", force=True)
+            .build()
+        )
+        self.assertIn("--force", forced)
+
+        dropped = (
+            DatabaseCommandBuilder(provider, with_sudo=False)
+            .native_db_drop_command("old_branch_db")
+            .build_operation()
+        )
+        drop_index = dropped.command.index("drop")
+        self.assertEqual(dropped.command[drop_index + 1], "old_branch_db")
+        self.assertEqual(dropped.operation_type, "odoo_drop_db")
+        self.assertTrue(dropped.is_odoo_command)
+        self.assertEqual(dropped.database, "old_branch_db")
+
 
 class TestOdooOperations(unittest.TestCase):
     def test_parse_install_results_unmet_dependencies(self):

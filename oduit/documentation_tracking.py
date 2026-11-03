@@ -713,10 +713,8 @@ def parse_markdown_table(text: str) -> list[list[str]] | None:
         if "|" not in line:
             return None
         raw = line.strip()
-        if raw.startswith("|"):
-            raw = raw[1:]
-        if raw.endswith("|"):
-            raw = raw[:-1]
+        raw = raw.removeprefix("|")
+        raw = raw.removesuffix("|")
         return [cell.strip() for cell in raw.split("|")]
 
     header = _split(lines[0])

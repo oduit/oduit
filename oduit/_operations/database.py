@@ -216,6 +216,170 @@ class DatabaseOperationsService(OperationsService):
             )
         return ("DatabaseExtensionError", [])
 
+    @staticmethod
+    def _native_db_command_unavailable(output: str) -> bool:
+        lowered = output.lower()
+        command_error = any(
+            marker in lowered
+            for marker in (
+                "unknown command",
+                "invalid choice",
+                "no such command",
+                "unrecognized arguments",
+            )
+        )
+        return command_error and any(
+            name in lowered for name in ("duplicate", "drop", "db")
+        )
+
+    def _run_native_db_operation(
+        self,
+        builder_factory: Any,
+        *,
+        operation: str,
+        error_type: str,
+        result_fields: dict[str, Any],
+        suppress_output: bool,
+        raise_on_error: bool,
+        odoo_series: Any | None,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "success": False,
+            "return_code": 1,
+            "operation": operation,
+            **result_fields,
+            "command": [],
+            "stdout": "",
+            "stderr": "",
+        }
+        major = self._series_major(odoo_series)
+        if major is not None and major < 17:
+            result.update(
+                {
+                    "error": (
+                        "Branch database management requires an Odoo version with "
+                        "native `odoo-bin db` operations."
+                    ),
+                    "error_type": "BranchDatabaseUnsupportedOdooVersion",
+                    "remediation": [
+                        (
+                            "Use Odoo 17 or newer, or manage branch databases "
+                            "manually and disable [branch_db]."
+                        )
+                    ],
+                }
+            )
+        else:
+            try:
+                operation_spec = builder_factory().build_operation()
+                process_result = (
+                    self.operations.process_manager.run_operation(
+                        operation_spec,
+                        verbose=self.operations.verbose,
+                        suppress_output=suppress_output,
+                    )
+                    or {}
+                )
+                stdout = process_result.get("stdout", "")
+                stderr = process_result.get("stderr", "")
+                error = str(process_result.get("error") or stderr or stdout).strip()
+                success = bool(process_result.get("success", False))
+                result.update(
+                    {
+                        "success": success,
+                        "return_code": process_result.get(
+                            "return_code", 0 if success else 1
+                        ),
+                        "command": operation_spec.command,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                    }
+                )
+                if not success:
+                    if self._native_db_command_unavailable(error):
+                        result["error_type"] = "BranchDatabaseUnsupportedOdooVersion"
+                        result["remediation"] = [
+                            (
+                                "Branch-aware database management requires an "
+                                "Odoo version with `odoo-bin db duplicate` "
+                                "and `db drop`."
+                            ),
+                            (
+                                "Create/manage branch databases manually or "
+                                "disable [branch_db]."
+                            ),
+                        ]
+                    else:
+                        result["error_type"] = error_type
+                    result["error"] = error or "Odoo native database operation failed"
+            except (ConfigError, ValueError) as error:
+                result["error"] = str(error)
+                result["error_type"] = type(error).__name__
+
+        if raise_on_error and not result["success"]:
+            raise DatabaseOperationError(
+                result.get("error", "Odoo native database operation failed"),
+                operation_result=result,
+            )
+        return result
+
+    def duplicate_db(
+        self,
+        target_database: str,
+        *,
+        source_database: str | None = None,
+        neutralize: bool = False,
+        force: bool = False,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        odoo_series: Any | None = None,
+    ) -> dict[str, Any]:
+        """Duplicate a database through Odoo's native command, including filestore."""
+        source = source_database or self.operations.config.get_optional("db_name")
+        fields = {
+            "source_database": source,
+            "target_database": target_database,
+            "neutralized": neutralize,
+            "forced": force,
+        }
+        return self._run_native_db_operation(
+            lambda: DatabaseCommandBuilder(
+                self.operations.config, with_sudo=False
+            ).duplicate_db_command(
+                str(source or ""),
+                target_database,
+                neutralize=neutralize,
+                force=force,
+            ),
+            operation="duplicate_database",
+            error_type="BranchDatabaseDuplicateError",
+            result_fields=fields,
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
+            odoo_series=odoo_series,
+        )
+
+    def drop_db_with_filestore(
+        self,
+        database: str,
+        *,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        odoo_series: Any | None = None,
+    ) -> dict[str, Any]:
+        """Drop a database and its filestore through Odoo's native command."""
+        return self._run_native_db_operation(
+            lambda: DatabaseCommandBuilder(
+                self.operations.config, with_sudo=False
+            ).native_db_drop_command(database),
+            operation="drop_db_with_filestore",
+            error_type="BranchDatabaseDropError",
+            result_fields={"database": database},
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
+            odoo_series=odoo_series,
+        )
+
     def install_db_extension(
         self,
         extension: str,

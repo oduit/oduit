@@ -1386,7 +1386,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         """Build an idempotent command to enable an extension in db_name."""
         self.config.validate_keys(["db_name"], "database extension command")
         db_name = self.config.get_required("db_name")
-        query = "CREATE EXTENSION IF NOT EXISTS " f"{self._sql_identifier(extension)};"
+        query = f"CREATE EXTENSION IF NOT EXISTS {self._sql_identifier(extension)};"
         tokens = [
             "psql",
             "-X",
@@ -1485,6 +1485,32 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
 
         return self
 
+    def _append_native_db_prefix(self) -> None:
+        self.config.validate_keys(["odoo_bin"], "native Odoo database command")
+        if python_bin := self.config.get_optional("python_bin"):
+            self._set_command(str(python_bin))
+        self._set_command(self.config.get_required("odoo_bin"))
+        self._set_command("db")
+
+        if config_file := self.config.get_optional("config_file"):
+            self._set_parameter("config", str(config_file))
+        if data_dir := self.config.get_optional("data_dir"):
+            self._set_parameter("data-dir", str(data_dir))
+        if addons_path := self.config.get_optional("addons_path"):
+            expanded_path = BaseOdooCommandBuilder(self.config)._expand_addons_path(
+                str(addons_path)
+            )
+            self._set_parameter("addons-path", expanded_path)
+        for key in (
+            "db_user",
+            "db_password",
+            "db_host",
+            "db_port",
+            "db_sslmode",
+        ):
+            if value := self.config.get_optional(key):
+                self._set_parameter(key, str(value))
+
     def native_db_init_command(
         self,
         *,
@@ -1501,30 +1527,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         if with_demo and without_demo:
             raise ValueError("--with-demo and --without-demo are mutually exclusive")
 
-        if python_bin := self.config.get_optional("python_bin"):
-            self._set_command(str(python_bin))
-        self._set_command(self.config.get_required("odoo_bin"))
-        self._set_command("db")
-
-        if config_file := self.config.get_optional("config_file"):
-            self._set_parameter("config", str(config_file))
-        if data_dir := self.config.get_optional("data_dir"):
-            self._set_parameter("data-dir", str(data_dir))
-        if addons_path := self.config.get_optional("addons_path"):
-            expanded_path = BaseOdooCommandBuilder(self.config)._expand_addons_path(
-                str(addons_path)
-            )
-            self._set_parameter("addons-path", expanded_path)
-        if db_user := self.config.get_optional("db_user"):
-            self._set_parameter("db_user", str(db_user))
-        if db_password := self.config.get_optional("db_password"):
-            self._set_parameter("db_password", str(db_password))
-        if db_host := self.config.get_optional("db_host"):
-            self._set_parameter("db_host", str(db_host))
-        if db_port := self.config.get_optional("db_port"):
-            self._set_parameter("db_port", str(db_port))
-        if db_sslmode := self.config.get_optional("db_sslmode"):
-            self._set_parameter("db_sslmode", str(db_sslmode))
+        self._append_native_db_prefix()
 
         self._set_command("init")
         self._set_value(str(self.config.get_required("db_name")))
@@ -1542,6 +1545,42 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         if password:
             self._set_parameter("password", str(password), sep=" ")
 
+        return self
+
+    def duplicate_db_command(
+        self,
+        source_database: str,
+        target_database: str,
+        *,
+        neutralize: bool = False,
+        force: bool = False,
+    ) -> "DatabaseCommandBuilder":
+        """Build Odoo's native database duplicate command."""
+        if (
+            not source_database
+            or not target_database
+            or source_database == target_database
+        ):
+            raise ValueError(
+                "source_database and target_database must be distinct and non-empty"
+            )
+        self._append_native_db_prefix()
+        self._set_command("duplicate")
+        self._set_value(source_database)
+        self._set_value(target_database)
+        if neutralize:
+            self._set_flag("neutralize")
+        if force:
+            self._set_flag("force")
+        return self
+
+    def native_db_drop_command(self, database: str) -> "DatabaseCommandBuilder":
+        """Build Odoo's native database drop command, including filestore cleanup."""
+        if not database:
+            raise ValueError("database must be non-empty")
+        self._append_native_db_prefix()
+        self._set_command("drop")
+        self._set_value(database)
         return self
 
     def init_command(
@@ -1638,7 +1677,6 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
         return self._build_command_list()
 
     def build_operation(self) -> CommandOperation:
-        # Determine operation type based on command structure
         operation_type = "create_db"
         for part in self._command_parts:
             if part.get("type") == "command":
@@ -1646,40 +1684,65 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
                 if "dropdb" in command_value:
                     operation_type = "drop_db"
                     break
-                elif "createdb" in command_value:
+                if "createdb" in command_value:
                     operation_type = "create_db"
                     break
-                elif "create role" in command_value:
+                if "create role" in command_value:
                     operation_type = "create_role"
                     break
-                elif "alter role" in command_value:
+                if "alter role" in command_value:
                     operation_type = "alter_role"
                     break
-                elif "create extension" in command_value:
+                if "create extension" in command_value:
                     operation_type = "create_extension"
                     break
-                elif "psql -l" in command_value:
+                if "psql -l" in command_value:
                     operation_type = "list_db"
                     break
-                elif "pg_database_collation_actual_version" in command_value:
+                if "pg_database_collation_actual_version" in command_value:
                     operation_type = "collation_health"
                     break
-                elif "from pg_database" in command_value or "grep -qw" in command_value:
+                if "from pg_database" in command_value or "grep -qw" in command_value:
                     operation_type = "exists_db"
                     break
             elif part.get("type") == "flag" and part.get("key") == "l":
                 operation_type = "list_db"
                 break
 
+        command = self.build()
+        native_metadata: dict[str, Any] = {}
+        database = self.config.get_optional("db_name")
+        for index, token in enumerate(command):
+            if token not in {"duplicate", "drop"} or "db" not in command[:index]:
+                continue
+            if token == "duplicate" and index + 2 < len(command):
+                operation_type = "duplicate_db"
+                source_database = command[index + 1]
+                target_database = command[index + 2]
+                database = target_database
+                native_metadata = {
+                    "source_database": source_database,
+                    "target_database": target_database,
+                    "neutralized": "--neutralize" in command,
+                    "forced": "--force" in command,
+                }
+            elif token == "drop" and index + 1 < len(command):
+                operation_type = "odoo_drop_db"
+                database = command[index + 1]
+                native_metadata = {"database": database, "filestore_removed": True}
+            break
+
+        expected_result_fields = {
+            "database": database,
+            "with_sudo": self.with_sudo,
+        }
+        expected_result_fields.update(native_metadata)
         return CommandOperation(
-            command=self.build(),
+            command=command,
             operation_type=operation_type,
-            database=self.config.get_optional("db_name"),
+            database=database,
             modules=[],
-            is_odoo_command=False,
-            expected_result_fields={
-                "database": self.config.get_optional("db_name"),
-                "with_sudo": self.with_sudo,
-            },
+            is_odoo_command=operation_type in {"duplicate_db", "odoo_drop_db"},
+            expected_result_fields=expected_result_fields,
             result_parsers=[],
         )

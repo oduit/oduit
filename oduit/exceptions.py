@@ -8,8 +8,6 @@
 class ConfigError(Exception):
     """Error for missing configuration values"""
 
-    pass
-
 
 class OdooOperationError(Exception):
     """Base exception for Odoo operations"""
@@ -22,34 +20,22 @@ class OdooOperationError(Exception):
 class ModuleOperationError(OdooOperationError):
     """Base exception for module operations"""
 
-    pass
-
 
 class ModuleUpdateError(ModuleOperationError):
     """Raised when module update fails"""
-
-    pass
 
 
 class ModuleInstallError(ModuleOperationError):
     """Raised when module installation fails"""
 
-    pass
-
 
 class ModuleUninstallError(ModuleOperationError):
     """Raised when module uninstall fails"""
-
-    pass
 
 
 class ModuleNotFoundError(ModuleOperationError):
     """Raised when module doesn't exist"""
 
-    pass
-
 
 class DatabaseOperationError(OdooOperationError):
     """Raised when database operations fail"""
-
-    pass

@@ -251,9 +251,7 @@ def build_doctor_report(
 
         for path in configured_paths:
             absolute_path = os.path.abspath(path)
-            if not os.path.exists(absolute_path):
-                invalid_paths.append(path)
-            elif not os.path.isdir(absolute_path):
+            if not os.path.exists(absolute_path) or not os.path.isdir(absolute_path):
                 invalid_paths.append(path)
             else:
                 valid_paths.append(absolute_path)

@@ -294,9 +294,7 @@ class TestConfigLoader(unittest.TestCase):
         mock_expanduser.return_value = "/mocked/home/.config/oduit"
 
         def exists_side_effect(path):
-            if path.endswith("toml_env.toml"):
-                return True
-            elif path.endswith("yaml_env.yaml"):
+            if path.endswith("toml_env.toml") or path.endswith("yaml_env.yaml"):
                 return True
             return False
 
@@ -464,6 +462,28 @@ db_name = "test_db"
 
             finally:
                 os.chdir(original_cwd)
+
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    def test_load_sectioned_toml_preserves_branch_db(
+        self, mock_expanduser, mock_exists, mock_file
+    ):
+        mock_expanduser.return_value = "/mocked/home/.config/oduit"
+        mock_exists.side_effect = lambda path: path.endswith("test.toml")
+        with patch.object(ConfigLoader, "_import_toml_libs") as mock_import:
+            toml = MagicMock()
+            toml.load.return_value = {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {"db_name": "project_dev"},
+                "branch_db": {"enabled": True, "base_branch": "main"},
+            }
+            mock_import.return_value = (toml, None)
+            details = ConfigLoader().load_config_details("test")
+
+        expected = {"enabled": True, "base_branch": "main"}
+        self.assertEqual(details.config["branch_db"], expected)
+        self.assertEqual(details.canonical_config["branch_db"], expected)
 
 
 if __name__ == "__main__":

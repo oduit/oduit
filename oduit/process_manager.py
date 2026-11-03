@@ -171,7 +171,7 @@ class ProcessManager(BaseProcessManager):
                 )
 
                 # Add warnings if captured
-                if "warnings" in process_result and process_result["warnings"]:
+                if process_result.get("warnings"):
                     result_builder.set_custom_data(warnings=process_result["warnings"])
 
                 # Apply automatic parsing based on operation metadata
@@ -184,7 +184,7 @@ class ProcessManager(BaseProcessManager):
 
         except Exception as e:
             result_builder.set_error(
-                f"Failed to execute operation: {str(e)}", "OperationError"
+                f"Failed to execute operation: {e!s}", "OperationError"
             )
 
         return result_builder.finalize()

@@ -233,6 +233,15 @@ from .commands.addons import (
     list_manifest_values_command as _list_manifest_values_command_impl,
 )
 from .commands.addons import print_manifest_command as _print_manifest_command_impl
+from .commands.branch_database import (
+    branch_database_ensure_command as _branch_database_ensure_command_impl,
+)
+from .commands.branch_database import (
+    branch_database_gc_command as _branch_database_gc_command_impl,
+)
+from .commands.branch_database import (
+    branch_database_status_command as _branch_database_status_command_impl,
+)
 from .commands.database import create_db_command as _create_db_command_impl
 from .commands.database import edit_config_command as _edit_config_command_impl
 from .commands.database import extension_db_command as _extension_db_command_impl
@@ -446,6 +455,9 @@ _app_runtime_context = _bootstrap_support.build_registration_helpers(
     get_addons_path_manager_cls=lambda: AddonsPathManager,
     get_module_manager_cls=lambda: ModuleManager,
     get_odoo_operations_cls=lambda: OdooOperations,
+    require_cli_runtime_db_mutation_fn=_require_cli_runtime_db_mutation_impl,
+    confirmation_required_error_fn=confirmation_required_error,
+    print_command_error_result_fn=print_command_error_result,
 )
 
 _agent_helper_context = _agent_support.build_registration_helpers(
@@ -523,6 +535,9 @@ _app_registration_context = AppRegistrationContext(
     ),
     implementations=AppCommandImplementations(
         doctor_command_impl=_doctor_command_impl,
+        branch_database_status_command_impl=_branch_database_status_command_impl,
+        branch_database_ensure_command_impl=_branch_database_ensure_command_impl,
+        branch_database_gc_command_impl=_branch_database_gc_command_impl,
         run_command_impl=_run_command_impl,
         shell_command_impl=_shell_command_impl,
         install_command_impl=_install_command_impl,

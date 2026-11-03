@@ -296,19 +296,21 @@ class TestOdooEmbeddedManager(unittest.TestCase):
         mock_odoo.tools.config = mock_tools_config
         mock_odoo.tools.config.parse_config = MagicMock()
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "odoo": mock_odoo,
-                "odoo.service.server": MagicMock(),
-                "odoo.tools.config": mock_tools_config,
-                "psycopg2": MagicMock(),
-            },
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "odoo": mock_odoo,
+                    "odoo.service.server": MagicMock(),
+                    "odoo.tools.config": mock_tools_config,
+                    "psycopg2": MagicMock(),
+                },
+            ),
+            patch.object(self.manager, "_export_translation") as mock_export,
         ):
-            with patch.object(self.manager, "_export_translation") as mock_export:
-                result = self.manager._run_odoo_server(
-                    ["--translate-out=/path/to/export.po"]
-                )
+            result = self.manager._run_odoo_server(
+                ["--translate-out=/path/to/export.po"]
+            )
 
         mock_export.assert_called_once()
         self.assertEqual(result, 0)

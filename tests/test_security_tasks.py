@@ -153,7 +153,7 @@ class TestSec3TrustedExecution(unittest.TestCase):
 
         class FakeEnvironment:
             def __getitem__(self, item: str) -> Any:
-                return types.SimpleNamespace(context_get=lambda: {})
+                return types.SimpleNamespace(context_get=dict)
 
         odoo_stub = types.SimpleNamespace(
             SUPERUSER_ID=1,
@@ -210,7 +210,7 @@ class TestSec3TrustedExecution(unittest.TestCase):
 
         class FakeEnvironment:
             def __getitem__(self, item: str) -> Any:
-                return types.SimpleNamespace(context_get=lambda: {})
+                return types.SimpleNamespace(context_get=dict)
 
         odoo_stub = types.ModuleType("odoo")
         odoo_stub.__path__ = []

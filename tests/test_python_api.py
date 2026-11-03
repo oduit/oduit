@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import oduit.source_locator as source_locator
 from oduit import (
     AddonDocumentation,
     AddonInfo,
@@ -24,6 +23,7 @@ from oduit import (
     SearchCountResult,
     TechnicalDocumentation,
     UpdatePlan,
+    source_locator,
 )
 from oduit.api_models import DocumentationRuntimeInventory, ModelViewInventory
 from oduit.exceptions import ConfigError
@@ -133,19 +133,21 @@ def test_export_translations_fails_when_series_cannot_be_resolved(
     addons_dir.mkdir()
     ops = OdooOperations(_config(tmp_path, str(addons_dir)))
 
-    with patch.object(
-        ops,
-        "get_odoo_version",
-        return_value={"success": False, "version": None},
+    with (
+        patch.object(
+            ops,
+            "get_odoo_version",
+            return_value={"success": False, "version": None},
+        ),
+        pytest.raises(ConfigError, match="Unable to determine the Odoo series"),
     ):
-        with pytest.raises(ConfigError, match="Unable to determine the Odoo series"):
-            ops.export_translations(
-                modules=["sale"],
-                languages=["de_DE"],
-                output="/tmp/sale-de.po",
-                suppress_output=True,
-                raise_on_error=True,
-            )
+        ops.export_translations(
+            modules=["sale"],
+            languages=["de_DE"],
+            output="/tmp/sale-de.po",
+            suppress_output=True,
+            raise_on_error=True,
+        )
 
 
 def test_import_translations_runs_once_for_native_multi_file_import(
@@ -244,25 +246,27 @@ def test_import_translations_raise_on_error_raises_operation_error(
     translation_file.write_text('msgid ""\nmsgstr ""\n')
     ops = OdooOperations(_config(tmp_path, str(addons_dir)))
 
-    with patch.object(
-        ops.process_manager,
-        "run_operation",
-        return_value={
-            "success": False,
-            "return_code": 1,
-            "stdout": "",
-            "stderr": "",
-            "output": "",
-            "error": "import failed",
-        },
+    with (
+        patch.object(
+            ops.process_manager,
+            "run_operation",
+            return_value={
+                "success": False,
+                "return_code": 1,
+                "stdout": "",
+                "stderr": "",
+                "output": "",
+                "error": "import failed",
+            },
+        ),
+        pytest.raises(OdooOperationError, match="import failed"),
     ):
-        with pytest.raises(OdooOperationError, match="import failed"):
-            ops.import_translations(
-                files=[str(translation_file)],
-                language="de_DE",
-                suppress_output=True,
-                raise_on_error=True,
-            )
+        ops.import_translations(
+            files=[str(translation_file)],
+            language="de_DE",
+            suppress_output=True,
+            raise_on_error=True,
+        )
 
 
 def test_export_module_language_delegates_to_export_translations(
@@ -1352,21 +1356,23 @@ def test_uninstall_module_raise_on_error_raises(tmp_path: Path) -> None:
     config["allow_uninstall"] = True
     ops = OdooOperations(config)
 
-    with patch.object(
-        ops,
-        "get_addon_install_state",
-        return_value=AddonInstallState(
-            success=True,
-            operation="get_addon_install_state",
-            module="sale",
-            record_found=True,
-            state="uninstalled",
-            installed=False,
-            database="test_db",
+    with (
+        patch.object(
+            ops,
+            "get_addon_install_state",
+            return_value=AddonInstallState(
+                success=True,
+                operation="get_addon_install_state",
+                module="sale",
+                record_found=True,
+                state="uninstalled",
+                installed=False,
+                database="test_db",
+            ),
         ),
+        pytest.raises(ModuleUninstallError),
     ):
-        with pytest.raises(ModuleUninstallError):
-            ops.uninstall_module("sale", allow_uninstall=True, raise_on_error=True)
+        ops.uninstall_module("sale", allow_uninstall=True, raise_on_error=True)
 
 
 @pytest.mark.parametrize(

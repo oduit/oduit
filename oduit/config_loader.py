@@ -367,7 +367,7 @@ class ConfigLoader:
             oduit_config["proxy_mode"] = self._get_boolean_value(options, "proxy_mode")
         if "xmlrpc_interface" in options:
             oduit_config["xmlrpc_interface"] = options["xmlrpc_interface"]
-        if "pidfile" in options and options["pidfile"]:
+        if options.get("pidfile"):
             oduit_config["pidfile"] = options["pidfile"]
 
     def _parse_limits_config(
@@ -408,7 +408,7 @@ class ConfigLoader:
             oduit_config["addons_path"] = options["addons_path"]
         if "data_dir" in options:
             oduit_config["data_dir"] = options["data_dir"]
-        if "pg_path" in options and options["pg_path"]:
+        if options.get("pg_path"):
             oduit_config["pg_path"] = options["pg_path"]
 
     def _parse_logging_config(

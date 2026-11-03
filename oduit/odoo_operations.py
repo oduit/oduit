@@ -353,6 +353,44 @@ class OdooOperations:
             raise_on_error=raise_on_error,
         )
 
+    def duplicate_db(
+        self,
+        target_database: str,
+        *,
+        source_database: str | None = None,
+        neutralize: bool = False,
+        force: bool = False,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        odoo_series: OdooSeries | None = None,
+    ) -> dict[str, Any]:
+        """Duplicate a database through Odoo's native command."""
+        return self._database_service.duplicate_db(
+            target_database,
+            source_database=source_database,
+            neutralize=neutralize,
+            force=force,
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
+            odoo_series=odoo_series,
+        )
+
+    def drop_db_with_filestore(
+        self,
+        database: str,
+        *,
+        suppress_output: bool = False,
+        raise_on_error: bool = False,
+        odoo_series: OdooSeries | None = None,
+    ) -> dict[str, Any]:
+        """Drop a database and its filestore through Odoo's native command."""
+        return self._database_service.drop_db_with_filestore(
+            database,
+            suppress_output=suppress_output,
+            raise_on_error=raise_on_error,
+            odoo_series=odoo_series,
+        )
+
     def create_db(
         self,
         with_sudo: bool = True,

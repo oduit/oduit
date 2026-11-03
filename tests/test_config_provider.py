@@ -395,6 +395,25 @@ class TestConfigProvider(unittest.TestCase):
             {"allowed_addon_dirs": ["./addons"]},
         )
 
+    def test_branch_db_is_preserved_as_oduit_only_configuration(self):
+        branch_db = {"enabled": True}
+        provider = ConfigProvider(
+            {
+                "binaries": {"python_bin": "/usr/bin/python3"},
+                "odoo_params": {"db_name": "project_dev"},
+                "branch_db": branch_db,
+            }
+        )
+
+        self.assertEqual(provider.get_optional("branch_db"), branch_db)
+        self.assertTrue(
+            all(
+                "branch-db" not in parameter
+                for parameter in provider.get_odoo_params_list()
+            )
+        )
+        self.assertEqual(provider.to_sectioned_dict()["branch_db"], branch_db)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -55,7 +55,7 @@ def resolve_addon_documentation_target(
 ) -> AddonDocTarget:
     """Resolve a technical-documentation target to one concrete addon root."""
 
-    raw_target = target[1:] if target.startswith("@") else target
+    raw_target = target.removeprefix("@")
     requested_path = Path(raw_target).expanduser()
     base_dir = (
         _resolve_path(Path(path_base_dir).expanduser())

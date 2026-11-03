@@ -53,9 +53,11 @@ def register_inspection_commands(context: AppRegistrationContext) -> None:  # no
             raise typer.Exit(1) from None
 
     def _print_value(value: Any) -> None:
-        if isinstance(value, str):
-            print(value)
-        elif isinstance(value, int | float) and not isinstance(value, bool):
+        if (
+            isinstance(value, str)
+            or isinstance(value, int | float)
+            and not isinstance(value, bool)
+        ):
             print(value)
         elif isinstance(value, bool):
             print("true" if value else "false")

@@ -158,6 +158,25 @@ class TestCLICommands(unittest.TestCase):
             self.assertEqual(result.exit_code, 1)
             self.assertIn("No command specified", result.output)
 
+    def test_run_and_shell_accept_allow_mutation(self):
+        for command in ("run", "shell"):
+            with self.subTest(command=command):
+                result = self.runner.invoke(app, [command, "--help"])
+
+                self.assertEqual(result.exit_code, 0)
+                self.assertIn("--allow-mutation", result.output)
+
+    def test_branch_db_commands_are_registered_in_inventory(self):
+        from oduit.cli.command_inventory import get_top_level_command_inventory
+
+        for command in ("status", "ensure", "gc"):
+            with self.subTest(command=command):
+                result = self.runner.invoke(app, ["branch-db", command, "--help"])
+                self.assertEqual(result.exit_code, 0)
+
+        names = {entry.name for entry in get_top_level_command_inventory()}
+        self.assertIn("branch-db", names)
+
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
     def test_run_command(self, mock_config_loader_class, mock_odoo_ops):
@@ -1321,6 +1340,41 @@ class TestCLICommands(unittest.TestCase):
         )
         self.assertIn("module1", result.output)
         self.assertIn("module2", result.output)
+
+    @patch("oduit.cli.app.OdooOperations")
+    @patch("oduit.cli.app.ConfigLoader")
+    def test_read_only_list_does_not_provision_branch_database(
+        self, mock_config_loader_class, mock_odoo_ops
+    ):
+        mock_loader_instance = MagicMock()
+        mock_loader_instance.load_config.return_value = {
+            **self.mock_config,
+            "branch_db": {"enabled": True, "base_branch": "main"},
+        }
+        mock_config_loader_class.return_value = mock_loader_instance
+        mock_ops_instance = MagicMock()
+        mock_ops_instance.list_installed_addons.return_value = InstalledAddonInventory(
+            success=True,
+            operation="list_installed_addons",
+            addons=[],
+            total=0,
+            states=["installed"],
+        )
+        mock_odoo_ops.return_value = mock_ops_instance
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            git_dir = root / ".git"
+            git_dir.mkdir()
+            (git_dir / "HEAD").write_text("ref: refs/heads/feature\n", encoding="utf-8")
+            with patch("oduit.cli.bootstrap_support.Path.cwd", return_value=root):
+                result = self.runner.invoke(
+                    app, ["--env", "dev", "list-installed-addons"]
+                )
+
+        self.assertEqual(result.exit_code, 0)
+        mock_ops_instance.list_installed_addons.assert_called_once()
+        mock_ops_instance.duplicate_db.assert_not_called()
 
     @patch("oduit.cli.app.OdooOperations")
     @patch("oduit.cli.app.ConfigLoader")
@@ -3993,8 +4047,7 @@ class TestOperationSetCLI(unittest.TestCase):
             mod_dir = addons_root / name
             mod_dir.mkdir(parents=True)
             (mod_dir / "__manifest__.py").write_text(
-                f'{{"name": "{name}", "version": "19.0.1.0.0", '
-                f'"depends": ["base"]}}'
+                f'{{"name": "{name}", "version": "19.0.1.0.0", "depends": ["base"]}}'
             )
 
         # Create test file
@@ -4837,8 +4890,7 @@ class TestOperationSetCLI(unittest.TestCase):
 
         set_path = self.sets_dir / "tests.toml"
         set_path.write_text(
-            'kind = "test"\n[test]\ninstall = ["has_base"]\n'
-            'test_tags = ["/has_base"]\n'
+            'kind = "test"\n[test]\ninstall = ["has_base"]\ntest_tags = ["/has_base"]\n'
         )
 
         result = self.runner.invoke(

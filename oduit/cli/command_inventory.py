@@ -44,6 +44,7 @@ TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
     "install": HUMAN_ORIENTED,
     "update": HUMAN_ORIENTED,
     "set": HUMAN_ORIENTED,
+    "branch-db": HUMAN_ORIENTED,
     "uninstall": HUMAN_ORIENTED,
     "test": HUMAN_ORIENTED,
     "create-db": HUMAN_ORIENTED,

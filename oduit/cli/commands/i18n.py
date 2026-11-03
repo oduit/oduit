@@ -347,6 +347,7 @@ def i18n_import_command(
     log_level: LogLevel | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    prepare_branch_database_fn: Any,
     module_manager_cls: type[ModuleManager],
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
@@ -389,6 +390,12 @@ def i18n_import_command(
         print_command_error_result_fn=print_command_error_result_fn,
         confirmation_required_error_fn=confirmation_required_error_fn,
     )
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation=operation,
+        action="translation import",
+    )
     ops = build_odoo_operations_fn(global_config)
     result = ops.import_translations(
         files=normalized_files,
@@ -425,6 +432,7 @@ def i18n_loadlang_command(
     log_level: LogLevel | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    prepare_branch_database_fn: Any,
     module_manager_cls: type[ModuleManager],
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
@@ -464,6 +472,12 @@ def i18n_loadlang_command(
         action="language loading",
         print_command_error_result_fn=print_command_error_result_fn,
         confirmation_required_error_fn=confirmation_required_error_fn,
+    )
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation=operation,
+        action="language loading",
     )
     ops = build_odoo_operations_fn(global_config)
     result = ops.load_languages(

@@ -471,6 +471,43 @@ Plain `test` runs stay read-only; only `test --install/--update`, `agent test-su
 
 A successful test result is proof that at least one test executed. Zero-test results are non-success and identify whether the module was uninstalled, no tests matched, or the runner skipped execution. Plain tests never install modules automatically. When `--install` or `--update` is explicitly requested, oduit performs the mutation, verifies the installed state, and only then starts the test process.
 
+## Branch-aware databases
+
+Branch-specific databases are opt-in. Add `[branch_db]` to an environment config or `.oduit.toml`:
+
+```toml
+[odoo_params]
+db_name = "project_dev"
+
+[branch_db]
+enabled = true
+base_branch = "main"
+auto_create = true
+neutralize = false
+```
+
+`odoo_params.db_name` remains the base database. On `base_branch`, oduit uses it directly. On another local Git branch, oduit selects a deterministic branch-specific name. The `[branch_db]` section is oduit-only and is never passed to Odoo. Enabled branch mode requires a local branch checkout; detached `HEAD` is rejected. Git worktrees use their worktree-specific branch and share managed state through the repository's common Git directory.
+
+When a supported runtime workflow needs a missing feature-branch database and `auto_create = true`, oduit duplicates the base database with Odoo's native database command so the filestore is handled too. Set `neutralize = true` to request Odoo database neutralization during duplication. Existing branch databases are reused, never overwritten, and are not automatically refreshed from the base database. `auto_create = false` prevents automatic cloning, and `branch-db ensure` reports a missing database rather than bypassing that setting.
+
+`run` and `shell` accept `--allow-mutation` for first-use cloning. Include it when the environment's `needs_mutation_flag` policy requires authorization. `write_protect_db = true` blocks database mutations, including cloning and GC deletion, even when the flag is provided. Reusing an existing branch database does not require mutation authorization. Read-only inspection and agent workflows, including `branch-db status`, do not provision databases.
+
+Inspect or prepare the current branch database and review cleanup candidates with:
+
+```bash
+oduit --env dev branch-db status
+oduit --env dev branch-db ensure --allow-mutation
+oduit --env dev branch-db gc
+```
+
+GC is a dry run by default. It considers only stale databases recorded as created by oduit, and preserves the base database, the current branch database, and unregistered databases. Review the candidates before explicitly applying cleanup:
+
+```bash
+oduit --env dev branch-db gc --apply --allow-mutation
+```
+
+The mutation flag is needed for `ensure` or GC apply only when the configured policy requires it. Cleanup uses Odoo's native database drop operation and never runs automatically. Git branch merges do not merge or refresh Odoo databases. After switching branches, restart any already-running Odoo server so it uses the selected branch's code and database.
+
 ## Inspection and Agent Workflows
 
 Use the first-class inspection commands before dropping to raw shell snippets.

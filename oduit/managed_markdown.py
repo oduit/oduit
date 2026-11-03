@@ -168,7 +168,7 @@ def parse_generated_blocks(markdown: str) -> list[ParsedMarkdownBlock]:
             metadata = json.loads(start_match.group(1))
         except json.JSONDecodeError as exc:
             raise ValueError(
-                f"Malformed generated block marker at line " f"{start_line}: {exc}"
+                f"Malformed generated block marker at line {start_line}: {exc}"
             ) from exc
         if not isinstance(metadata, dict):
             raise ValueError(

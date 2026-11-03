@@ -415,6 +415,95 @@ class TestDatabaseOperationsService(unittest.TestCase):
         self.assertIsNone(result["healthy"])
         self.assertIn("postgres", result["error"])
 
+    def test_duplicate_db_returns_structured_native_operation_result(self):
+        ops = self._build_ops()
+
+        result = ops.duplicate_db(
+            "feature_db",
+            source_database="test_db",
+            neutralize=True,
+            suppress_output=True,
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["operation"], "duplicate_database")
+        self.assertEqual(result["source_database"], "test_db")
+        self.assertEqual(result["target_database"], "feature_db")
+        self.assertTrue(result["neutralized"])
+        self.assertFalse(result["forced"])
+        operation = ops.process_manager.run_operation.call_args.args[0]
+        self.assertEqual(operation.operation_type, "duplicate_db")
+        self.assertIn("duplicate", result["command"])
+        self.assertNotIn("--force", result["command"])
+
+    def test_duplicate_db_defaults_source_and_forwards_force(self):
+        ops = self._build_ops()
+
+        result = ops.duplicate_db("feature_db", force=True, suppress_output=True)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["source_database"], "test_db")
+        self.assertTrue(result["forced"])
+        self.assertIn("--force", result["command"])
+
+    def test_duplicate_db_failure_and_raise_on_error(self):
+        from oduit.exceptions import DatabaseOperationError
+
+        ops = self._build_ops()
+        ops.process_manager.run_operation.return_value = {
+            "success": False,
+            "return_code": 1,
+            "stdout": "",
+            "stderr": "duplicate failed",
+        }
+
+        result = ops.duplicate_db("feature_db", suppress_output=True)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "duplicate failed")
+        self.assertEqual(result["error_type"], "BranchDatabaseDuplicateError")
+
+        with self.assertRaises(DatabaseOperationError) as context:
+            ops.duplicate_db("feature_db", suppress_output=True, raise_on_error=True)
+        self.assertEqual(
+            context.exception.operation_result["operation"], "duplicate_database"
+        )
+
+    def test_duplicate_db_reports_unsupported_version_or_command(self):
+        ops = self._build_ops()
+
+        result = ops.duplicate_db(
+            "feature_db",
+            odoo_series=SimpleNamespace(value="16.0"),
+            suppress_output=True,
+        )
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error_type"], "BranchDatabaseUnsupportedOdooVersion")
+        ops.process_manager.run_operation.assert_not_called()
+
+        ops = self._build_ops()
+        ops.process_manager.run_operation.return_value = {
+            "success": False,
+            "return_code": 2,
+            "stdout": "",
+            "stderr": "unknown command: duplicate",
+        }
+        result = ops.duplicate_db("feature_db", suppress_output=True)
+        self.assertEqual(result["error_type"], "BranchDatabaseUnsupportedOdooVersion")
+
+    def test_drop_db_with_filestore_uses_native_odoo_drop(self):
+        ops = self._build_ops()
+
+        result = ops.drop_db_with_filestore("old_feature_db", suppress_output=True)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["operation"], "drop_db_with_filestore")
+        self.assertEqual(result["database"], "old_feature_db")
+        operation = ops.process_manager.run_operation.call_args.args[0]
+        self.assertEqual(operation.operation_type, "odoo_drop_db")
+        self.assertIn("drop", result["command"])
+        self.assertIn("old_feature_db", result["command"])
+
 
 if __name__ == "__main__":
     unittest.main()

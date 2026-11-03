@@ -43,7 +43,7 @@ def handle_no_subcommand(
         print("  print-config       Print environment configuration")
         print("  edit-config        Open active configuration file")
         print("  agent ...          Structured agent-first inspection commands")
-        print("")
+        print()
         print("Examples:")
         print("  oduit run                         # Run with local .oduit.toml")
         print("  oduit test --test-tags /sale      # Test sale module")
@@ -51,9 +51,9 @@ def handle_no_subcommand(
         raise typer.Exit(1) from None
 
     print_error_fn("No command specified and no .oduit.toml found in current directory")
-    print("")
+    print()
     print("Usage: oduit [--env ENV] COMMAND [arguments]")
-    print("")
+    print()
     print("Available commands:")
     print(
         "  init, run, shell, install, update, test, create-db, list-db, "
@@ -65,7 +65,7 @@ def handle_no_subcommand(
         "list-duplicates"
     )
     print("  export-lang, print-config, edit-config, agent")
-    print("")
+    print()
     print("Examples:")
     print("  oduit --env dev run               # Run Odoo server")
     print("  oduit --env dev update sale       # Update module 'sale'")

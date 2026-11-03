@@ -16,6 +16,9 @@ ResolveCommandEnvConfigFn = Callable[
 ]
 BuildOdooOperationsFn = Callable[[GlobalConfig], Any]
 BuildDoctorReportFn = Callable[[GlobalConfig], dict[str, Any]]
+PrepareBranchDatabaseFn = Callable[..., GlobalConfig]
+BuildBranchDatabaseManagerFn = Callable[[GlobalConfig], Any]
+EnsureBranchDatabaseFn = Callable[..., dict[str, Any]]
 ResolveAgentGlobalConfigFn = Callable[[typer.Context, str, str], GlobalConfig]
 ResolveAgentOpsFn = Callable[[typer.Context, str, str], tuple[GlobalConfig, Any]]
 
@@ -28,6 +31,9 @@ class AppRuntimeContext:
     resolve_command_env_config_fn: ResolveCommandEnvConfigFn
     build_odoo_operations_fn: BuildOdooOperationsFn
     build_doctor_report_fn: BuildDoctorReportFn
+    prepare_branch_database_fn: PrepareBranchDatabaseFn
+    build_branch_database_manager_fn: BuildBranchDatabaseManagerFn
+    ensure_branch_database_fn: EnsureBranchDatabaseFn
 
 
 @dataclass(frozen=True)
@@ -81,6 +87,9 @@ class AppCommandImplementations:
     """Classic CLI command implementations."""
 
     doctor_command_impl: Any
+    branch_database_status_command_impl: Any
+    branch_database_ensure_command_impl: Any
+    branch_database_gc_command_impl: Any
     run_command_impl: Any
     shell_command_impl: Any
     install_command_impl: Any

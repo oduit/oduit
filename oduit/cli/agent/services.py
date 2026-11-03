@@ -1,12 +1,42 @@
 """Shared orchestration helpers for agent command modules."""
 
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import typer
 
+from ...branch_database import (
+    BranchDatabaseError,
+    apply_branch_database_resolution,
+    resolve_branch_database,
+)
 from ...cli_types import GlobalConfig, OutputFormat
+from ...exceptions import ConfigError
 from ...schemas import SAFE_READ_ONLY
+
+
+def _resolve_agent_branch_config(
+    env_config: dict[str, Any],
+    operation: str,
+    result_type: str,
+    *,
+    fail_fn: Any,
+) -> tuple[dict[str, Any], dict[str, Any], Any]:
+    base_env_config = dict(env_config)
+    try:
+        resolution = resolve_branch_database(base_env_config, Path.cwd())
+    except (ConfigError, BranchDatabaseError) as error:
+        fail_fn(
+            operation,
+            result_type,
+            str(error),
+            error_type=type(error).__name__,
+            remediation=["Check [branch_db] settings and the current Git branch."],
+        )
+        raise AssertionError("unreachable") from error
+    effective_config = apply_branch_database_resolution(base_env_config, resolution)
+    return base_env_config, effective_config, resolution
 
 
 def resolve_agent_global_config(
@@ -33,13 +63,32 @@ def resolve_agent_global_config(
         )
 
     if isinstance(ctx.obj, GlobalConfig):
+        global_config = ctx.obj
+        if (
+            global_config.env_config is None
+            or global_config.branch_database is not None
+        ):
+            return replace(
+                global_config,
+                format=OutputFormat.JSON,
+                verbose=False,
+                non_interactive=True,
+            )
+        base_config = global_config.base_env_config
+        if base_config is None:
+            base_config = global_config.env_config
+        base_env_config, env_config, branch_database = _resolve_agent_branch_config(
+            base_config, operation, result_type, fail_fn=fail_fn
+        )
         return replace(
-            ctx.obj,
+            global_config,
             format=OutputFormat.JSON,
             verbose=False,
             non_interactive=True,
+            env_config=env_config,
+            base_env_config=base_env_config,
+            branch_database=branch_database,
         )
-
     options = dict(ctx.obj)
     env = options.get("env")
     no_http = bool(options.get("no_http", False))
@@ -92,13 +141,22 @@ def resolve_agent_global_config(
     config_source, config_path = resolve_config_source_fn(
         config_loader, env, env_config
     )
+    (
+        base_env_config,
+        effective_env_config,
+        branch_database,
+    ) = _resolve_agent_branch_config(
+        env_config, operation, result_type, fail_fn=fail_fn
+    )
     return GlobalConfig(
         env=env,
         non_interactive=True,
         format=OutputFormat.JSON,
         verbose=False,
         no_http=no_http,
-        env_config=env_config,
+        env_config=effective_env_config,
+        base_env_config=base_env_config,
+        branch_database=branch_database,
         env_name=env_name,
         odoo_series=odoo_series,
         config_source=config_source,

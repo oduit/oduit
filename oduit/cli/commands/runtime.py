@@ -154,9 +154,17 @@ def run_command(
     stop_after_init: bool,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    allow_mutation: bool,
+    prepare_branch_database_fn: Any,
 ) -> None:
     """Run Odoo server."""
     global_config, _ = resolve_command_env_config_fn(ctx)
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation="run",
+        action="Odoo server startup",
+    )
     odoo_operations = build_odoo_operations_fn(global_config)
     odoo_operations.run_odoo(
         no_http=global_config.no_http,
@@ -174,9 +182,17 @@ def shell_command(
     log_level: LogLevel | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    allow_mutation: bool,
+    prepare_branch_database_fn: Any,
 ) -> None:
     """Start Odoo shell."""
     global_config, _ = resolve_command_env_config_fn(ctx)
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation="shell",
+        action="Odoo shell startup",
+    )
     odoo_operations = build_odoo_operations_fn(global_config)
     odoo_operations.run_shell(
         shell_interface=shell_interface.value if shell_interface else None,
@@ -200,6 +216,7 @@ def install_command(
     include_stdout: bool,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    prepare_branch_database_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
@@ -219,6 +236,12 @@ def install_command(
         action="module install",
         print_command_error_result_fn=print_command_error_result_fn,
         confirmation_required_error_fn=confirmation_required_error_fn,
+    )
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation="install_module",
+        action="module install",
     )
     odoo_operations = build_odoo_operations_fn(global_config)
     output = odoo_operations.install_module(
@@ -268,6 +291,7 @@ def update_command(
     include_stdout: bool = False,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    prepare_branch_database_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
@@ -293,6 +317,12 @@ def update_command(
         if language is None:
             language = "de_DE"
 
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation="update_module",
+        action="module update",
+    )
     odoo_operations = build_odoo_operations_fn(global_config)
     result = odoo_operations.update_module(
         module,
@@ -323,6 +353,7 @@ def uninstall_command(
     include_stdout: bool,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    prepare_branch_database_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
@@ -366,6 +397,12 @@ def uninstall_command(
                 "reviewing dependent modules.",
             ],
         )
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation="uninstall_module",
+        action="module uninstall",
+    )
 
     odoo_operations = build_odoo_operations_fn(global_config)
     result = odoo_operations.uninstall_module(
@@ -414,6 +451,7 @@ def test_command(
     include_stdout: bool,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    prepare_branch_database_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
@@ -431,6 +469,12 @@ def test_command(
             print_command_error_result_fn=print_command_error_result_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
         )
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation="test",
+        action="test execution",
+    )
     odoo_operations = build_odoo_operations_fn(global_config)
     result = odoo_operations.run_tests(
         None,
@@ -1368,12 +1412,12 @@ def _print_set_inspection_text(inspection: dict[str, Any]) -> None:
     addons_by_role = inspection.get("addons_by_role", {})
     if addons_by_role:
         for role, addons in addons_by_role.items():
-            print("")
+            print()
             print(f"{role} ({len(addons)}):")
             for addon in addons:
                 print(f"  {addon}")
 
-    print("")
+    print()
     print("Validation:")
     print(f"  addons_path: {inspection.get('addons_path_status')}")
     missing = inspection.get("missing_addons", [])
@@ -1399,6 +1443,7 @@ def set_apply_command(
     config_loader_cls: Any,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    prepare_branch_database_fn: Any,
     require_cli_runtime_db_mutation_fn: Any,
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
@@ -1441,6 +1486,12 @@ def set_apply_command(
             confirmation_required_error_fn=confirmation_required_error_fn,
         )
 
+        global_config = prepare_branch_database_fn(
+            global_config,
+            allow_mutation=allow_mutation,
+            operation=f"operation_set_{op_set.kind}",
+            action=f"operation set {op_set.kind}",
+        )
     odoo_operations = build_odoo_operations_fn(global_config)
 
     if not suppress_output:

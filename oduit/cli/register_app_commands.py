@@ -34,6 +34,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     resolve_command_env_config_fn = context.runtime.resolve_command_env_config_fn
     build_odoo_operations_fn = context.runtime.build_odoo_operations_fn
     build_doctor_report_fn = context.runtime.build_doctor_report_fn
+    prepare_branch_database_fn = context.runtime.prepare_branch_database_fn
+    build_branch_database_manager_fn = context.runtime.build_branch_database_manager_fn
+    ensure_branch_database_fn = context.runtime.ensure_branch_database_fn
     print_doctor_report_fn = context.dependencies.print_doctor_report_fn
     confirmation_required_error_fn = context.dependencies.confirmation_required_error_fn
     print_command_error_result_fn = context.dependencies.print_command_error_result_fn
@@ -105,10 +108,75 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
     get_odoo_version_command_impl = (
         context.implementations.get_odoo_version_command_impl
     )
+    branch_database_status_command_impl = (
+        context.implementations.branch_database_status_command_impl
+    )
+    branch_database_ensure_command_impl = (
+        context.implementations.branch_database_ensure_command_impl
+    )
+    branch_database_gc_command_impl = (
+        context.implementations.branch_database_gc_command_impl
+    )
     set_app = typer.Typer(help="Manage operation sets")
     i18n_app = typer.Typer(help="Import, export, and load Odoo translations")
+    branch_db_app = typer.Typer(help="Manage branch-aware Odoo databases")
+    app.add_typer(branch_db_app, name="branch-db")
     app.add_typer(set_app, name="set")
     app.add_typer(i18n_app, name="i18n")
+
+    @branch_db_app.command("status")
+    def branch_db_status(ctx: typer.Context) -> None:
+        """Show the active branch database without modifying it."""
+        branch_database_status_command_impl(
+            ctx,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_branch_database_manager_fn=build_branch_database_manager_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @branch_db_app.command("ensure")
+    def branch_db_ensure(
+        ctx: typer.Context,
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm branch database creation when required by mutation policy",
+        ),
+    ) -> None:
+        """Create the active branch database if it is missing."""
+        branch_database_ensure_command_impl(
+            ctx,
+            allow_mutation=allow_mutation,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            ensure_branch_database_fn=ensure_branch_database_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    @branch_db_app.command("gc")
+    def branch_db_gc(
+        ctx: typer.Context,
+        apply: bool = typer.Option(
+            False,
+            "--apply",
+            help="Delete stale managed databases; default is a dry run",
+        ),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm runtime database mutation when required by policy",
+        ),
+    ) -> None:
+        """List or explicitly delete stale managed branch databases."""
+        branch_database_gc_command_impl(
+            ctx,
+            apply=apply,
+            allow_mutation=allow_mutation,
+            resolve_command_env_config_fn=resolve_command_env_config_fn,
+            build_branch_database_manager_fn=build_branch_database_manager_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
 
     @app.command()
     def doctor(ctx: typer.Context) -> None:
@@ -131,6 +199,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             "-s",
             help="Stop the server after initialization",
         ),
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm runtime database creation when required by mutation policy",
+        ),
     ) -> None:
         """Run Odoo server."""
         run_command_impl(
@@ -139,6 +212,8 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             log_level=log_level,
             stop_after_init=stop_after_init,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
+            allow_mutation=allow_mutation,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
         )
 
@@ -152,6 +227,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             help="Suppress INFO logs at startup for cleaner output",
         ),
         log_level: LogLevel | None = log_level_option,
+        allow_mutation: bool = typer.Option(
+            False,
+            "--allow-mutation",
+            help="Confirm runtime database creation when required by mutation policy",
+        ),
     ) -> None:
         """Start Odoo shell."""
         shell_command_impl(
@@ -160,6 +240,8 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             compact=compact,
             log_level=log_level,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
+            allow_mutation=allow_mutation,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
         )
 
@@ -169,8 +251,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         module: str | None = typer.Argument(
             None,
             help=(
-                "Module or comma-separated modules to install; "
-                "reads stdin when omitted"
+                "Module or comma-separated modules to install; reads stdin when omitted"
             ),
         ),
         without_demo: str | None = typer.Option(
@@ -219,6 +300,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             include_stdout=include_stdout,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
             print_command_error_result_fn=print_command_error_result_fn,
@@ -230,8 +312,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         module: str | None = typer.Argument(
             None,
             help=(
-                "Module or comma-separated modules to update; "
-                "reads stdin when omitted"
+                "Module or comma-separated modules to update; reads stdin when omitted"
             ),
         ),
         without_demo: str | None = typer.Option(
@@ -284,6 +365,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             include_stdout=include_stdout,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
             print_command_error_result_fn=print_command_error_result_fn,
@@ -331,6 +413,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             include_stdout=include_stdout,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
             print_command_error_result_fn=print_command_error_result_fn,
@@ -415,6 +498,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             include_stdout=include_stdout,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
             print_command_error_result_fn=print_command_error_result_fn,
@@ -453,24 +537,19 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
         verify_state: bool = typer.Option(
             True,
             "--verify-state/--no-verify-state",
-            help=(
-                "Verify requested addon states after " "install/update set operations"
-            ),
+            help=("Verify requested addon states after install/update set operations"),
         ),
         retry_missing: int = typer.Option(
             0,
             "--retry-missing",
             min=0,
-            help=(
-                "Retry addons that are still not installed " "after state verification"
-            ),
+            help=("Retry addons that are still not installed after state verification"),
         ),
         one_by_one: bool = typer.Option(
             False,
             "--one-by-one",
             help=(
-                "Apply addon operations one by one with "
-                "verification after each addon"
+                "Apply addon operations one by one with verification after each addon"
             ),
         ),
         retry_failed_tests: int = typer.Option(
@@ -483,8 +562,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             False,
             "--continue-on-error",
             help=(
-                "In one-by-one mode, continue with later "
-                "addons/tests after a failure"
+                "In one-by-one mode, continue with later addons/tests after a failure"
             ),
         ),
     ) -> None:
@@ -507,6 +585,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             config_loader_cls=get_config_loader_cls(),
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
             print_command_error_result_fn=print_command_error_result_fn,
@@ -1388,6 +1467,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             log_level=log_level,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             module_manager_cls=get_module_manager_cls(),
             confirmation_required_error_fn=confirmation_required_error_fn,
             print_command_error_result_fn=print_command_error_result_fn,
@@ -1439,6 +1519,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             log_level=log_level,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             module_manager_cls=get_module_manager_cls(),
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,
@@ -1476,6 +1557,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
             log_level=log_level,
             resolve_command_env_config_fn=resolve_command_env_config_fn,
             build_odoo_operations_fn=build_odoo_operations_fn,
+            prepare_branch_database_fn=prepare_branch_database_fn,
             module_manager_cls=get_module_manager_cls(),
             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
             confirmation_required_error_fn=confirmation_required_error_fn,

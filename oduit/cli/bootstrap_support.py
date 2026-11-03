@@ -6,10 +6,21 @@ from typing import Any, cast
 
 import typer
 
+from ..branch_database import (
+    BranchDatabaseError,
+    apply_branch_database_resolution,
+    resolve_branch_database,
+)
 from ..cli_types import GlobalConfig, OutputFormat
+from ..exceptions import ConfigError
 from ..operation_sets import (
     OperationSetLocationContext,
     build_operation_set_location_context,
+)
+from .branch_database_support import (
+    build_branch_database_manager,
+    ensure_branch_database,
+    prepare_branch_database,
 )
 from .runtime_context import AppRuntimeContext
 
@@ -80,7 +91,7 @@ def create_global_config(
                 env_config = config_loader.load_local_config()
                 env_name = "local"
             except (FileNotFoundError, ImportError, ValueError) as exc:
-                print_error_fn(f"[ERROR] {str(exc)}")
+                print_error_fn(f"[ERROR] {exc!s}")
                 raise typer.Exit(1) from exc
         else:
             print_error_fn(
@@ -92,15 +103,25 @@ def create_global_config(
         try:
             env_config = config_loader.load_config(env_name)
         except (FileNotFoundError, ImportError, ValueError) as exc:
-            print_error_fn(f"[ERROR] {str(exc)}")
+            print_error_fn(f"[ERROR] {exc!s}")
             raise typer.Exit(1) from exc
         except Exception as exc:
-            print_error_fn(f"Error loading environment '{env_name}': {str(exc)}")
+            print_error_fn(f"Error loading environment '{env_name}': {exc!s}")
             raise typer.Exit(1) from exc
 
     config_source, config_path = resolve_config_source_fn(
         config_loader, env, env_config
     )
+
+    base_env_config = dict(env_config) if env_config is not None else None
+    branch_database = None
+    if env_config is not None:
+        try:
+            branch_database = resolve_branch_database(env_config, Path.cwd())
+            env_config = apply_branch_database_resolution(env_config, branch_database)
+        except (ConfigError, BranchDatabaseError) as exc:
+            print_error_fn(f"[ERROR] {exc}")
+            raise typer.Exit(1) from exc
 
     return GlobalConfig(
         env=env,
@@ -109,6 +130,8 @@ def create_global_config(
         verbose=verbose,
         no_http=no_http,
         env_config=env_config,
+        base_env_config=base_env_config,
+        branch_database=branch_database,
         env_name=env_name,
         odoo_series=odoo_series,
         config_source=config_source,
@@ -214,6 +237,9 @@ def build_registration_helpers(
     get_addons_path_manager_cls: Any,
     get_module_manager_cls: Any,
     get_odoo_operations_cls: Any,
+    require_cli_runtime_db_mutation_fn: Any,
+    confirmation_required_error_fn: Any,
+    print_command_error_result_fn: Any,
 ) -> AppRuntimeContext:
     """Build classic CLI helper callables for command registration."""
 
@@ -239,6 +265,47 @@ def build_registration_helpers(
             odoo_operations_cls=get_odoo_operations_cls(),
         )
 
+    def build_branch_database_manager_fn(
+        global_config: GlobalConfig,
+    ) -> Any:
+        return build_branch_database_manager(global_config, build_odoo_operations_fn)
+
+    def ensure_branch_database_fn(
+        global_config: GlobalConfig,
+        *,
+        allow_mutation: bool,
+        operation: str,
+        action: str,
+    ) -> dict[str, Any]:
+        return ensure_branch_database(
+            global_config,
+            allow_mutation=allow_mutation,
+            operation=operation,
+            action=action,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
+    def prepare_branch_database_fn(
+        global_config: GlobalConfig,
+        *,
+        allow_mutation: bool,
+        operation: str,
+        action: str,
+    ) -> GlobalConfig:
+        return prepare_branch_database(
+            global_config,
+            allow_mutation=allow_mutation,
+            operation=operation,
+            action=action,
+            build_odoo_operations_fn=build_odoo_operations_fn,
+            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+            confirmation_required_error_fn=confirmation_required_error_fn,
+            print_command_error_result_fn=print_command_error_result_fn,
+        )
+
     def build_doctor_report_fn(global_config: GlobalConfig) -> dict[str, Any]:
         return build_doctor_report(
             global_config,
@@ -252,5 +319,8 @@ def build_registration_helpers(
         resolve_command_global_config_fn=resolve_command_global_config_fn,
         resolve_command_env_config_fn=resolve_command_env_config_fn,
         build_odoo_operations_fn=build_odoo_operations_fn,
+        prepare_branch_database_fn=prepare_branch_database_fn,
+        build_branch_database_manager_fn=build_branch_database_manager_fn,
+        ensure_branch_database_fn=ensure_branch_database_fn,
         build_doctor_report_fn=build_doctor_report_fn,
     )

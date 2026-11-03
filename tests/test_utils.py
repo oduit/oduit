@@ -615,9 +615,9 @@ class TestModuleManager(unittest.TestCase):
                 "_find_cycle_in_graph",
                 return_value=["module_a", "module_b", "module_a"],
             ) as mock_find_cycle,
+            self.assertRaises(ValueError) as context,
         ):
-            with self.assertRaises(ValueError) as context:
-                self.module_manager.get_install_order("module_root", "module_a")
+            self.module_manager.get_install_order("module_root", "module_a")
 
         self.assertEqual(
             mock_find_cycle.call_args_list[0].args[0],
@@ -646,9 +646,9 @@ class TestModuleManager(unittest.TestCase):
             patch.object(
                 self.module_manager, "_find_cycle_in_graph", return_value=None
             ),
+            self.assertRaises(ValueError) as context,
         ):
-            with self.assertRaises(ValueError) as context:
-                self.module_manager.get_install_order("module_root", "module_a")
+            self.module_manager.get_install_order("module_root", "module_a")
 
         self.assertEqual(
             str(context.exception),

@@ -32,9 +32,7 @@ def print_dependency_tree(
         )
         for module_part, version_part in lines:
             typer.echo(module_part, nl=False)
-            if version_part == " ⬆":
-                typer.secho(version_part, fg="bright_black")
-            elif version_part:
+            if version_part == " ⬆" or version_part:
                 typer.secho(version_part, fg="bright_black")
             else:
                 typer.echo("")
