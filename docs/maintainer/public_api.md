@@ -90,6 +90,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `db`                    | `human_oriented`     | Database inspection through the live Odoo connection                 |
 | `performance`           | `human_oriented`     | Read-only PostgreSQL performance inspection                          |
 | `manifest`              | `human_oriented`     | Manifest inspection and validation                                   |
+
 ## `oduit agent` subcommands in `oduit.cli.app`
 
 | Command                    | Stability tier       | Safety level                  | Summary                                                                  |
