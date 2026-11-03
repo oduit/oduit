@@ -198,7 +198,7 @@ def test_agent_smoke_commands_emit_expected_envelopes(
         "--install-if-needed",
         "--discover-tests",
     )
-    assert exit_code == 0
+    assert exit_code == 0, validate_payload
     assert validate_payload["success"] is True
     _assert_payload_shape(
         validate_payload,
