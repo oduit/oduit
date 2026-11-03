@@ -1,0 +1,188 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: 0.4.9
+git_base_ref: a4325b44c3eec281a9c6f4d4a6d9d586b6f8251b
+git_base_sha: a4325b44c3eec281a9c6f4d4a6d9d586b6f8251b
+git_head_ref: a11b7cdf9c2406748d533c097855c618b21d2899
+git_head_sha: a11b7cdf9c2406748d533c097855c618b21d2899
+include_merges: nontrivial
+entries:
+  - kind: docs
+    summary: ""
+    status: draft
+    source_refs:
+      - git:d5faee936fdaff5323692ec04da27d328b7f485c
+    paths:
+      - docs/changelog.md
+    sources:
+      - git:d5faee936fdaff5323692ec04da27d328b7f485c
+    prs: []
+    issues: []
+    contributors: []
+  - kind: added
+    summary: ""
+    status: draft
+    source_refs:
+      - git:afe3ea103be9c7bbb952b3a5b5fa1ee3e16dc68e
+    paths:
+      - README.md
+      - oduit/_operations/runtime.py
+      - oduit/builders.py
+      - oduit/cli/agent/services.py
+      - oduit/cli/agent/validate.py
+      - oduit/cli/commands/runtime.py
+      - oduit/operation_result.py
+      - oduit/utils.py
+      - skills/oduit/SKILL.md
+      - tests/test_agent_cli.py
+      - tests/test_agent_services.py
+      - tests/test_builders.py
+      - tests/test_operation_result.py
+      - tests/test_python_api.py
+    sources:
+      - git:afe3ea103be9c7bbb952b3a5b5fa1ee3e16dc68e
+    prs: []
+    issues: []
+    contributors: []
+  - kind: fixed
+    summary: ""
+    status: draft
+    source_refs:
+      - git:f6bf62dbf269e393861f0f4191c3dfcca89f1b35
+    paths:
+      - oduit/_operations/runtime.py
+      - oduit/cli/agent/validate.py
+      - oduit/cli/agent_support.py
+    sources:
+      - git:f6bf62dbf269e393861f0f4191c3dfcca89f1b35
+    prs: []
+    issues: []
+    contributors: []
+  - kind: added
+    summary: ""
+    status: draft
+    source_refs:
+      - git:aadc419fe9efe322d3db8b111a39f37e426a7294
+    paths:
+      - oduit/cli/agent/validate.py
+      - oduit/cli/agent_support.py
+      - tests/test_agent_cli.py
+    sources:
+      - git:aadc419fe9efe322d3db8b111a39f37e426a7294
+    prs: []
+    issues: []
+    contributors: []
+  - kind: added
+    summary: ""
+    status: draft
+    source_refs:
+      - git:66c03bc0c476878da91d9c306db7f78605f63afa
+    paths:
+      - README.md
+      - docs/cli.md
+      - docs/command_inventory.md
+      - oduit/_operations/database.py
+      - oduit/builders.py
+      - oduit/cli/app.py
+      - oduit/cli/command_inventory.py
+      - oduit/cli/commands/database.py
+      - oduit/cli/register_app_commands.py
+      - oduit/cli/runtime_context.py
+      - oduit/odoo_operations.py
+      - oduit/operation_result.py
+      - skills/oduit/SKILL.md
+      - tests/test_cli_app.py
+      - tests/test_commands.py
+      - tests/test_database_operations.py
+      - tests/test_operation_result.py
+    sources:
+      - git:66c03bc0c476878da91d9c306db7f78605f63afa
+    prs: []
+    issues: []
+    contributors: []
+  - kind: added
+    summary: ""
+    status: draft
+    source_refs:
+      - git:48f4eee4cef37a408470ba2518ab071844ac1a31
+    paths:
+      - .ledger/ledger.toml
+      - .ledger/planledger/.ledger-project.toml
+      - .ledger/planledger/config.toml
+      - .ledger/taskledger/.ledger-project.toml
+      - .ledger/taskledger/config.toml
+      - docs/cli.md
+      - oduit/_operations/database.py
+      - oduit/builders.py
+      - oduit/cli/commands/database.py
+      - oduit/odoo_operations.py
+      - tests/test_builders.py
+      - tests/test_cli_app.py
+      - tests/test_database_operations.py
+    sources:
+      - git:48f4eee4cef37a408470ba2518ab071844ac1a31
+    prs: []
+    issues: []
+    contributors: []
+  - kind: added
+    summary: ""
+    status: draft
+    source_refs:
+      - git:a11b7cdf9c2406748d533c097855c618b21d2899
+    paths:
+      - .pre-commit-config.yaml
+      - .ruff.toml
+      - README.md
+      - oduit/__init__.py
+      - oduit/_operations/database.py
+      - oduit/arc42_renderer.py
+      - oduit/branch_database.py
+      - oduit/builders.py
+      - oduit/cli/agent/planning.py
+      - oduit/cli/agent/services.py
+      - oduit/cli/agent_support.py
+      - oduit/cli/app.py
+      - oduit/cli/bootstrap_support.py
+      - oduit/cli/branch_database_support.py
+      - oduit/cli/command_inventory.py
+      - oduit/cli/commands/branch_database.py
+      - oduit/cli/commands/dependencies.py
+      - oduit/cli/commands/i18n.py
+      - oduit/cli/commands/runtime.py
+      - oduit/cli/dependency_output.py
+      - oduit/cli/doctor.py
+      - oduit/cli/main_support.py
+      - oduit/cli/register_app_commands.py
+      - oduit/cli/register_inspection_commands.py
+      - oduit/cli/runtime_context.py
+      - oduit/cli_typer.py
+      - oduit/cli_types.py
+      - oduit/config_loader.py
+      - oduit/config_provider.py
+      - oduit/demo_process_manager.py
+      - oduit/documentation_tracking.py
+      - oduit/exceptions.py
+      - oduit/managed_markdown.py
+      - oduit/odoo_operations.py
+      - oduit/operation_result.py
+      - oduit/operation_sets.py
+      - oduit/process_manager.py
+      - oduit/technical_documentation.py
+      - tests/test_branch_database.py
+      - tests/test_branch_database_cli.py
+      - tests/test_cli_app.py
+      - tests/test_commands.py
+      - tests/test_config_loader.py
+      - tests/test_config_provider.py
+      - tests/test_database_operations.py
+      - tests/test_odoo_embedded_manager.py
+      - tests/test_python_api.py
+      - tests/test_security_tasks.py
+      - tests/test_utils.py
+    sources:
+      - git:a11b7cdf9c2406748d533c097855c618b21d2899
+    prs: []
+    issues: []
+    contributors: []

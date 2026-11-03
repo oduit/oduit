@@ -1,0 +1,1182 @@
+ README.md                          |   7 +-
+ docs/cli.md                        |  12 +++
+ docs/command_inventory.md          |   3 +
+ oduit/_operations/database.py      | 205 ++++++++++++++++++++++++++++++++++---
+ oduit/builders.py                  |  39 ++++++-
+ oduit/cli/app.py                   |   2 +
+ oduit/cli/command_inventory.py     |   1 +
+ oduit/cli/commands/database.py     |  45 +++++++-
+ oduit/cli/register_app_commands.py |  50 +++++++++
+ oduit/cli/runtime_context.py       |   1 +
+ oduit/odoo_operations.py           |  21 +++-
+ oduit/operation_result.py          |  46 +++++++++
+ skills/oduit/SKILL.md              |   2 +
+ tests/test_cli_app.py              | 145 ++++++++++++++++++++++++++
+ tests/test_commands.py             |  63 ++++++++++++
+ tests/test_database_operations.py  | 128 +++++++++++++++++++++++
+ tests/test_operation_result.py     |  26 +++++
+ 17 files changed, 776 insertions(+), 20 deletions(-)
+
+diff --git a/README.md b/README.md
+index 40d33a9..c165702 100644
+--- a/README.md
++++ b/README.md
+@@ -344,6 +344,9 @@ oduit --env dev shell
+ oduit --env dev --non-interactive create-db
+ oduit --env dev create-db --without-demo --country DE --language de_DE
+ oduit --env dev create-db --with-demo --username admin --password admin
++oduit --env dev extension-db vector --with-sudo
++oduit --env dev create-db --extension vector --with-sudo
++oduit --env dev create-db --extension vector --extension pg_trgm --with-sudo
+ oduit --env dev create-addon my_custom_module --allow-mutation
+
+ # Internationalization
+@@ -367,6 +370,8 @@ series. On Odoo 19+, oduit uses native `odoo-bin db init`. On older Odoo
+ versions, oduit emulates equivalent behavior with `createdb` plus
+ `-i base --stop-after-init` and post-init updates.
+
++`extension-db` enables a requested PostgreSQL server extension in the configured `db_name`; it does not install an operating-system package. The SQL is idempotent, and `--with-sudo` explicitly runs it as the local PostgreSQL administrator. The PostgreSQL extension package/control files must already be installed. Extension setup is a runtime database mutation and follows the mutation policy. For the Odoo AI/pgvector workflow, run `oduit --env dev extension-db vector --with-sudo` before installing `ai_azure_openai`; oduit does not add implicit sudo or extension creation to module installation.
++
+ ## Internationalization
+
+ Prefer the new `i18n` command group for translation export, import, and language
+@@ -461,7 +466,7 @@ Runtime DB mutation policy is controlled by explicit config flags:
+ - `agent_write_protect_db`: block agent runtime DB mutation even when human mutation is allowed
+ - `agent_needs_mutation_flag`: require `--allow-mutation` for agent runtime DB mutations
+
+-This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`, `i18n import`, `i18n loadlang`) and agent runtime mutation commands. Source mutations such as `create-addon`, `i18n export`, and `export-lang` still use their own explicit mutation gate.
++This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`, `extension-db`, `i18n import`, `i18n loadlang`) and agent runtime mutation commands. Source mutations such as `create-addon`, `i18n export`, and `export-lang` still use their own explicit mutation gate.
+ Plain `test` runs stay read-only; only `test --install/--update`, `agent test-summary --install/--update`, and `agent validate-addon-change` with install/update options enter the runtime DB mutation path.
+
+ A successful test result is proof that at least one test executed. Zero-test results are non-success and identify whether the module was uninstalled, no tests matched, or the runner skipped execution. Plain tests never install modules automatically. When `--install` or `--update` is explicitly requested, oduit performs the mutation, verifies the installed state, and only then starts the test process.
+diff --git a/docs/cli.md b/docs/cli.md
+index 3d1d4e4..cdbeb99 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -414,6 +414,7 @@ oduit --env dev create-db [OPTIONS]
+ - `--drop`: Drop database if it exists before creating
+ - `--non-interactive`: Run without confirmation prompt (use with caution)
+ - `--db-user TEXT`: Specify the database user (overrides config setting)
++- `--extension TEXT`: Install a PostgreSQL extension after initialization; repeat for multiple extensions
+ - `--allow-mutation`: Optional confirmation flag when `needs_mutation_flag = true`
+
+ **Examples:**
+@@ -449,6 +450,17 @@ unless you pass ``--non-interactive``. In non-interactive mode, the command
+ fails fast instead of auto-confirming.
+ ```
+
++### extension-db
++
++Enable a PostgreSQL server extension in the configured `db_name`. The SQL is idempotent and the server extension package/control files must already be installed; oduit does not install operating-system packages.
++
++```bash
++oduit --env dev extension-db vector
++oduit --env dev extension-db vector --with-sudo
++```
++
++This is an explicit runtime database mutation and follows the mutation policy. `--with-sudo` runs PostgreSQL extension creation as the local PostgreSQL administrator. For Odoo AI/pgvector, enable `vector` before installing `ai_azure_openai`.
++
+ ### list-db
+
+ List all databases in PostgreSQL.
+diff --git a/docs/command_inventory.md b/docs/command_inventory.md
+index f399b02..e3c7db4 100644
+--- a/docs/command_inventory.md
++++ b/docs/command_inventory.md
+@@ -33,6 +33,9 @@ This page is generated from the canonical Typer registration surface in
+ * - `create-db`
+   - `human_oriented`
+   - Create database.
++* - `extension-db`
++  - `human_oriented`
++  - Enable a PostgreSQL extension in the configured database.
+ * - `list-db`
+   - `human_oriented`
+   - List all databases.
+diff --git a/oduit/_operations/database.py b/oduit/_operations/database.py
+index f79d679..185bc79 100644
+--- a/oduit/_operations/database.py
++++ b/oduit/_operations/database.py
+@@ -1,6 +1,7 @@
+ from __future__ import annotations
+
+ import re
++from collections.abc import Sequence
+ from textwrap import dedent
+ from typing import Any
+
+@@ -174,6 +175,125 @@ class DatabaseOperationsService(OperationsService):
+                 f"Warning: {warning}: {command_result.get('stderr', '').strip()}"
+             )
+
++    @staticmethod
++    def _classify_extension_failure(
++        extension: str, stdout: str, stderr: str, error: str = ""
++    ) -> tuple[str, list[str]]:
++        output = "\n".join((stderr, stdout, error))
++        lowered = output.lower()
++        if (
++            "permission denied to create extension" in lowered
++            or "must be superuser to create this extension" in lowered
++            or "insufficientprivilege" in lowered
++        ):
++            return (
++                "ExtensionInsufficientPrivilege",
++                [
++                    f"Retry with `oduit extension-db {extension} --with-sudo`.",
++                    (
++                        "Or grant the configured PostgreSQL role the privileges "
++                        "required by the extension."
++                    ),
++                ],
++            )
++        if (
++            "is not available" in lowered and "extension" in lowered
++        ) or "could not open extension control file" in lowered:
++            return (
++                "ExtensionNotAvailable",
++                [
++                    "Install the PostgreSQL server package for the extension first,",
++                    f"then rerun `oduit extension-db {extension} --with-sudo`.",
++                ],
++            )
++        if "database" in lowered and (
++            "does not exist" in lowered or "not found" in lowered
++        ):
++            return (
++                "DatabaseNotFound",
++                ["Create the configured database first or correct db_name."],
++            )
++        return ("DatabaseExtensionError", [])
++
++    def install_db_extension(
++        self,
++        extension: str,
++        *,
++        with_sudo: bool = True,
++        suppress_output: bool = False,
++        raise_on_error: bool = False,
++        db_user: str | None = None,
++    ) -> dict:
++        """Enable a PostgreSQL extension in the configured database."""
++        db_name = self.operations.config.get_optional("db_name", "unknown")
++        try:
++            operation = (
++                DatabaseCommandBuilder(self.operations.config, with_sudo=with_sudo)
++                .create_extension_command(extension, db_user=db_user)
++                .build_operation()
++            )
++            if self.operations.verbose and not suppress_output:
++                print_info(
++                    "Installing PostgreSQL extension "
++                    f"{extension!r} in database {db_name!r}"
++                )
++            process_result = self.operations.process_manager.run_operation(
++                operation,
++                verbose=self.operations.verbose,
++                suppress_output=suppress_output,
++            )
++            process_result = process_result or {}
++            success = bool(process_result.get("success", False))
++            stdout = process_result.get("stdout", "")
++            stderr = process_result.get("stderr", "")
++            process_error = process_result.get("error", "")
++            final_result = {
++                "success": success,
++                "return_code": process_result.get("return_code", 0 if success else 1),
++                "operation": "install_db_extension",
++                "database": db_name,
++                "extension": str(extension).strip(),
++                "with_sudo": with_sudo,
++                "command": operation.command,
++                "stdout": stdout,
++                "stderr": stderr,
++            }
++            if not success:
++                error_type, remediation = self._classify_extension_failure(
++                    str(extension).strip(), stdout, stderr, str(process_error)
++                )
++                final_result["error"] = (
++                    str(process_error).strip()
++                    or stderr.strip()
++                    or stdout.strip()
++                    or "PostgreSQL extension installation failed"
++                )
++                final_result["error_type"] = error_type
++                final_result["remediation"] = remediation
++        except (ConfigError, ValueError) as error:
++            final_result = {
++                "success": False,
++                "return_code": 1,
++                "operation": "install_db_extension",
++                "database": db_name,
++                "extension": str(extension).strip(),
++                "with_sudo": with_sudo,
++                "error": str(error),
++                "error_type": type(error).__name__,
++            }
++            if not suppress_output:
++                if _output_module._formatter.format_type == "json":
++                    print_error_result(str(error), 1)
++                else:
++                    print_error(str(error))
++
++        if raise_on_error and not final_result.get("success", False):
++            raise DatabaseOperationError(
++                final_result.get("error", "Database extension installation failed"),
++                operation_result=final_result,
++            )
++        return final_result
++
+     def db_exists(
+         self,
+         with_sudo: bool = True,
+@@ -345,7 +465,7 @@ class DatabaseOperationsService(OperationsService):
+
+         return final_result
+
+-    def create_db(
++    def create_db(  # noqa: C901
+         self,
+         with_sudo: bool = True,
+         suppress_output: bool = False,
+@@ -361,6 +481,7 @@ class DatabaseOperationsService(OperationsService):
+         username: str = "admin",
+         password: str = "admin",
+         odoo_series: Any | None = None,
++        extensions: Sequence[str] | None = None,
+     ) -> dict:
+         """Create database and return operation result
+
+@@ -369,7 +490,8 @@ class DatabaseOperationsService(OperationsService):
+             suppress_output: Suppress all output (for programmatic use)
+             create_role: Create database role before creating database
+             alter_role: Alter database role before creating database
+-            extension: Create extension in database (e.g., 'postgis')
++            extension: Create one extension in the database (compatibility argument)
++            extensions: Create multiple extensions after database initialization
+             raise_on_error: Raise exception on failure instead of returning error
+             db_user: Database user for role operations (optional)
+             with_demo: Initialize with demo data
+@@ -393,13 +515,20 @@ class DatabaseOperationsService(OperationsService):
+         db_name = self.operations.config.get_optional("db_name", "unknown")
+         use_native_db_init = (self._series_major(odoo_series) or 0) >= 19
+
++        requested_extensions: list[str] = []
++        if extension:
++            requested_extensions.append(extension)
++        for requested in extensions or []:
++            if requested and requested not in requested_extensions:
++                requested_extensions.append(requested)
++
+         create_result = None
+         init_result = None
+         country_result = None
+         admin_result = None
++        extension_results: list[dict] = []
+         cmd_role = None
+         cmd_alter = None
+-        cmd_extension = None
+
+         if create_role:
+             builder = DatabaseCommandBuilder(
+@@ -411,11 +540,6 @@ class DatabaseOperationsService(OperationsService):
+                 self.operations.config, with_sudo=with_sudo
+             )
+             cmd_alter = builder.alter_role_command(db_user=db_user).build()
+-        if extension is not None:
+-            builder = DatabaseCommandBuilder(
+-                self.operations.config, with_sudo=with_sudo
+-            )
+-            cmd_extension = builder.create_extension_command(extension).build()
+
+         create_operation = None
+         if not use_native_db_init:
+@@ -448,10 +572,6 @@ class DatabaseOperationsService(OperationsService):
+
+             self._run_optional_command(cmd_role, "Role creation command failed")
+             self._run_optional_command(cmd_alter, "Role alteration command failed")
+-            self._run_optional_command(
+-                cmd_extension,
+-                "Extension creation command failed",
+-            )
+
+             if use_native_db_init:
+                 init_result = self._run_native_create_init(
+@@ -473,6 +593,25 @@ class DatabaseOperationsService(OperationsService):
+                     password=password,
+                     language=language,
+                 )
++            if (
++                init_result
++                and init_result.get("success", False)
++                and (
++                    use_native_db_init
++                    or create_result
++                    and create_result.get("success", False)
++                )
++            ):
++                for requested_extension in requested_extensions:
++                    extension_result = self.install_db_extension(
++                        requested_extension,
++                        with_sudo=with_sudo,
++                        suppress_output=suppress_output,
++                        db_user=db_user,
++                    )
++                    extension_results.append(extension_result)
++                    if not extension_result.get("success", False):
++                        break
+
+             success, return_code = self._merge_create_db_results(
+                 create_result if not use_native_db_init else None,
+@@ -493,6 +632,17 @@ class DatabaseOperationsService(OperationsService):
+                 "without_demo": (not with_demo),
+                 "username": username,
+                 "password_set": bool(password),
++                "extensions": requested_extensions,
++                "extension_results": extension_results,
++                "database_created": bool(
++                    init_result
++                    and init_result.get("success", False)
++                    and (
++                        use_native_db_init
++                        or create_result
++                        and create_result.get("success", False)
++                    )
++                ),
+             }
+
+             if create_result:
+@@ -530,6 +680,37 @@ class DatabaseOperationsService(OperationsService):
+                     )
+                     break
+
++            failed_extension = next(
++                (
++                    result
++                    for result in extension_results
++                    if not result.get("success", False)
++                ),
++                None,
++            )
++            if failed_extension:
++                failed_name = failed_extension["extension"]
++                final_result["success"] = False
++                final_result["return_code"] = (
++                    failed_extension.get("return_code", 1) or 1
++                )
++                final_result["error"] = (
++                    f"Database was created, but PostgreSQL extension "
++                    f"{failed_name!r} could not be installed."
++                )
++                final_result["error_type"] = failed_extension.get(
++                    "error_type", "DatabaseExtensionError"
++                )
++                final_result["remediation"] = failed_extension.get(
++                    "remediation",
++                    [f"Retry with `oduit extension-db {failed_name} --with-sudo`."],
++                )
++                failed_index = extension_results.index(failed_extension)
++                if failed_index + 1 < len(requested_extensions):
++                    final_result["extensions_not_attempted"] = requested_extensions[
++                        failed_index + 1 :
++                    ]
++
+         except ConfigError as e:
+             final_result = {
+                 "success": False,
+diff --git a/oduit/builders.py b/oduit/builders.py
+index 552467f..46b4b99 100644
+--- a/oduit/builders.py
++++ b/oduit/builders.py
+@@ -1352,6 +1352,16 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+         escaped = value.replace("'", "''")
+         return f"'{escaped}'"
+
++    @staticmethod
++    def _sql_identifier(value: str) -> str:
++        """Escape a value for use as a PostgreSQL identifier."""
++        normalized = str(value).strip()
++        if not normalized:
++            raise ValueError("PostgreSQL extension name must not be empty")
++        if "\x00" in normalized:
++            raise ValueError("PostgreSQL extension name must not contain NUL")
++        return '"' + normalized.replace('"', '""') + '"'
++
+     def drop_command(self) -> "DatabaseCommandBuilder":
+         """Build database drop command"""
+         self.config.validate_keys(["db_name"], "database drop command")
+@@ -1375,11 +1385,30 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+         self._set_command(f'psql -c "CREATE ROLE \\"{db_user}\\"";')
+         return self
+
+-    def create_extension_command(self, extension: str) -> "DatabaseCommandBuilder":
+-        """Build database create role command"""
+-        self.config.validate_keys(["db_user"], "database create role command")
+-
+-        self._set_command(f'psql -c "CREATE EXTENSION \\"{extension}\\"";')
++    def create_extension_command(
++        self, extension: str, db_user: str | None = None
++    ) -> "DatabaseCommandBuilder":
++        """Build an idempotent command to enable an extension in db_name."""
++        self.config.validate_keys(["db_name"], "database extension command")
++        db_name = self.config.get_required("db_name")
++        query = "CREATE EXTENSION IF NOT EXISTS " f"{self._sql_identifier(extension)};"
++        tokens = [
++            "psql",
++            "-X",
++            "-d",
++            str(db_name),
++            "-v",
++            "ON_ERROR_STOP=1",
++            "-c",
++            query,
++        ]
++        if self.with_sudo:
++            self._set_command(self._shell_join(tokens))
++        else:
++            connection_tokens = self._get_psql_connection_tokens(db_user)
++            self._append_raw_tokens(
++                self._with_password_env([*tokens, *connection_tokens])
++            )
+         return self
+
+     def alter_role_command(
+diff --git a/oduit/cli/app.py b/oduit/cli/app.py
+index c308c03..c73b92d 100644
+--- a/oduit/cli/app.py
++++ b/oduit/cli/app.py
+@@ -235,6 +235,7 @@ from .commands.addons import (
+ from .commands.addons import print_manifest_command as _print_manifest_command_impl
+ from .commands.database import create_db_command as _create_db_command_impl
+ from .commands.database import edit_config_command as _edit_config_command_impl
++from .commands.database import extension_db_command as _extension_db_command_impl
+ from .commands.database import list_db_command as _list_db_command_impl
+ from .commands.database import list_env_command as _list_env_command_impl
+ from .commands.database import print_config_command as _print_config_command_impl
+@@ -532,6 +533,7 @@ _app_registration_context = AppRegistrationContext(
+         set_inspect_command_impl=_set_inspect_command_impl,
+         set_list_command_impl=_set_list_command_impl,
+         create_db_command_impl=_create_db_command_impl,
++        extension_db_command_impl=_extension_db_command_impl,
+         list_db_command_impl=_list_db_command_impl,
+         list_env_command_impl=_list_env_command_impl,
+         print_config_command_impl=_print_config_command_impl,
+diff --git a/oduit/cli/command_inventory.py b/oduit/cli/command_inventory.py
+index 617d936..87ae016 100644
+--- a/oduit/cli/command_inventory.py
++++ b/oduit/cli/command_inventory.py
+@@ -47,6 +47,7 @@ TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
+     "uninstall": HUMAN_ORIENTED,
+     "test": HUMAN_ORIENTED,
+     "create-db": HUMAN_ORIENTED,
++    "extension-db": HUMAN_ORIENTED,
+     "list-db": HUMAN_ORIENTED,
+     "list-env": HUMAN_ORIENTED,
+     "print-config": HUMAN_ORIENTED,
+diff --git a/oduit/cli/commands/database.py b/oduit/cli/commands/database.py
+index cd30949..267add5 100644
+--- a/oduit/cli/commands/database.py
++++ b/oduit/cli/commands/database.py
+@@ -32,6 +32,7 @@ def create_db_command(
+     language: str | None,
+     username: str,
+     password: str,
++    extensions: list[str],
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
+     require_cli_runtime_db_mutation_fn: Any,
+@@ -124,7 +125,7 @@ def create_db_command(
+             creation_confirmed = True
+
+     if creation_confirmed:
+-        odoo_operations.create_db(
++        result = odoo_operations.create_db(
+             create_role=create_role,
+             alter_role=alter_role,
+             with_sudo=with_sudo,
+@@ -136,11 +137,53 @@ def create_db_command(
+             username=username,
+             password=password,
+             odoo_series=global_config.odoo_series,
++            extensions=extensions,
+         )
++        if global_config.format == OutputFormat.JSON:
++            print(json.dumps(output_result_to_json(result)))
++        if not result.get("success", False):
++            raise typer.Exit(1) from None
+     else:
+         print_info("Database creation cancelled.")
+
+
++def extension_db_command(
++    ctx: typer.Context,
++    *,
++    extension: str,
++    with_sudo: bool,
++    allow_mutation: bool,
++    db_user: str | None,
++    resolve_command_env_config_fn: Any,
++    build_odoo_operations_fn: Any,
++    require_cli_runtime_db_mutation_fn: Any,
++    print_command_error_result_fn: Any,
++    confirmation_required_error_fn: Any,
++) -> None:
++    """Enable a PostgreSQL extension in the configured database."""
++    global_config, env_config = resolve_command_env_config_fn(ctx)
++    require_cli_runtime_db_mutation_fn(
++        global_config=global_config,
++        env_config=env_config,
++        allow_mutation=allow_mutation,
++        operation="extension_db",
++        action=f"PostgreSQL extension installation ({extension})",
++        print_command_error_result_fn=print_command_error_result_fn,
++        confirmation_required_error_fn=confirmation_required_error_fn,
++    )
++    result = build_odoo_operations_fn(global_config).install_db_extension(
++        extension,
++        with_sudo=with_sudo,
++        db_user=db_user,
++    )
++    if global_config.format == OutputFormat.JSON:
++        print(json.dumps(output_result_to_json(result)))
++    elif not result.get("success", False):
++        print_error(result.get("error", "PostgreSQL extension installation failed"))
++    if not result.get("success", False):
++        raise typer.Exit(1) from None
++
++
+ def list_db_command(
+     ctx: typer.Context,
+     *,
+diff --git a/oduit/cli/register_app_commands.py b/oduit/cli/register_app_commands.py
+index 8cb1616..afdb0e7 100644
+--- a/oduit/cli/register_app_commands.py
++++ b/oduit/cli/register_app_commands.py
+@@ -71,6 +71,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+     set_inspect_command_impl = context.implementations.set_inspect_command_impl
+     set_list_command_impl = context.implementations.set_list_command_impl
+     create_db_command_impl = context.implementations.create_db_command_impl
++    extension_db_command_impl = context.implementations.extension_db_command_impl
+     list_db_command_impl = context.implementations.list_db_command_impl
+     list_env_command_impl = context.implementations.list_env_command_impl
+     print_config_command_impl = context.implementations.print_config_command_impl
+@@ -609,6 +610,14 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             "--password",
+             help="Password for the new database admin user",
+         ),
++        extensions: list[str] = typer.Option(
++            [],
++            "--extension",
++            help=(
++                "PostgreSQL extension to install after database initialization; "
++                "repeat for multiple extensions"
++            ),
++        ),
+     ) -> None:
+         """Create database."""
+         create_db_command_impl(
+@@ -626,6 +635,47 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             language=language,
+             username=username,
+             password=password,
++            extensions=extensions,
++            resolve_command_env_config_fn=resolve_command_env_config_fn,
++            build_odoo_operations_fn=build_odoo_operations_fn,
++            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
++            print_command_error_result_fn=print_command_error_result_fn,
++            confirmation_required_error_fn=confirmation_required_error_fn,
++        )
++
++    @app.command("extension-db")
++    def extension_db(
++        ctx: typer.Context,
++        extension: str = typer.Argument(
++            ...,
++            help="PostgreSQL extension to install in the configured database",
++        ),
++        with_sudo: bool = typer.Option(
++            False,
++            "--with-sudo",
++            help="Install the extension as the local PostgreSQL administrator",
++        ),
++        allow_mutation: bool = typer.Option(
++            False,
++            "--allow-mutation",
++            help=(
++                "Confirm runtime database mutation when mutation-flag protection "
++                "is enabled"
++            ),
++        ),
++        db_user: str | None = typer.Option(
++            None,
++            "--db-user",
++            help="PostgreSQL connection user when not using sudo",
++        ),
++    ) -> None:
++        """Enable a PostgreSQL extension in the configured database."""
++        extension_db_command_impl(
++            ctx,
++            extension=extension,
++            with_sudo=with_sudo,
++            allow_mutation=allow_mutation,
++            db_user=db_user,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
+             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+diff --git a/oduit/cli/runtime_context.py b/oduit/cli/runtime_context.py
+index 7848ef9..1154460 100644
+--- a/oduit/cli/runtime_context.py
++++ b/oduit/cli/runtime_context.py
+@@ -91,6 +91,7 @@ class AppCommandImplementations:
+     set_inspect_command_impl: Any
+     set_list_command_impl: Any
+     create_db_command_impl: Any
++    extension_db_command_impl: Any
+     list_db_command_impl: Any
+     list_env_command_impl: Any
+     print_config_command_impl: Any
+diff --git a/oduit/odoo_operations.py b/oduit/odoo_operations.py
+index 46118c5..a6e2a3c 100644
+--- a/oduit/odoo_operations.py
++++ b/oduit/odoo_operations.py
+@@ -6,7 +6,7 @@
+
+ import os
+ import shutil
+-from collections.abc import Callable
++from collections.abc import Callable, Sequence
+ from typing import Any
+
+ from manifestoo_core.core_addons import is_core_ce_addon, is_core_ee_addon
+@@ -293,6 +293,23 @@ class OdooOperations:
+             log_level=log_level,
+         )
+
++    def install_db_extension(
++        self,
++        extension: str,
++        with_sudo: bool = True,
++        suppress_output: bool = False,
++        raise_on_error: bool = False,
++        db_user: str | None = None,
++    ) -> dict:
++        """Enable a PostgreSQL extension in the configured database."""
++        return self._database_service.install_db_extension(
++            extension,
++            with_sudo=with_sudo,
++            suppress_output=suppress_output,
++            raise_on_error=raise_on_error,
++            db_user=db_user,
++        )
++
+     def db_exists(
+         self,
+         with_sudo: bool = True,
+@@ -337,6 +354,7 @@ class OdooOperations:
+         username: str = "admin",
+         password: str = "admin",
+         odoo_series: OdooSeries | None = None,
++        extensions: Sequence[str] | None = None,
+     ) -> dict:
+         """Create database and return operation result"""
+         return self._database_service.create_db(
+@@ -354,6 +372,7 @@ class OdooOperations:
+             username=username,
+             password=password,
+             odoo_series=odoo_series,
++            extensions=extensions,
+         )
+
+     def list_db(
+diff --git a/oduit/operation_result.py b/oduit/operation_result.py
+index 31079c8..6d000ba 100644
+--- a/oduit/operation_result.py
++++ b/oduit/operation_result.py
+@@ -416,6 +416,46 @@ class OperationResult:
+                 self.result["success"] = False
+         return self
+
++    @staticmethod
++    def _parse_database_extension_errors(output: str) -> list[dict[str, str]]:
++        """Extract actionable PostgreSQL extension prerequisite failures."""
++        lowered = output.lower()
++        errors: list[dict[str, str]] = []
++        extension_names = re.findall(
++            r"extension\s+[\"']([^\"']+)[\"']", output, re.IGNORECASE
++        )
++        extension = extension_names[0] if extension_names else "unknown"
++        if "permission denied to create extension" in lowered or (
++            "psycopg2.errors.insufficientprivilege" in lowered
++            and "extension" in lowered
++        ):
++            errors.append(
++                {
++                    "extension": extension,
++                    "reason": "insufficient_privilege",
++                    "remediation": f"oduit extension-db {extension} --with-sudo",
++                }
++            )
++        elif (
++            re.search(
++                r"extension\s+[\"'][^\"']+[\"']\s+is not available",
++                output,
++                re.IGNORECASE,
++            )
++            or "could not open extension control file" in lowered
++        ):
++            errors.append(
++                {
++                    "extension": extension,
++                    "reason": "not_available",
++                    "remediation": (
++                        "Install the PostgreSQL server package for the extension "
++                        f"first, then run `oduit extension-db {extension} --with-sudo`."
++                    ),
++                }
++            )
++        return errors
++
+     def _parse_install_results(self, output: str) -> dict[str, Any]:
+         """Parse Odoo install output to extract installation errors and dependencies"""
+         install_info: dict[str, Any] = {
+@@ -427,6 +467,7 @@ class OperationResult:
+             "failed_modules": [],
+             "dependency_errors": [],
+             "error_messages": [],
++            "database_extension_errors": [],
+         }
+
+         if not output:
+@@ -558,6 +599,11 @@ class OperationResult:
+             target_modules = self.result.get("modules", [])
+             install_info["modules_installed"] = list(target_modules)
+
++        install_info["database_extension_errors"] = (
++            self._parse_database_extension_errors(output)
++        )
++        if install_info["database_extension_errors"]:
++            install_info["success"] = False
+         return install_info
+
+     def _parse_test_problem(
+diff --git a/skills/oduit/SKILL.md b/skills/oduit/SKILL.md
+index b42cdca..3a0a237 100644
+--- a/skills/oduit/SKILL.md
++++ b/skills/oduit/SKILL.md
+@@ -209,7 +209,9 @@ Runtime database mutation commands:
+ - `uninstall-module`
+ - `test-summary` when called with `--install` or `--update`
+ - `validate-addon-change` when called with install/update options
++- `extension-db` and `create-db` when creating or enabling database extensions
+ - `inspect-cron --trigger`
++- `extension-db` targets the configured `db_name`; `create-db --extension` installs requested extensions after initialization. Both are explicit runtime DB mutations. Use `--with-sudo` only when intentionally running as the local PostgreSQL administrator. The PostgreSQL server extension package must already be installed, and oduit never installs it or implicitly elevates module installation. For Odoo AI/pgvector, explicitly enable `vector` before installing `ai_azure_openai`.
+
+ Source mutation commands:
+
+diff --git a/tests/test_cli_app.py b/tests/test_cli_app.py
+index c24537b..029113b 100644
+--- a/tests/test_cli_app.py
++++ b/tests/test_cli_app.py
+@@ -590,6 +590,151 @@ class TestCLICommands(unittest.TestCase):
+         self.assertIn("write_protect_db=true", result.output)
+         mock_odoo_ops.assert_not_called()
+
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    def test_extension_db_calls_operation(
++        self, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = self.mock_config
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.install_db_extension.return_value = {"success": True}
++        mock_odoo_ops.return_value = mock_ops_instance
++
++        result = self.runner.invoke(app, ["--env", "dev", "extension-db", "vector"])
++
++        self.assertEqual(result.exit_code, 0)
++        mock_ops_instance.install_db_extension.assert_called_once_with(
++            "vector", with_sudo=False, db_user=None
++        )
++
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    def test_extension_db_with_sudo_and_db_user(
++        self, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = self.mock_config
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.install_db_extension.return_value = {"success": True}
++        mock_odoo_ops.return_value = mock_ops_instance
++
++        result = self.runner.invoke(
++            app,
++            [
++                "--env",
++                "dev",
++                "extension-db",
++                "vector",
++                "--with-sudo",
++                "--db-user",
++                "custom",
++            ],
++        )
++
++        self.assertEqual(result.exit_code, 0)
++        mock_ops_instance.install_db_extension.assert_called_once_with(
++            "vector", with_sudo=True, db_user="custom"
++        )
++
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    def test_extension_db_failure_returns_nonzero(
++        self, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = self.mock_config
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.install_db_extension.return_value = {
++            "success": False,
++            "error": "extension failed",
++        }
++        mock_odoo_ops.return_value = mock_ops_instance
++
++        result = self.runner.invoke(app, ["--env", "dev", "extension-db", "vector"])
++
++        self.assertEqual(result.exit_code, 1)
++        self.assertIn("extension failed", result.output)
++
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    def test_extension_db_requires_mutation_flag_when_policy_requires_it(
++        self, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = {
++            **self.mock_config,
++            "needs_mutation_flag": True,
++        }
++        mock_config_loader_class.return_value = mock_loader_instance
++
++        result = self.runner.invoke(app, ["--env", "dev", "extension-db", "vector"])
++
++        self.assertEqual(result.exit_code, 1)
++        mock_odoo_ops.assert_not_called()
++        self.assertIn("needs_mutation_flag=true", result.output)
++
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    @patch("builtins.input")
++    def test_create_db_forwards_extensions(
++        self, mock_input, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = self.mock_config
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
++        mock_ops_instance.create_db.return_value = {"success": True}
++        mock_odoo_ops.return_value = mock_ops_instance
++        mock_input.return_value = "y"
++
++        result = self.runner.invoke(
++            app,
++            [
++                "--env",
++                "dev",
++                "create-db",
++                "--extension",
++                "vector",
++                "--extension",
++                "pg_trgm",
++            ],
++        )
++
++        self.assertEqual(result.exit_code, 0)
++        self.assertEqual(
++            mock_ops_instance.create_db.call_args.kwargs["extensions"],
++            ["vector", "pg_trgm"],
++        )
++
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    @patch("builtins.input")
++    def test_create_db_extension_failure_returns_nonzero(
++        self, mock_input, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = self.mock_config
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
++        mock_ops_instance.create_db.return_value = {
++            "success": False,
++            "error": "Database was created, but extension failed",
++        }
++        mock_odoo_ops.return_value = mock_ops_instance
++        mock_input.return_value = "y"
++
++        result = self.runner.invoke(
++            app, ["--env", "dev", "create-db", "--extension", "vector"]
++        )
++
++        self.assertEqual(result.exit_code, 1)
++
+     @patch("oduit.cli.app.OdooOperations")
+     @patch("oduit.cli.app.ConfigLoader")
+     @patch("builtins.input")
+diff --git a/tests/test_commands.py b/tests/test_commands.py
+index ae844f6..a5d9575 100644
+--- a/tests/test_commands.py
++++ b/tests/test_commands.py
+@@ -358,6 +358,69 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
+         ]
+         self.assertEqual(result, expected)
+
++    def test_build_create_extension_command_without_sudo(self):
++        config_provider = ConfigProvider(
++            {
++                "db_name": "test_db",
++                "db_user": "odoo",
++                "db_password": "secret",
++                "db_host": "127.0.0.1",
++                "db_port": 5432,
++            }
++        )
++        command = (
++            DatabaseCommandBuilder(config_provider, with_sudo=False)
++            .create_extension_command("vector")
++            .build()
++        )
++        self.assertEqual(
++            command,
++            [
++                "env",
++                "PGPASSWORD=secret",
++                "psql",
++                "-X",
++                "-d",
++                "test_db",
++                "-v",
++                "ON_ERROR_STOP=1",
++                "-c",
++                'CREATE EXTENSION IF NOT EXISTS "vector";',
++                "-h",
++                "127.0.0.1",
++                "-p",
++                "5432",
++                "-U",
++                "odoo",
++            ],
++        )
++
++    def test_build_create_extension_command_with_sudo_uses_postgres(self):
++        config_provider = ConfigProvider({"db_name": "test_db", "db_user": "odoo"})
++        command = (
++            DatabaseCommandBuilder(config_provider)
++            .create_extension_command("vector")
++            .build()
++        )
++        self.assertEqual(
++            command[:7], ["sudo", "-S", "su", "-", "postgres", "-c", command[6]]
++        )
++        self.assertIn("psql -X -d test_db", command[6])
++        self.assertIn('CREATE EXTENSION IF NOT EXISTS "vector";', command[6])
++        self.assertNotIn("-U odoo", command[6])
++
++    def test_create_extension_identifier_escaping_and_validation(self):
++        provider = ConfigProvider({"db_name": "test_db"})
++        builder = DatabaseCommandBuilder(provider, with_sudo=False)
++        command = builder.create_extension_command('a"b').build()
++        self.assertIn('CREATE EXTENSION IF NOT EXISTS "a""b";', command)
++
++        for extension in ("", "  ", "bad\x00name"):
++            with self.assertRaises(ValueError):
++                DatabaseCommandBuilder(
++                    provider, with_sudo=False
++                ).create_extension_command(extension)
++
+
+ class TestOdooOperations(unittest.TestCase):
+     def test_parse_install_results_unmet_dependencies(self):
+diff --git a/tests/test_database_operations.py b/tests/test_database_operations.py
+index 0b290e8..bb83d89 100644
+--- a/tests/test_database_operations.py
++++ b/tests/test_database_operations.py
+@@ -200,6 +200,134 @@ class TestDatabaseOperationsService(unittest.TestCase):
+         self.assertIn("-i", init_command)
+         self.assertIn("base", init_command)
+
++    def test_create_db_installs_extension_after_legacy_init(self):
++        ops = self._build_ops()
++        result = ops.create_db(
++            extension="vector", suppress_output=True, with_sudo=False
++        )
++        self.assertTrue(result["success"])
++        calls = ops.process_manager.run_operation.call_args_list
++        self.assertEqual(len(calls), 2)
++        self.assertIn("createdb", " ".join(calls[0].args[0].command))
++        self.assertIn(
++            'CREATE EXTENSION IF NOT EXISTS "vector";', calls[1].args[0].command
++        )
++        self.assertEqual(result["extensions"], ["vector"])
++
++    def test_create_db_odoo19_installs_extension_after_native_init(self):
++        ops = self._build_ops()
++        result = ops.create_db(
++            extensions=["vector"],
++            suppress_output=True,
++            with_sudo=False,
++            odoo_series=SimpleNamespace(value="19.0"),
++        )
++        self.assertTrue(result["success"])
++        self.assertIn("init", ops.process_manager.run_command.call_args.args[0])
++        extension_operation = ops.process_manager.run_operation.call_args.args[0]
++        self.assertIn(
++            'CREATE EXTENSION IF NOT EXISTS "vector";', extension_operation.command
++        )
++
++    def test_create_db_extension_failure_reports_database_created(self):
++        ops = self._build_ops()
++        ops.process_manager.run_operation.side_effect = [
++            {"success": True, "return_code": 0},
++            {
++                "success": False,
++                "return_code": 1,
++                "stderr": 'permission denied to create extension "vector"',
++            },
++        ]
++        result = ops.create_db(
++            extensions=["vector"], suppress_output=True, with_sudo=False
++        )
++        self.assertFalse(result["success"])
++        self.assertTrue(result["database_created"])
++        self.assertIn("Database was created", result["error"])
++        self.assertEqual(
++            result["extension_results"][0]["error_type"],
++            "ExtensionInsufficientPrivilege",
++        )
++
++    def test_create_db_supports_multiple_extensions_in_order(self):
++        ops = self._build_ops()
++        result = ops.create_db(
++            extensions=["vector", "pg_trgm", "vector"],
++            suppress_output=True,
++            with_sudo=False,
++        )
++        operations = [
++            call.args[0] for call in ops.process_manager.run_operation.call_args_list
++        ]
++        self.assertEqual(len(operations), 3)
++        self.assertIn("createdb", " ".join(operations[0].command))
++        self.assertIn('"vector"', operations[1].command[9])
++        self.assertIn('"pg_trgm"', operations[2].command[9])
++        self.assertEqual(result["extensions"], ["vector", "pg_trgm"])
++
++    def test_create_db_preserves_legacy_singular_extension_argument(self):
++        ops = self._build_ops()
++        result = ops.create_db(
++            extension="vector", suppress_output=True, with_sudo=False
++        )
++        self.assertEqual(result["extensions"], ["vector"])
++        self.assertEqual(len(result["extension_results"]), 1)
++
++    def test_install_db_extension_success(self):
++        ops = self._build_ops()
++        result = ops.install_db_extension(
++            "vector", with_sudo=False, suppress_output=True
++        )
++        self.assertTrue(result["success"])
++        self.assertEqual(result["operation"], "install_db_extension")
++        self.assertEqual(result["database"], "test_db")
++        self.assertEqual(result["extension"], "vector")
++        self.assertFalse(result["with_sudo"])
++        operation = ops.process_manager.run_operation.call_args.args[0]
++        self.assertIn('CREATE EXTENSION IF NOT EXISTS "vector";', operation.command)
++
++    def test_install_db_extension_failure_classifies_privilege(self):
++        ops = self._build_ops()
++        ops.process_manager.run_operation.return_value = {
++            "success": False,
++            "return_code": 1,
++            "stdout": "",
++            "stderr": 'permission denied to create extension "vector"',
++        }
++        result = ops.install_db_extension("vector", suppress_output=True)
++        self.assertFalse(result["success"])
++        self.assertEqual(result["error_type"], "ExtensionInsufficientPrivilege")
++        self.assertIn("--with-sudo", result["remediation"][0])
++
++    def test_install_db_extension_raise_on_error_attaches_result(self):
++        from oduit.exceptions import DatabaseOperationError
++
++        ops = self._build_ops()
++        ops.process_manager.run_operation.return_value = {
++            "success": False,
++            "return_code": 1,
++            "stdout": "",
++            "stderr": 'extension "vector" is not available',
++        }
++        with self.assertRaises(DatabaseOperationError) as context:
++            ops.install_db_extension(
++                "vector", suppress_output=True, raise_on_error=True
++            )
++        self.assertEqual(
++            context.exception.operation_result["error_type"],
++            "ExtensionNotAvailable",
++        )
++
++    def test_install_db_extension_forwards_db_user(self):
++        ops = self._build_ops()
++        ops.install_db_extension(
++            "vector", with_sudo=False, db_user="custom", suppress_output=True
++        )
++        operation = ops.process_manager.run_operation.call_args.args[0]
++        self.assertIn("-U", operation.command)
++        self.assertIn("custom", operation.command)
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_operation_result.py b/tests/test_operation_result.py
+index ff7780c..9617995 100644
+--- a/tests/test_operation_result.py
++++ b/tests/test_operation_result.py
+@@ -958,6 +958,32 @@ AssertionError: 1 != 2
+         self.assertEqual(builder.result["status"], "tests_skipped")
+         self.assertFalse(builder.result["tests_run"])
+
++    def test_parse_database_extension_privilege_error(self):
++        builder = OperationResult("install", module="ai_azure_openai")
++        result = builder._parse_install_results(
++            'psycopg2.errors.InsufficientPrivilege: permission denied to create extension "vector"'
++        )
++        self.assertFalse(result["success"])
++        self.assertEqual(
++            result["database_extension_errors"][0]["reason"],
++            "insufficient_privilege",
++        )
++        self.assertEqual(
++            result["database_extension_errors"][0]["remediation"],
++            "oduit extension-db vector --with-sudo",
++        )
++
++    def test_parse_database_extension_unavailable_error(self):
++        builder = OperationResult("install", module="ai_azure_openai")
++        result = builder._parse_install_results(
++            'ERROR: extension "vector" is not available'
++        )
++        self.assertFalse(result["success"])
++        self.assertEqual(
++            result["database_extension_errors"][0]["reason"],
++            "not_available",
++        )
++
+
+ if __name__ == "__main__":
+     unittest.main()

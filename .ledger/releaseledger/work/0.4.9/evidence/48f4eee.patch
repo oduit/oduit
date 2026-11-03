@@ -1,0 +1,917 @@
+ .ledger/ledger.toml                     |  22 +++++
+ .ledger/planledger/.ledger-project.toml |   6 ++
+ .ledger/planledger/config.toml          |  14 +++
+ .ledger/taskledger/.ledger-project.toml |   6 ++
+ .ledger/taskledger/config.toml          |   7 ++
+ docs/cli.md                             |  36 ++++++-
+ oduit/_operations/database.py           | 116 ++++++++++++++++++++++
+ oduit/builders.py                       |  43 ++++++--
+ oduit/cli/commands/database.py          |  86 ++++++++++++++++
+ oduit/odoo_operations.py                |  15 +++
+ tests/test_builders.py                  |  34 +++++++
+ tests/test_cli_app.py                   | 168 ++++++++++++++++++++++++++++++--
+ tests/test_database_operations.py       |  87 +++++++++++++++++
+ 13 files changed, 622 insertions(+), 18 deletions(-)
+
+diff --git a/.ledger/ledger.toml b/.ledger/ledger.toml
+new file mode 100644
+index 0000000..6209140
+--- /dev/null
++++ b/.ledger/ledger.toml
+@@ -0,0 +1,22 @@
++schema_version = 3
++
++[project]
++uuid = "8c7611f2-9b62-4e66-979e-f61738e82cd9"
++name = "oduit"
++
++[ledgers.planledger.mounts.data]
++storage = "external"
++root = "../ledger"
++
++[ledgers.taskledger.mounts.data]
++storage = "external"
++root = "../ledger"
++
++[ledgers.taskledger.mounts.runtime]
++storage = "user-data"
++
++[ledgers.taskledger.mounts.logs]
++storage = "user-data"
++
++[ledgers.taskledger.mounts.indexes]
++storage = "cache"
+diff --git a/.ledger/planledger/.ledger-project.toml b/.ledger/planledger/.ledger-project.toml
+new file mode 100644
+index 0000000..169d528
+--- /dev/null
++++ b/.ledger/planledger/.ledger-project.toml
+@@ -0,0 +1,6 @@
++schema_version = 1
++layout_version = 3
++project_uuid = "8c7611f2-9b62-4e66-979e-f61738e82cd9"
++tool = "planledger"
++mount = "config"
++storage = "project"
+diff --git a/.ledger/planledger/config.toml b/.ledger/planledger/config.toml
+new file mode 100644
+index 0000000..182bd9e
+--- /dev/null
++++ b/.ledger/planledger/config.toml
+@@ -0,0 +1,14 @@
++config_version = 1
++
++[ledger]
++code = "pl"
++name = "planledger"
++
++[prompt_profiles.planning_workshop]
++enabled = true
++activation = "always"
++question_policy = "ask_one_at_a_time"
++codebase_first = true
++include_recommended_answer = true
++max_required_questions = 10
++required_question_topics = ["scope", "tests", "rollback", "risks"]
+diff --git a/.ledger/taskledger/.ledger-project.toml b/.ledger/taskledger/.ledger-project.toml
+new file mode 100644
+index 0000000..26ae38f
+--- /dev/null
++++ b/.ledger/taskledger/.ledger-project.toml
+@@ -0,0 +1,6 @@
++schema_version = 1
++layout_version = 3
++project_uuid = "8c7611f2-9b62-4e66-979e-f61738e82cd9"
++tool = "taskledger"
++mount = "config"
++storage = "project"
+diff --git a/.ledger/taskledger/config.toml b/.ledger/taskledger/config.toml
+new file mode 100644
+index 0000000..6f94549
+--- /dev/null
++++ b/.ledger/taskledger/config.toml
+@@ -0,0 +1,7 @@
++# Project-local Taskledger configuration.
++# Storage topology belongs to Ledgercore; branch state belongs to data/state.toml.
++config_version = 3
++
++[ledger]
++code = 'tl'
++name = 'taskledger'
+diff --git a/docs/cli.md b/docs/cli.md
+index cdbeb99..afaa627 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -439,17 +439,45 @@ oduit --env dev create-db --with-sudo
+ oduit --env dev create-db --drop --create-role --non-interactive
+ ```
+
+-```{note}
+-The command checks if the database exists before attempting to create it.
+-Use ``--drop`` to automatically drop an existing database before creating.
+-```
++````{note}
++The command checks whether the configured database exists. Before checking the target, it performs a read-only PostgreSQL collation check for `template1` and `postgres`. A stale `template1` or failed health check stops the command before any drop or creation. A mismatch in `postgres` is diagnostic information. Oduit does not rebuild PostgreSQL objects or refresh recorded collation versions.
++Use ``--drop`` only when dropping the configured target is intentional and recoverable.
+
+ ```{warning}
+ This command will prompt for confirmation before creating the database
+ unless you pass ``--non-interactive``. In non-interactive mode, the command
+ fails fast instead of auto-confirming.
++````
++
++#### Collation preflight and administrator repair
++
++The preflight compares each database's recorded `datcollversion` with `pg_database_collation_actual_version(oid)`. Inspect the configured cluster with this read-only query:
++
++```sql
++SELECT datname, datcollversion, pg_database_collation_actual_version(oid)
++FROM pg_database
++WHERE datname IN ('template1', 'postgres')
++ORDER BY datname;
+ ```
+
++If `template1` is stale, `create-db` fails before checking or dropping the configured target. A failed health query also blocks the command. Oduit never runs `REINDEX` or `ALTER DATABASE ... REFRESH COLLATION VERSION`.
++
++For a stale cluster, have a PostgreSQL administrator:
++
++1. Confirm whether the configured Odoo target exists, whether a previous `--drop` removed it, and whether it needs restoration from backup.
++2. Choose a maintenance window and rebuild affected collation-dependent objects in each affected database, such as `template1` and `postgres`. `REINDEX DATABASE` may be appropriate after assessing scope, locks, and service impact.
++3. Only after rebuilding objects, refresh recorded versions for the repaired databases, for example:
++
++   ```sql
++   ALTER DATABASE template1 REFRESH COLLATION VERSION;
++   ALTER DATABASE postgres REFRESH COLLATION VERSION;
++   ```
++
++4. Rerun the read-only version query and confirm recorded and actual versions match.
++5. Retry the intended `create-db` command without `--drop`. Use `--drop` only if dropping the configured target is intentional and recoverable.
++
++If maintenance fails or the target was removed, stop retries and follow the PostgreSQL administrator's backup and recovery procedure.
++
+ ### extension-db
+
+ Enable a PostgreSQL server extension in the configured `db_name`. The SQL is idempotent and the server extension package/control files must already be installed; oduit does not install operating-system packages.
+diff --git a/oduit/_operations/database.py b/oduit/_operations/database.py
+index 185bc79..be2ad09 100644
+--- a/oduit/_operations/database.py
++++ b/oduit/_operations/database.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+
++import json
+ import re
+ from collections.abc import Sequence
+ from textwrap import dedent
+@@ -294,6 +295,121 @@ class DatabaseOperationsService(OperationsService):
+             )
+         return final_result
+
++    def collation_health(
++        self,
++        with_sudo: bool = True,
++        suppress_output: bool = False,
++        raise_on_error: bool = False,
++        db_user: str | None = None,
++    ) -> dict:
++        """Check recorded and actual collation versions for template1 and postgres."""
++        try:
++            operation = (
++                DatabaseCommandBuilder(self.operations.config, with_sudo=with_sudo)
++                .collation_health_command(db_user=db_user)
++                .build_operation()
++            )
++            if self.operations.verbose and not suppress_output:
++                print_info("Checking PostgreSQL collation versions...")
++
++            process_result = self.operations.process_manager.run_operation(
++                operation,
++                verbose=self.operations.verbose,
++                suppress_output=suppress_output,
++            )
++            process_result = process_result or {}
++            stdout = process_result.get("stdout", "")
++            stderr = process_result.get("stderr", "")
++            success = bool(process_result.get("success", False))
++            final_result = {
++                "success": success,
++                "healthy": None,
++                "template1_stale": None,
++                "postgres_stale": None,
++                "databases": {},
++                "return_code": process_result.get("return_code", 0 if success else 1),
++                "operation": "collation_health",
++                "command": operation.command,
++                "stdout": stdout,
++                "stderr": stderr,
++            }
++
++            if not success:
++                final_result["error"] = (
++                    str(process_result.get("error") or stderr or stdout).strip()
++                    or "PostgreSQL collation health check failed"
++                )
++                final_result["error_type"] = "CollationHealthCheckError"
++            else:
++                try:
++                    records = [
++                        json.loads(line)
++                        for line in stdout.splitlines()
++                        if line.lstrip().startswith("{")
++                    ]
++                    by_database = {record["database"]: record for record in records}
++                    missing = {"template1", "postgres"} - by_database.keys()
++                    if missing:
++                        names = ", ".join(sorted(missing))
++                        raise ValueError(
++                            "Collation query omitted expected database(s): " + names
++                        )
++                    databases = {
++                        name: {
++                            "recorded_version": by_database[name]["recorded_version"],
++                            "actual_version": by_database[name]["actual_version"],
++                            "stale": (
++                                by_database[name]["recorded_version"]
++                                != by_database[name]["actual_version"]
++                            ),
++                        }
++                        for name in ("template1", "postgres")
++                    }
++                    template1_stale = databases["template1"]["stale"]
++                    postgres_stale = databases["postgres"]["stale"]
++                    final_result.update(
++                        {
++                            "healthy": not template1_stale and not postgres_stale,
++                            "template1_stale": template1_stale,
++                            "postgres_stale": postgres_stale,
++                            "databases": databases,
++                        }
++                    )
++                except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
++                    final_result.update(
++                        {
++                            "success": False,
++                            "healthy": None,
++                            "return_code": 1,
++                            "error": str(error),
++                            "error_type": "CollationHealthCheckError",
++                        }
++                    )
++        except ConfigError as error:
++            final_result = {
++                "success": False,
++                "healthy": None,
++                "template1_stale": None,
++                "postgres_stale": None,
++                "databases": {},
++                "return_code": 1,
++                "operation": "collation_health",
++                "error": str(error),
++                "error_type": "ConfigError",
++            }
++            if not suppress_output:
++                if _output_module._formatter.format_type == "json":
++                    print_error_result(str(error), 1)
++                else:
++                    print_error(str(error))
++
++        if raise_on_error and not final_result.get("success", False):
++            raise DatabaseOperationError(
++                final_result.get("error", "PostgreSQL collation health check failed"),
++                operation_result=final_result,
++            )
++        return final_result
++
+     def db_exists(
+         self,
+         with_sudo: bool = True,
+diff --git a/oduit/builders.py b/oduit/builders.py
+index 46b4b99..490c0ee 100644
+--- a/oduit/builders.py
++++ b/oduit/builders.py
+@@ -197,17 +197,14 @@ class AbstractCommandBuilder(ABC):
+     @abstractmethod
+     def build(self) -> list[str]:
+         """Build and return the final command as a list of strings"""
+-        pass
+
+     @abstractmethod
+     def build_operation(self) -> CommandOperation:
+         """Build and return a structured CommandOperation with metadata"""
+-        pass
+
+     @abstractmethod
+     def reset(self) -> None:
+         """Reset the builder to initial state for reuse"""
+-        pass
+
+     def _set_command(self, command: str) -> "AbstractCommandBuilder":
+         """Set a command (like 'shell', 'run', or binary like 'python')"""
+@@ -260,9 +257,7 @@ class AbstractCommandBuilder(ABC):
+         for part in self._command_parts:
+             part_type = part.get("type")
+
+-            if part_type == "command":
+-                result.append(str(part["value"]))
+-            elif part_type == "value":
++            if part_type == "command" or part_type == "value":
+                 result.append(str(part["value"]))
+             elif part_type == "flag":
+                 result.append(f"{part['prefix']}{part['key']}")
+@@ -1583,6 +1578,39 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+                 self._set_parameter("U", str(db_user), prefix="-", sep=" ")
+         return self
+
++    def collation_health_command(
++        self, db_user: str | None = None
++    ) -> "DatabaseCommandBuilder":
++        """Build a read-only check for the template1 and postgres collations."""
++        query = (
++            "SELECT json_build_object("
++            "'database', datname, "
++            "'recorded_version', datcollversion, "
++            "'actual_version', pg_database_collation_actual_version(oid)"
++            ")::text "
++            "FROM pg_database "
++            "WHERE datname IN ('template1', 'postgres') "
++            "ORDER BY datname;"
++        )
++        tokens = [
++            "psql",
++            "-X",
++            "-A",
++            "-t",
++            "-v",
++            "ON_ERROR_STOP=1",
++            "-d",
++            "postgres",
++            "-c",
++            query,
++            *self._get_psql_connection_tokens(db_user),
++        ]
++        if self.with_sudo:
++            self._set_command(self._shell_join(self._with_password_env(tokens)))
++        else:
++            self._append_raw_tokens(self._with_password_env(tokens))
++        return self
++
+     def exists_db_command(self, db_user: str | None = None) -> "DatabaseCommandBuilder":
+         """Build database exists check command"""
+         self.config.validate_keys(["db_name"], "database exists command")
+@@ -1633,6 +1661,9 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+                 elif "psql -l" in command_value:
+                     operation_type = "list_db"
+                     break
++                elif "pg_database_collation_actual_version" in command_value:
++                    operation_type = "collation_health"
++                    break
+                 elif "from pg_database" in command_value or "grep -qw" in command_value:
+                     operation_type = "exists_db"
+                     break
+diff --git a/oduit/cli/commands/database.py b/oduit/cli/commands/database.py
+index 267add5..ea06656 100644
+--- a/oduit/cli/commands/database.py
++++ b/oduit/cli/commands/database.py
+@@ -59,6 +59,90 @@ def create_db_command(
+     effective_non_interactive = non_interactive or global_config.non_interactive
+     odoo_operations = build_odoo_operations_fn(global_config)
+
++    collation_result = odoo_operations.check_db_collation_health(
++        with_sudo=with_sudo,
++        suppress_output=True,
++        db_user=db_user,
++    )
++    if (
++        not isinstance(collation_result, dict)
++        or not collation_result.get("success", False)
++        or not isinstance(collation_result.get("template1_stale"), bool)
++    ):
++        check_error = (
++            collation_result.get("error", "The check returned incomplete data")
++            if isinstance(collation_result, dict)
++            else "The check returned an invalid result"
++        )
++        message = (
++            "Could not establish PostgreSQL collation health before database "
++            f"creation: {check_error}"
++        )
++        print_command_error_result_fn(
++            global_config,
++            "create_db",
++            message,
++            error_type="CollationHealthCheckError",
++            details={"database": db_name, "check_error": str(check_error)},
++            remediation=[
++                "Check PostgreSQL connectivity and permissions, then retry.",
++                "No database was dropped or created because cluster health is unknown.",
++            ],
++        )
++        raise typer.Exit(1) from None
++
++    if collation_result["template1_stale"]:
++        databases = collation_result.get("databases", {})
++        template1 = databases.get("template1", {})
++        postgres = databases.get("postgres", {})
++        message = (
++            "PostgreSQL template1 has a stale collation version "
++            f"(recorded {template1.get('recorded_version')!r}, "
++            f"actual {template1.get('actual_version')!r})."
++        )
++        if collation_result.get("postgres_stale"):
++            message += (
++                " postgres also has a collation mismatch "
++                f"(recorded {postgres.get('recorded_version')!r}, "
++                f"actual {postgres.get('actual_version')!r})."
++            )
++        print_command_error_result_fn(
++            global_config,
++            "create_db",
++            message,
++            error_type="CollationMismatch",
++            details={
++                "database": db_name,
++                "template1": template1,
++                "postgres": postgres,
++            },
++            remediation=[
++                (
++                    "Have a PostgreSQL administrator rebuild "
++                    "affected collation-dependent objects before "
++                    "refreshing the recorded collation version."
++                ),
++                "Verify recorded and actual versions match, then retry create-db.",
++                (
++                    "Oduit only diagnoses this condition; it does not rebuild "
++                    "objects or refresh collation versions."
++                ),
++                "No database was dropped or created.",
++            ],
++        )
++        raise typer.Exit(1) from None
++
++    postgres_diagnostic = None
++    if collation_result.get("postgres_stale"):
++        postgres_diagnostic = collation_result.get("databases", {}).get("postgres", {})
++        if global_config.format != OutputFormat.JSON:
++            print_warning(
++                "PostgreSQL database 'postgres' has a collation version mismatch "
++                f"(recorded {postgres_diagnostic.get('recorded_version')!r}, "
++                f"actual {postgres_diagnostic.get('actual_version')!r}); "
++                "template1 is healthy, so creation may proceed."
++            )
++
+     exists_result = odoo_operations.db_exists(
+         with_sudo=with_sudo,
+         suppress_output=True,
+@@ -139,6 +223,8 @@ def create_db_command(
+             odoo_series=global_config.odoo_series,
+             extensions=extensions,
+         )
++        if postgres_diagnostic is not None:
++            result["collation_diagnostics"] = {"postgres": postgres_diagnostic}
+         if global_config.format == OutputFormat.JSON:
+             print(json.dumps(output_result_to_json(result)))
+         if not result.get("success", False):
+diff --git a/oduit/odoo_operations.py b/oduit/odoo_operations.py
+index a6e2a3c..c2ebe64 100644
+--- a/oduit/odoo_operations.py
++++ b/oduit/odoo_operations.py
+@@ -310,6 +310,21 @@ class OdooOperations:
+             db_user=db_user,
+         )
+
++    def check_db_collation_health(
++        self,
++        with_sudo: bool = True,
++        suppress_output: bool = False,
++        raise_on_error: bool = False,
++        db_user: str | None = None,
++    ) -> dict:
++        """Check recorded and actual PostgreSQL collation versions."""
++        return self._database_service.collation_health(
++            with_sudo=with_sudo,
++            suppress_output=suppress_output,
++            raise_on_error=raise_on_error,
++            db_user=db_user,
++        )
++
+     def db_exists(
+         self,
+         with_sudo: bool = True,
+diff --git a/tests/test_builders.py b/tests/test_builders.py
+index 1ffb78b..de5df7a 100644
+--- a/tests/test_builders.py
++++ b/tests/test_builders.py
+@@ -638,6 +638,40 @@ class TestDatabaseCommandBuilder:
+
+         assert cmd == ["psql", "-l", "-U", "custom_user"]
+
++    def test_collation_health_command_uses_configured_connection_options(
++        self, config_provider
++    ):
++        config = config_provider.get_full_config().copy()
++        config.update({"db_host": "localhost", "db_port": 5432})
++        builder = DatabaseCommandBuilder(ConfigProvider(config), with_sudo=False)
++        command = builder.collation_health_command().build()
++
++        assert command[:6] == [
++            "env",
++            "PGPASSWORD=password",
++            "psql",
++            "-X",
++            "-A",
++            "-t",
++        ]
++        assert "-v" in command
++        assert "ON_ERROR_STOP=1" in command
++        assert "-d" in command
++        assert command[command.index("-d") + 1] == "postgres"
++        assert command[command.index("-h") + 1] == "localhost"
++        assert command[command.index("-p") + 1] == "5432"
++        assert command[command.index("-U") + 1] == "odoo"
++
++        query = command[command.index("-c") + 1]
++        assert "pg_database_collation_actual_version(oid)" in query
++        assert "datcollversion" in query
++        assert "'template1', 'postgres'" in query
++        assert "test_db" not in query
++
++        operation = builder.build_operation()
++        assert operation.operation_type == "collation_health"
++        assert not operation.is_odoo_command
++
+     def test_legacy_init_base_command_with_demo_and_language(self, config_provider):
+         """Test legacy init command includes expected server init flags."""
+         builder = DatabaseCommandBuilder(config_provider, with_sudo=False)
+diff --git a/tests/test_cli_app.py b/tests/test_cli_app.py
+index 029113b..c2fe2e6 100644
+--- a/tests/test_cli_app.py
++++ b/tests/test_cli_app.py
+@@ -111,6 +111,25 @@ class TestCLICommands(unittest.TestCase):
+             "python_bin": "/usr/bin/python3",
+         }
+
++    def _set_healthy_collation(self, operations):
++        operations.check_db_collation_health.return_value = {
++            "success": True,
++            "template1_stale": False,
++            "postgres_stale": False,
++            "databases": {
++                "template1": {
++                    "recorded_version": "2.44",
++                    "actual_version": "2.44",
++                    "stale": False,
++                },
++                "postgres": {
++                    "recorded_version": "2.44",
++                    "actual_version": "2.44",
++                    "stale": False,
++                },
++            },
++        }
++
+     def assert_common_json_envelope(
+         self,
+         payload: dict,
+@@ -687,6 +706,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_loader_instance.load_config.return_value = self.mock_config
+         mock_config_loader_class.return_value = mock_loader_instance
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+         mock_ops_instance.create_db.return_value = {"success": True}
+         mock_odoo_ops.return_value = mock_ops_instance
+@@ -721,6 +741,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_loader_instance.load_config.return_value = self.mock_config
+         mock_config_loader_class.return_value = mock_loader_instance
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+         mock_ops_instance.create_db.return_value = {
+             "success": False,
+@@ -746,6 +767,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_loader_instance.load_config.return_value = self.mock_config
+         mock_config_loader_class.return_value = mock_loader_instance
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+         mock_odoo_ops.return_value = mock_ops_instance
+         mock_input.return_value = "y"
+@@ -775,6 +797,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_loader_instance.load_config.return_value = self.mock_config
+         mock_config_loader_class.return_value = mock_loader_instance
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+         mock_odoo_ops.return_value = mock_ops_instance
+         mock_input.return_value = "y"
+@@ -813,6 +836,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_loader_instance.load_config.return_value = self.mock_config
+         mock_config_loader_class.return_value = mock_loader_instance
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+         mock_odoo_ops.return_value = mock_ops_instance
+         mock_input.return_value = "y"
+@@ -870,6 +894,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_loader_instance.load_config.return_value = self.mock_config
+         mock_config_loader_class.return_value = mock_loader_instance
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+         mock_odoo_ops.return_value = mock_ops_instance
+         mock_input.return_value = "n"
+@@ -893,6 +918,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_config_loader_class.return_value = mock_loader_instance
+
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": True, "success": True}
+         mock_ops_instance.drop_db.return_value = {"success": True}
+         mock_ops_instance.create_db.return_value = {"success": True}
+@@ -906,10 +932,135 @@ class TestCLICommands(unittest.TestCase):
+
+         self.assertEqual(result.exit_code, 0)
+         mock_ops_instance.db_exists.assert_called_once()
++        mock_ops_instance.check_db_collation_health.assert_called_once()
++        method_names = [call[0] for call in mock_ops_instance.method_calls]
++        self.assertLess(
++            method_names.index("check_db_collation_health"),
++            method_names.index("db_exists"),
++        )
+         mock_ops_instance.drop_db.assert_called_once()
+         mock_ops_instance.create_db.assert_called_once()
+         self.assertNotIn("Database creation cancelled", result.output)
+
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    @patch("builtins.input")
++    def test_create_db_stale_template_blocks_drop_and_create(
++        self, mock_input, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = self.mock_config
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.check_db_collation_health.return_value = {
++            "success": True,
++            "healthy": False,
++            "template1_stale": True,
++            "postgres_stale": True,
++            "databases": {
++                "template1": {
++                    "recorded_version": "2.42",
++                    "actual_version": "2.44",
++                    "stale": True,
++                },
++                "postgres": {
++                    "recorded_version": "2.42",
++                    "actual_version": "2.44",
++                    "stale": True,
++                },
++            },
++        }
++        mock_odoo_ops.return_value = mock_ops_instance
++
++        result = self.runner.invoke(app, ["--env", "dev", "create-db", "--drop"])
++
++        self.assertEqual(result.exit_code, 1)
++        self.assertIn("template1 has a stale collation version", result.output)
++        self.assertIn("recorded '2.42'", result.output)
++        self.assertIn("actual '2.44'", result.output)
++        self.assertIn("postgres also has a collation mismatch", result.output)
++        self.assertIn("rebuild affected collation-dependent objects", result.output)
++        mock_ops_instance.check_db_collation_health.assert_called_once()
++        mock_ops_instance.db_exists.assert_not_called()
++        mock_ops_instance.drop_db.assert_not_called()
++        mock_ops_instance.create_db.assert_not_called()
++        mock_input.assert_not_called()
++
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    def test_create_db_collation_check_failure_returns_json_without_mutation(
++        self, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = self.mock_config
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.check_db_collation_health.return_value = {
++            "success": False,
++            "healthy": None,
++            "error": "connection refused",
++        }
++        mock_odoo_ops.return_value = mock_ops_instance
++
++        result = self.runner.invoke(
++            app, ["--env", "dev", "--json", "create-db", "--drop"]
++        )
++
++        self.assertEqual(result.exit_code, 1)
++        payload = json.loads(result.output)
++        self.assertFalse(payload["success"])
++        self.assertEqual(payload["error_type"], "CollationHealthCheckError")
++        self.assertIn("connection refused", payload["error"])
++        self.assertIn("No database was dropped or created", payload["remediation"][-1])
++        mock_ops_instance.db_exists.assert_not_called()
++        mock_ops_instance.drop_db.assert_not_called()
++        mock_ops_instance.create_db.assert_not_called()
++
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    @patch("builtins.input")
++    def test_create_db_reports_postgres_mismatch_without_blocking(
++        self, mock_input, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = self.mock_config
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.check_db_collation_health.return_value = {
++            "success": True,
++            "healthy": False,
++            "template1_stale": False,
++            "postgres_stale": True,
++            "databases": {
++                "template1": {
++                    "recorded_version": "2.44",
++                    "actual_version": "2.44",
++                    "stale": False,
++                },
++                "postgres": {
++                    "recorded_version": "2.42",
++                    "actual_version": "2.44",
++                    "stale": True,
++                },
++            },
++        }
++        mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
++        mock_ops_instance.create_db.return_value = {"success": True}
++        mock_odoo_ops.return_value = mock_ops_instance
++        mock_input.return_value = "y"
++
++        result = self.runner.invoke(app, ["--env", "dev", "--json", "create-db"])
++
++        self.assertEqual(result.exit_code, 0)
++        payload = json.loads(result.output.splitlines()[-1])
++        self.assertTrue(payload["success"])
++        self.assertEqual(
++            payload["collation_diagnostics"]["postgres"]["recorded_version"],
++            "2.42",
++        )
++        mock_ops_instance.drop_db.assert_not_called()
++        mock_ops_instance.create_db.assert_called_once()
++
+     @patch("oduit.cli.app.OdooOperations")
+     @patch("oduit.cli.app.ConfigLoader")
+     @patch("builtins.input")
+@@ -922,6 +1073,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_config_loader_class.return_value = mock_loader_instance
+
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": True, "success": True}
+         mock_odoo_ops.return_value = mock_ops_instance
+         mock_input.return_value = "n"
+@@ -947,6 +1099,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_loader_instance.load_config.return_value = self.mock_config
+         mock_config_loader_class.return_value = mock_loader_instance
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+         mock_odoo_ops.return_value = mock_ops_instance
+
+@@ -968,6 +1121,7 @@ class TestCLICommands(unittest.TestCase):
+         mock_loader_instance.load_config.return_value = self.mock_config
+         mock_config_loader_class.return_value = mock_loader_instance
+         mock_ops_instance = MagicMock()
++        self._set_healthy_collation(mock_ops_instance)
+         mock_ops_instance.db_exists.return_value = {"exists": False, "success": True}
+         mock_odoo_ops.return_value = mock_ops_instance
+
+@@ -3566,9 +3720,8 @@ class TestInitCommand(unittest.TestCase):
+             "coverage": "/usr/bin/coverage",
+         }.get(x)
+
+-        with patch("pathlib.Path.mkdir"):
+-            with patch("pathlib.Path.write_text"):
+-                result = self.runner.invoke(app, ["init", "dev"])
++        with patch("pathlib.Path.mkdir"), patch("pathlib.Path.write_text"):
++            result = self.runner.invoke(app, ["init", "dev"])
+
+         self.assertEqual(result.exit_code, 0)
+         self.assertIn("created successfully", result.output)
+@@ -3636,11 +3789,10 @@ class TestInitCommand(unittest.TestCase):
+             "python3": "/usr/bin/python3",
+         }.get(x)
+
+-        with patch("pathlib.Path.mkdir"):
+-            with patch("pathlib.Path.write_text"):
+-                result = self.runner.invoke(
+-                    app, ["init", "dev", "--from-conf", "/etc/odoo.conf"]
+-                )
++        with patch("pathlib.Path.mkdir"), patch("pathlib.Path.write_text"):
++            result = self.runner.invoke(
++                app, ["init", "dev", "--from-conf", "/etc/odoo.conf"]
++            )
+
+         self.assertEqual(result.exit_code, 0)
+         self.assertIn("Imported configuration", result.output)
+diff --git a/tests/test_database_operations.py b/tests/test_database_operations.py
+index bb83d89..ac0784d 100644
+--- a/tests/test_database_operations.py
++++ b/tests/test_database_operations.py
+@@ -328,6 +328,93 @@ class TestDatabaseOperationsService(unittest.TestCase):
+         self.assertIn("-U", operation.command)
+         self.assertIn("custom", operation.command)
+
++    def test_collation_health_returns_clean_version_details(self):
++        ops = self._build_ops()
++        ops.process_manager.run_operation.return_value = {
++            "success": True,
++            "return_code": 0,
++            "stdout": (
++                '{"database": "template1", "recorded_version": "2.44", '
++                '"actual_version": "2.44"}\n'
++                '{"database": "postgres", "recorded_version": "2.44", '
++                '"actual_version": "2.44"}\n'
++            ),
++            "stderr": "",
++        }
++
++        result = ops.check_db_collation_health(suppress_output=True)
++
++        self.assertTrue(result["success"])
++        self.assertTrue(result["healthy"])
++        self.assertFalse(result["template1_stale"])
++        self.assertFalse(result["postgres_stale"])
++        self.assertEqual(
++            result["databases"]["template1"],
++            {
++                "recorded_version": "2.44",
++                "actual_version": "2.44",
++                "stale": False,
++            },
++        )
++        operation = ops.process_manager.run_operation.call_args.args[0]
++        self.assertEqual(operation.operation_type, "collation_health")
++
++    def test_collation_health_distinguishes_template_and_postgres_mismatches(self):
++        ops = self._build_ops()
++        ops.process_manager.run_operation.return_value = {
++            "success": True,
++            "return_code": 0,
++            "stdout": (
++                'WARNING: database "postgres" has a collation version mismatch\n'
++                '{"database": "template1", "recorded_version": "2.42", '
++                '"actual_version": "2.44"}\n'
++                '{"database": "postgres", "recorded_version": "2.41", '
++                '"actual_version": "2.44"}\n'
++            ),
++            "stderr": "",
++        }
++
++        result = ops.check_db_collation_health(suppress_output=True)
++
++        self.assertTrue(result["success"])
++        self.assertFalse(result["healthy"])
++        self.assertTrue(result["template1_stale"])
++        self.assertTrue(result["postgres_stale"])
++        self.assertEqual(result["databases"]["template1"]["recorded_version"], "2.42")
++        self.assertEqual(result["databases"]["postgres"]["actual_version"], "2.44")
++
++    def test_collation_health_query_failure_is_not_healthy(self):
++        ops = self._build_ops()
++        ops.process_manager.run_operation.return_value = {
++            "success": False,
++            "return_code": 1,
++            "stdout": "",
++            "stderr": "connection refused",
++        }
++
++        result = ops.check_db_collation_health(suppress_output=True)
++
++        self.assertFalse(result["success"])
++        self.assertIsNone(result["healthy"])
++        self.assertIsNone(result["template1_stale"])
++        self.assertEqual(result["error"], "connection refused")
++
++    def test_collation_health_missing_database_result_is_not_healthy(self):
++        ops = self._build_ops()
++        ops.process_manager.run_operation.return_value = {
++            "success": True,
++            "return_code": 0,
++            "stdout": '{"database": "template1", "recorded_version": null, '
++            '"actual_version": null}\n',
++            "stderr": "",
++        }
++
++        result = ops.check_db_collation_health(suppress_output=True)
++
++        self.assertFalse(result["success"])
++        self.assertIsNone(result["healthy"])
++        self.assertIn("postgres", result["error"])
++
+
+ if __name__ == "__main__":
+     unittest.main()

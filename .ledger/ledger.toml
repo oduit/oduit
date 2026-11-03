@@ -20,3 +20,9 @@ storage = "user-data"
 
 [ledgers.taskledger.mounts.indexes]
 storage = "cache"
+
+[ledgers.releaseledger.mounts.data]
+storage = "project"
+
+[ledgers.releaseledger.mounts.indexes]
+storage = "cache"

@@ -1,0 +1,4742 @@
+ .pre-commit-config.yaml                   |  37 +-
+ .ruff.toml                                |   1 +
+ README.md                                 |  37 ++
+ oduit/__init__.py                         | 112 ++---
+ oduit/_operations/database.py             | 164 ++++++
+ oduit/arc42_renderer.py                   |  17 +-
+ oduit/branch_database.py                  | 812 ++++++++++++++++++++++++++++++
+ oduit/builders.py                         | 143 ++++--
+ oduit/cli/agent/planning.py               |   3 +-
+ oduit/cli/agent/services.py               |  64 ++-
+ oduit/cli/agent_support.py                |  12 +-
+ oduit/cli/app.py                          |  15 +
+ oduit/cli/bootstrap_support.py            |  76 ++-
+ oduit/cli/branch_database_support.py      | 149 ++++++
+ oduit/cli/command_inventory.py            |   1 +
+ oduit/cli/commands/branch_database.py     | 182 +++++++
+ oduit/cli/commands/dependencies.py        |   9 +-
+ oduit/cli/commands/i18n.py                |  14 +
+ oduit/cli/commands/runtime.py             |  55 +-
+ oduit/cli/dependency_output.py            |   4 +-
+ oduit/cli/doctor.py                       |   4 +-
+ oduit/cli/main_support.py                 |   8 +-
+ oduit/cli/register_app_commands.py        | 110 +++-
+ oduit/cli/register_inspection_commands.py |   8 +-
+ oduit/cli/runtime_context.py              |   9 +
+ oduit/cli_typer.py                        |   8 +-
+ oduit/cli_types.py                        |   4 +
+ oduit/config_loader.py                    |   4 +-
+ oduit/config_provider.py                  |  14 +-
+ oduit/demo_process_manager.py             |   2 +-
+ oduit/documentation_tracking.py           |   6 +-
+ oduit/exceptions.py                       |  14 -
+ oduit/managed_markdown.py                 |   2 +-
+ oduit/odoo_operations.py                  |  38 ++
+ oduit/operation_result.py                 |   4 +-
+ oduit/operation_sets.py                   |   4 +-
+ oduit/process_manager.py                  |   4 +-
+ oduit/technical_documentation.py          |   2 +-
+ tests/test_branch_database.py             | 561 +++++++++++++++++++++
+ tests/test_branch_database_cli.py         | 393 +++++++++++++++
+ tests/test_cli_app.py                     |  60 ++-
+ tests/test_commands.py                    |  62 +++
+ tests/test_config_loader.py               |  26 +-
+ tests/test_config_provider.py             |  19 +
+ tests/test_database_operations.py         |  89 ++++
+ tests/test_odoo_embedded_manager.py       |  26 +-
+ tests/test_python_api.py                  |  94 ++--
+ tests/test_security_tasks.py              |   4 +-
+ tests/test_utils.py                       |   8 +-
+ 49 files changed, 3208 insertions(+), 286 deletions(-)
+
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index b0ef611..61a9e5e 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -11,23 +11,32 @@ exclude: |
+   ^docs/_templates/.*\.html$|
+   # Don't bother non-technical authors with formatting issues in docs
+   readme/.*\.(rst|md)$|
+-  ^agent_command_inventory\.md$|
+   # Ignore build and dist directories in addons
+-  /build/|/dist/|/dev/|/notnebooks/|
++  /build/|/dist/|/dev/|/notnebooks/
+   # You don't usually want a bot to modify your legal texts
+   (LICENSE.*|COPYING.*)|
+ default_language_version:
+   python: python3
+-  node: "16.17.0"
+ repos:
+-  - repo: https://github.com/astral-sh/ruff-pre-commit
+-    rev: v0.6.8
++  - repo: local
+     hooks:
+-      - id: ruff
+-        args: [--fix, --exit-non-zero-on-fix, --config=.ruff.toml]
++      - id: ruff-check
++        name: ruff check
++        entry: ruff check --exit-non-zero-on-fix --force-exclude
++        language: system
++        types_or: [python, pyi]
+       - id: ruff-format
++        name: ruff format
++        entry: ruff format --force-exclude
++        language: system
++        types_or: [python, pyi]
++  - repo: https://github.com/asottile/pyupgrade
++    rev: v3.21.2
++    hooks:
++      - id: pyupgrade
++        args: [--py310-plus]
+   - repo: https://github.com/pre-commit/pre-commit-hooks
+-    rev: v4.6.0
++    rev: v6.0.0
+     hooks:
+       - id: check-toml
+       - id: check-yaml
+@@ -38,14 +47,12 @@ repos:
+       - id: mixed-line-ending
+         args: ["--fix=lf"]
+       - id: debug-statements
+-      - id: fix-encoding-pragma
+-        args: ["--remove"]
+       - id: check-case-conflict
+       - id: check-docstring-first
+       - id: check-executables-have-shebangs
+       - id: check-merge-conflict
+   - repo: https://github.com/pre-commit/mirrors-prettier
+-    rev: v2.7.1
++    rev: v4.0.0-alpha.8
+     hooks:
+       - id: prettier
+         name: prettier (with plugin-xml)
+@@ -55,11 +62,3 @@ repos:
+         args:
+           - --plugin=@prettier/plugin-xml
+         files: \.(css|htm|html|js|json|jsx|less|md|scss|toml|ts|xml|yaml|yml)$
+-  - repo: https://github.com/pre-commit/mirrors-eslint
+-    rev: v8.24.0
+-    hooks:
+-      - id: eslint
+-        verbose: true
+-        args:
+-          - --color
+-          - --fix
+diff --git a/.ruff.toml b/.ruff.toml
+index 231eba0..a2eb22d 100644
+--- a/.ruff.toml
++++ b/.ruff.toml
+@@ -3,6 +3,7 @@ target-version = "py310"
+ fix = true
+
+ [lint]
++select = ["E4", "E7", "E9", "F"]
+ extend-select = [
+     "B",
+     "C90",
+diff --git a/README.md b/README.md
+index c165702..9be769f 100644
+--- a/README.md
++++ b/README.md
+@@ -471,6 +471,43 @@ Plain `test` runs stay read-only; only `test --install/--update`, `agent test-su
+
+ A successful test result is proof that at least one test executed. Zero-test results are non-success and identify whether the module was uninstalled, no tests matched, or the runner skipped execution. Plain tests never install modules automatically. When `--install` or `--update` is explicitly requested, oduit performs the mutation, verifies the installed state, and only then starts the test process.
+
++## Branch-aware databases
++
++Branch-specific databases are opt-in. Add `[branch_db]` to an environment config or `.oduit.toml`:
++
++```toml
++[odoo_params]
++db_name = "project_dev"
++
++[branch_db]
++enabled = true
++base_branch = "main"
++auto_create = true
++neutralize = false
++```
++
++`odoo_params.db_name` remains the base database. On `base_branch`, oduit uses it directly. On another local Git branch, oduit selects a deterministic branch-specific name. The `[branch_db]` section is oduit-only and is never passed to Odoo. Enabled branch mode requires a local branch checkout; detached `HEAD` is rejected. Git worktrees use their worktree-specific branch and share managed state through the repository's common Git directory.
++
++When a supported runtime workflow needs a missing feature-branch database and `auto_create = true`, oduit duplicates the base database with Odoo's native database command so the filestore is handled too. Set `neutralize = true` to request Odoo database neutralization during duplication. Existing branch databases are reused, never overwritten, and are not automatically refreshed from the base database. `auto_create = false` prevents automatic cloning, and `branch-db ensure` reports a missing database rather than bypassing that setting.
++
++`run` and `shell` accept `--allow-mutation` for first-use cloning. Include it when the environment's `needs_mutation_flag` policy requires authorization. `write_protect_db = true` blocks database mutations, including cloning and GC deletion, even when the flag is provided. Reusing an existing branch database does not require mutation authorization. Read-only inspection and agent workflows, including `branch-db status`, do not provision databases.
++
++Inspect or prepare the current branch database and review cleanup candidates with:
++
++```bash
++oduit --env dev branch-db status
++oduit --env dev branch-db ensure --allow-mutation
++oduit --env dev branch-db gc
++```
++
++GC is a dry run by default. It considers only stale databases recorded as created by oduit, and preserves the base database, the current branch database, and unregistered databases. Review the candidates before explicitly applying cleanup:
++
++```bash
++oduit --env dev branch-db gc --apply --allow-mutation
++```
++
++The mutation flag is needed for `ensure` or GC apply only when the configured policy requires it. Cleanup uses Odoo's native database drop operation and never runs automatically. Git branch merges do not merge or refresh Odoo databases. After switching branches, restart any already-running Odoo server so it uses the selected branch's code and database.
++
+ ## Inspection and Agent Workflows
+
+ Use the first-class inspection commands before dropping to raw shell snippets.
+diff --git a/oduit/__init__.py b/oduit/__init__.py
+index 34fd9b3..1f1b977 100644
+--- a/oduit/__init__.py
++++ b/oduit/__init__.py
+@@ -92,80 +92,80 @@ from .process_manager import ProcessManager
+ from .operation_result import OperationResult
+
+ __all__ = [
+-    "__version__",
+-    "version_tuple",
+-    "ConfigLoader",
+-    "Manifest",
+-    "ManifestError",
+-    "InvalidManifestError",
+-    "ManifestNotFoundError",
+-    "ManifestCollection",
+-    "AddonsPathManager",
+-    "EnvironmentSource",
+-    "BinaryProbe",
+-    "AddonsPathStatus",
+-    "OdooVersionInfo",
+-    "DatabaseSummary",
+-    "EnvironmentContext",
+-    "DocumentationTrackedFile",
+-    "DocumentationSourceSnapshot",
+-    "DocumentationDocumentSnapshot",
+-    "DocumentationDiagram",
+-    "DocumentSection",
+-    "AddonDocTarget",
+     "AddonContributionSummary",
+-    "AddonTechnicalFile",
+-    "AddonXmlRecord",
++    "AddonDocTarget",
++    "AddonDocumentation",
++    "AddonDocumentationModel",
+     "AddonHttpRoute",
+-    "AddonTechnicalInventory",
+     "AddonInfo",
+-    "AddonInstallState",
+     "AddonInspection",
+-    "AddonDocumentationModel",
+-    "AddonDocumentation",
+-    "ModelDocumentation",
+-    "SharedModelDocumentation",
+-    "MultiAddonDocumentation",
++    "AddonInstallState",
++    "AddonTechnicalFile",
++    "AddonTechnicalInventory",
++    "AddonTestFile",
++    "AddonTestInventory",
++    "AddonXmlRecord",
++    "AddonsPathManager",
++    "AddonsPathStatus",
++    "BinaryProbe",
++    "ConfigError",
++    "ConfigLoader",
++    "DatabaseOperationError",
++    "DatabaseSummary",
++    "DemoProcessManager",
+     "DependencyGraphDocumentation",
+-    "TechnicalDocumentation",
+-    "TechnicalDocumentationMetadata",
+-    "TechnicalDocumentationStatus",
+-    "InstalledAddonRecord",
+-    "InstalledAddonInventory",
+-    "UpdatePlan",
+-    "ModelSourceCandidate",
+-    "ModelSourceLocation",
++    "DocumentSection",
++    "DocumentationDiagram",
++    "DocumentationDocumentSnapshot",
++    "DocumentationSourceSnapshot",
++    "DocumentationTrackedFile",
++    "EnvironmentContext",
++    "EnvironmentSource",
+     "FieldSourceCandidate",
+     "FieldSourceLocation",
+-    "AddonTestFile",
+-    "AddonTestInventory",
+-    "QueryModelResult",
+-    "RecordReadResult",
+-    "SearchCountResult",
++    "InstalledAddonInventory",
++    "InstalledAddonRecord",
++    "InvalidManifestError",
++    "Manifest",
++    "ManifestCollection",
++    "ManifestError",
++    "ManifestNotFoundError",
++    "ModelDocumentation",
+     "ModelFieldsResult",
++    "ModelSourceCandidate",
++    "ModelSourceLocation",
++    "ModuleInstallError",
+     "ModuleManager",
+-    "ConfigError",
+-    "OdooOperationError",
++    "ModuleNotFoundError",
+     "ModuleOperationError",
+-    "ModuleUpdateError",
+-    "ModuleInstallError",
+     "ModuleUninstallError",
+-    "ModuleNotFoundError",
+-    "DatabaseOperationError",
+-    "DemoProcessManager",
+-    "OdooOperations",
+-    "OdooEmbeddedManager",
++    "ModuleUpdateError",
++    "MultiAddonDocumentation",
+     "OdooCodeExecutor",
++    "OdooEmbeddedManager",
+     "OdooInspector",
++    "OdooOperationError",
++    "OdooOperations",
+     "OdooQuery",
+-    "ProcessManager",
++    "OdooVersionInfo",
+     "OperationResult",
+     "OutputFormatter",
++    "ProcessManager",
++    "QueryModelResult",
++    "RecordReadResult",
++    "SearchCountResult",
++    "SharedModelDocumentation",
++    "TechnicalDocumentation",
++    "TechnicalDocumentationMetadata",
++    "TechnicalDocumentationStatus",
++    "UpdatePlan",
++    "__version__",
+     "configure_output",
++    "print_error",
++    "print_error_result",
+     "print_info",
++    "print_result",
+     "print_success",
+     "print_warning",
+-    "print_error",
+-    "print_result",
+-    "print_error_result",
++    "version_tuple",
+ ]
+diff --git a/oduit/_operations/database.py b/oduit/_operations/database.py
+index be2ad09..1c0f2bd 100644
+--- a/oduit/_operations/database.py
++++ b/oduit/_operations/database.py
+@@ -216,6 +216,170 @@ class DatabaseOperationsService(OperationsService):
+             )
+         return ("DatabaseExtensionError", [])
+
++    @staticmethod
++    def _native_db_command_unavailable(output: str) -> bool:
++        lowered = output.lower()
++        command_error = any(
++            marker in lowered
++            for marker in (
++                "unknown command",
++                "invalid choice",
++                "no such command",
++                "unrecognized arguments",
++            )
++        )
++        return command_error and any(
++            name in lowered for name in ("duplicate", "drop", "db")
++        )
++
++    def _run_native_db_operation(
++        self,
++        builder_factory: Any,
++        *,
++        operation: str,
++        error_type: str,
++        result_fields: dict[str, Any],
++        suppress_output: bool,
++        raise_on_error: bool,
++        odoo_series: Any | None,
++    ) -> dict[str, Any]:
++        result: dict[str, Any] = {
++            "success": False,
++            "return_code": 1,
++            "operation": operation,
++            **result_fields,
++            "command": [],
++            "stdout": "",
++            "stderr": "",
++        }
++        major = self._series_major(odoo_series)
++        if major is not None and major < 17:
++            result.update(
++                {
++                    "error": (
++                        "Branch database management requires an Odoo version with "
++                        "native `odoo-bin db` operations."
++                    ),
++                    "error_type": "BranchDatabaseUnsupportedOdooVersion",
++                    "remediation": [
++                        (
++                            "Use Odoo 17 or newer, or manage branch databases "
++                            "manually and disable [branch_db]."
++                        )
++                    ],
++                }
++            )
++        else:
++            try:
++                operation_spec = builder_factory().build_operation()
++                process_result = (
++                    self.operations.process_manager.run_operation(
++                        operation_spec,
++                        verbose=self.operations.verbose,
++                        suppress_output=suppress_output,
++                    )
++                    or {}
++                )
++                stdout = process_result.get("stdout", "")
++                stderr = process_result.get("stderr", "")
++                error = str(process_result.get("error") or stderr or stdout).strip()
++                success = bool(process_result.get("success", False))
++                result.update(
++                    {
++                        "success": success,
++                        "return_code": process_result.get(
++                            "return_code", 0 if success else 1
++                        ),
++                        "command": operation_spec.command,
++                        "stdout": stdout,
++                        "stderr": stderr,
++                    }
++                )
++                if not success:
++                    if self._native_db_command_unavailable(error):
++                        result["error_type"] = "BranchDatabaseUnsupportedOdooVersion"
++                        result["remediation"] = [
++                            (
++                                "Branch-aware database management requires an "
++                                "Odoo version with `odoo-bin db duplicate` "
++                                "and `db drop`."
++                            ),
++                            (
++                                "Create/manage branch databases manually or "
++                                "disable [branch_db]."
++                            ),
++                        ]
++                    else:
++                        result["error_type"] = error_type
++                    result["error"] = error or "Odoo native database operation failed"
++            except (ConfigError, ValueError) as error:
++                result["error"] = str(error)
++                result["error_type"] = type(error).__name__
++
++        if raise_on_error and not result["success"]:
++            raise DatabaseOperationError(
++                result.get("error", "Odoo native database operation failed"),
++                operation_result=result,
++            )
++        return result
++
++    def duplicate_db(
++        self,
++        target_database: str,
++        *,
++        source_database: str | None = None,
++        neutralize: bool = False,
++        force: bool = False,
++        suppress_output: bool = False,
++        raise_on_error: bool = False,
++        odoo_series: Any | None = None,
++    ) -> dict[str, Any]:
++        """Duplicate a database through Odoo's native command, including filestore."""
++        source = source_database or self.operations.config.get_optional("db_name")
++        fields = {
++            "source_database": source,
++            "target_database": target_database,
++            "neutralized": neutralize,
++            "forced": force,
++        }
++        return self._run_native_db_operation(
++            lambda: DatabaseCommandBuilder(
++                self.operations.config, with_sudo=False
++            ).duplicate_db_command(
++                str(source or ""),
++                target_database,
++                neutralize=neutralize,
++                force=force,
++            ),
++            operation="duplicate_database",
++            error_type="BranchDatabaseDuplicateError",
++            result_fields=fields,
++            suppress_output=suppress_output,
++            raise_on_error=raise_on_error,
++            odoo_series=odoo_series,
++        )
++
++    def drop_db_with_filestore(
++        self,
++        database: str,
++        *,
++        suppress_output: bool = False,
++        raise_on_error: bool = False,
++        odoo_series: Any | None = None,
++    ) -> dict[str, Any]:
++        """Drop a database and its filestore through Odoo's native command."""
++        return self._run_native_db_operation(
++            lambda: DatabaseCommandBuilder(
++                self.operations.config, with_sudo=False
++            ).native_db_drop_command(database),
++            operation="drop_db_with_filestore",
++            error_type="BranchDatabaseDropError",
++            result_fields={"database": database},
++            suppress_output=suppress_output,
++            raise_on_error=raise_on_error,
++            odoo_series=odoo_series,
++        )
++
+     def install_db_extension(
+         self,
+         extension: str,
+diff --git a/oduit/arc42_renderer.py b/oduit/arc42_renderer.py
+index 3df264f..77a7594 100644
+--- a/oduit/arc42_renderer.py
++++ b/oduit/arc42_renderer.py
+@@ -757,10 +757,7 @@ def build_arc42_generated_blocks(
+                     ],
+                     [
+                         "Security review",
+-                        (
+-                            "A reviewer inspects public routes or "
+-                            "missing ACL coverage."
+-                        ),
++                        ("A reviewer inspects public routes or missing ACL coverage."),
+                         (
+                             "Route auth values and missing security "
+                             "evidence remain visible in the "
+@@ -769,7 +766,7 @@ def build_arc42_generated_blocks(
+                     ],
+                     [
+                         "Regression check",
+-                        ("A developer changes models, views, " "or data files."),
++                        ("A developer changes models, views, or data files."),
+                         (
+                             "Recommended tests and remediation "
+                             "hints highlight the affected addon "
+@@ -967,8 +964,7 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
+             title="3. Context and Scope",
+             order=3,
+             summary=(
+-                "Business and technical context derived "
+-                "from dependencies and routes."
++                "Business and technical context derived from dependencies and routes."
+             ),
+             markdown="\n".join(
+                 [
+@@ -1183,8 +1179,7 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
+             title="8. Cross-cutting Concepts",
+             order=8,
+             summary=(
+-                "Security, persistence, extensibility, "
+-                "i18n, and operations concerns."
++                "Security, persistence, extensibility, i18n, and operations concerns."
+             ),
+             markdown="\n".join(
+                 [
+@@ -1264,7 +1259,7 @@ def build_arc42_addon_sections(bundle: TechnicalDocumentation) -> list[DocumentS
+             title="9. Architecture Decisions",
+             order=9,
+             summary=(
+-                "Starter decision log seeded from " "observable implementation choices."
++                "Starter decision log seeded from observable implementation choices."
+             ),
+             markdown="\n".join(
+                 [
+@@ -1414,7 +1409,7 @@ def render_arc42_evidence_markdown(
+         "<!--",
+         "Generated by oduit.",
+         "Schema: oduit.technical_evidence.v1",
+-        f"Evidence version: {evidence_version if evidence_version is not None else '-'}"  # noqa: E501,
++        f"Evidence version: {evidence_version if evidence_version is not None else '-'}"
+         f"Addon: {bundle.module}",
+         f"Output: {evidence_path}",
+         f"Metadata: {metadata_path}",
+diff --git a/oduit/branch_database.py b/oduit/branch_database.py
+new file mode 100644
+index 0000000..64523f0
+--- /dev/null
++++ b/oduit/branch_database.py
+@@ -0,0 +1,812 @@
++"""Branch-aware Odoo database resolution and managed database lifecycle."""
++
++from __future__ import annotations
++
++import fcntl
++import hashlib
++import json
++import os
++import re
++import tempfile
++import unicodedata
++from collections.abc import Callable
++from dataclasses import dataclass, replace
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any
++
++from .exceptions import ConfigError
++from .project_paths import find_git_root
++
++
++class BranchDatabaseError(Exception):
++    """Base error for branch-aware database management."""
++
++
++class BranchDatabaseGitError(BranchDatabaseError):
++    """Raised when Git metadata cannot be read safely."""
++
++
++class BranchDatabaseDetachedHead(BranchDatabaseGitError):
++    """Raised when branch-aware database mode encounters detached HEAD."""
++
++
++class BranchDatabaseStateError(BranchDatabaseError):
++    """Raised when the managed branch database registry is invalid."""
++
++
++@dataclass(frozen=True)
++class GitBranchInfo:
++    root: Path
++    git_dir: Path
++    common_dir: Path
++    branch: str | None
++    detached: bool
++
++
++@dataclass(frozen=True)
++class BranchDatabaseSettings:
++    enabled: bool = False
++    base_branch: str = "main"
++    auto_create: bool = True
++    neutralize: bool = False
++
++
++@dataclass(frozen=True)
++class BranchDatabaseResolution:
++    enabled: bool
++    branch: str | None
++    base_branch: str
++    base_database: str
++    database: str
++    is_base_branch: bool
++    git_root: Path | None
++    git_dir: Path | None
++    common_dir: Path | None
++
++
++def parse_branch_database_settings(
++    env_config: dict[str, Any],
++) -> BranchDatabaseSettings:
++    """Parse and validate the optional ``branch_db`` configuration section."""
++    raw_settings = env_config.get("branch_db", {})
++    if not isinstance(raw_settings, dict):
++        raise ConfigError("[branch_db] must be a TOML table")
++
++    enabled = raw_settings.get("enabled", False)
++    auto_create = raw_settings.get("auto_create", True)
++    neutralize = raw_settings.get("neutralize", False)
++    base_branch = raw_settings.get("base_branch", "main")
++
++    for key, value in (
++        ("enabled", enabled),
++        ("auto_create", auto_create),
++        ("neutralize", neutralize),
++    ):
++        if type(value) is not bool:
++            raise ConfigError(f"[branch_db].{key} must be a boolean")
++
++    if not isinstance(base_branch, str) or not base_branch.strip():
++        raise ConfigError("[branch_db].base_branch must be a non-empty string")
++
++    if enabled:
++        section = env_config.get("odoo_params")
++        database = section.get("db_name") if isinstance(section, dict) else None
++        if not database:
++            database = env_config.get("db_name")
++        if not isinstance(database, str) or not database.strip():
++            raise ConfigError(
++                "[branch_db].enabled requires odoo_params.db_name to be configured"
++            )
++            raise ConfigError(
++                "[branch_db].enabled requires odoo_params.db_name to be configured"
++            )
++
++    return BranchDatabaseSettings(
++        enabled=enabled,
++        base_branch=base_branch.strip(),
++        auto_create=auto_create,
++        neutralize=neutralize,
++    )
++
++
++def _resolve_git_path(raw_path: str, relative_to: Path, label: str) -> Path:
++    raw_path = raw_path.strip()
++    if not raw_path:
++        raise BranchDatabaseGitError(f"Git {label} path is empty")
++    value = Path(raw_path).expanduser()
++    if not value.is_absolute():
++        value = relative_to / value
++    resolved = value.resolve(strict=False)
++    if not resolved.is_dir():
++        raise BranchDatabaseGitError(
++            f"Git {label} directory does not exist: {resolved}"
++        )
++    return resolved
++
++
++def inspect_git_branch(start: Path) -> GitBranchInfo | None:
++    """Read current branch information from repository metadata without Git."""
++    root = find_git_root(start)
++    if root is None:
++        return None
++
++    git_entry = root / ".git"
++    if git_entry.is_dir():
++        git_dir = git_entry.resolve(strict=False)
++    elif git_entry.is_file():
++        try:
++            git_file = git_entry.read_text(encoding="utf-8").strip()
++        except OSError as error:
++            raise BranchDatabaseGitError(
++                f"Could not read {git_entry}: {error}"
++            ) from error
++        if not git_file.startswith("gitdir:"):
++            raise BranchDatabaseGitError(
++                f"Malformed Git worktree file {git_entry}: expected 'gitdir: PATH'"
++            )
++        git_dir = _resolve_git_path(git_file[len("gitdir:") :], root, "gitdir")
++    else:
++        raise BranchDatabaseGitError(f"Git metadata is missing at {git_entry}")
++
++    common_dir_file = git_dir / "commondir"
++    if common_dir_file.exists():
++        try:
++            common_dir_value = common_dir_file.read_text(encoding="utf-8").strip()
++        except OSError as error:
++            raise BranchDatabaseGitError(
++                f"Could not read {common_dir_file}: {error}"
++            ) from error
++        if not common_dir_value:
++            raise BranchDatabaseGitError(
++                f"Git common directory is empty: {common_dir_file}"
++            )
++        common_dir = _resolve_git_path(common_dir_value, git_dir, "common")
++    else:
++        common_dir = git_dir
++
++    head_path = git_dir / "HEAD"
++    try:
++        head = head_path.read_text(encoding="utf-8").strip()
++    except OSError as error:
++        raise BranchDatabaseGitError(
++            f"Could not read Git HEAD at {head_path}: {error}"
++        ) from error
++
++    if head.startswith("ref:"):
++        ref = head[len("ref:") :].strip()
++        if not ref.startswith("refs/heads/") or not ref[len("refs/heads/") :]:
++            raise BranchDatabaseGitError(
++                f"Git HEAD points to an unsupported ref: {head}"
++            )
++        branch = ref[len("refs/heads/") :]
++        return GitBranchInfo(root, git_dir, common_dir, branch, False)
++
++    if not head:
++        raise BranchDatabaseGitError(f"Git HEAD is empty: {head_path}")
++    return GitBranchInfo(root, git_dir, common_dir, None, True)
++
++
++def list_local_git_branches(git_info: GitBranchInfo) -> set[str]:
++    """Return local branch names from loose and packed refs in the common dir."""
++    branches: set[str] = set()
++    refs_root = git_info.common_dir / "refs" / "heads"
++    if refs_root.is_dir():
++        for ref_path in refs_root.rglob("*"):
++            if ref_path.is_file():
++                branches.add(ref_path.relative_to(refs_root).as_posix())
++
++    packed_refs = git_info.common_dir / "packed-refs"
++    if packed_refs.is_file():
++        try:
++            lines = packed_refs.read_text(encoding="utf-8").splitlines()
++        except OSError as error:
++            raise BranchDatabaseGitError(
++                f"Could not read packed Git refs at {packed_refs}: {error}"
++            ) from error
++        prefix = "refs/heads/"
++        for line in lines:
++            if not line or line.startswith(("#", "^")):
++                continue
++            fields = line.split()
++            if len(fields) == 2 and fields[1].startswith(prefix):
++                branch = fields[1][len(prefix) :]
++                if branch:
++                    branches.add(branch)
++    return branches
++
++
++def _database_identity_hash(base_database: str, branch: str) -> str:
++    identity = f"{base_database}\0{branch}".encode()
++    return hashlib.sha256(identity).hexdigest()[:8]
++
++
++def _truncate_utf8(value: str, max_bytes: int) -> str:
++    encoded = value.encode("utf-8")[:max_bytes]
++    while encoded:
++        try:
++            return encoded.decode("utf-8")
++        except UnicodeDecodeError:
++            encoded = encoded[:-1]
++    return ""
++
++
++def build_branch_database_name(base_database: str, branch: str) -> str:
++    """Build a deterministic PostgreSQL-safe database identifier for a branch."""
++    if not isinstance(base_database, str) or not base_database:
++        raise ValueError("base_database must be a non-empty string")
++    if not isinstance(branch, str) or not branch:
++        raise ValueError("branch must be a non-empty string")
++
++    normalized = unicodedata.normalize("NFKD", branch)
++    slug = normalized.encode("ascii", "ignore").decode("ascii").lower()
++    slug = re.sub(r"[^a-z0-9]+", "_", slug).strip("_") or "branch"
++
++    identity_changed = slug != branch
++    full_name = f"{base_database}_{slug}"
++    truncated = len(full_name.encode("utf-8")) > 63
++    suffix_hash = _database_identity_hash(base_database, branch)
++
++    if identity_changed or truncated:
++        slug = _truncate_utf8(slug, 53) or "branch"
++        suffix = f"{slug}_{suffix_hash}"
++        prefix = _truncate_utf8(base_database, 63 - len(suffix.encode("ascii")) - 1)
++        result = f"{prefix}_{suffix}" if prefix else f"_{suffix}"
++    else:
++        result = full_name
++
++    if len(result.encode("utf-8")) > 63:
++        raise ValueError("could not fit branch database name within 63 bytes")
++    return result
++
++
++def _configured_database(env_config: dict[str, Any]) -> str:
++    section = env_config.get("odoo_params")
++    value = section.get("db_name") if isinstance(section, dict) else None
++    if value is None:
++        value = env_config.get("db_name")
++    return value if isinstance(value, str) else ""
++
++
++def resolve_branch_database(
++    env_config: dict[str, Any], start: Path
++) -> BranchDatabaseResolution:
++    """Resolve the effective database without modifying the supplied config."""
++    settings = parse_branch_database_settings(env_config)
++    base_database = _configured_database(env_config)
++    if not settings.enabled:
++        return BranchDatabaseResolution(
++            enabled=False,
++            branch=None,
++            base_branch=settings.base_branch,
++            base_database=base_database,
++            database=base_database,
++            is_base_branch=True,
++            git_root=None,
++            git_dir=None,
++            common_dir=None,
++        )
++
++    git_info = inspect_git_branch(start)
++    if git_info is None:
++        raise BranchDatabaseGitError(
++            "Branch-aware database management is enabled, but no Git repository "
++            "was found. Disable [branch_db] or run oduit from a local Git repository."
++            "Disable [branch_db] or run oduit from a local Git repository."
++        )
++    if git_info.detached or git_info.branch is None:
++        raise BranchDatabaseDetachedHead(
++            "Branch-aware database management is enabled, but Git HEAD is detached. "
++            "Check out a local branch or disable [branch_db]."
++        )
++
++    is_base_branch = git_info.branch == settings.base_branch
++    database = (
++        base_database
++        if is_base_branch
++        else build_branch_database_name(base_database, git_info.branch)
++    )
++    return BranchDatabaseResolution(
++        enabled=True,
++        branch=git_info.branch,
++        base_branch=settings.base_branch,
++        base_database=base_database,
++        database=database,
++        is_base_branch=is_base_branch,
++        git_root=git_info.root,
++        git_dir=git_info.git_dir,
++        common_dir=git_info.common_dir,
++    )
++
++
++def apply_branch_database_resolution(
++    env_config: dict[str, Any], resolution: BranchDatabaseResolution
++) -> dict[str, Any]:
++    """Return a config copy with the effective database applied in memory."""
++    result = dict(env_config)
++    if not resolution.enabled:
++        return result
++
++    section = result.get("odoo_params")
++    if isinstance(section, dict):
++        effective_section = dict(section)
++        effective_section["db_name"] = resolution.database
++        result["odoo_params"] = effective_section
++    else:
++        result["db_name"] = resolution.database
++    return result
++
++
++def branch_database_environment_key(
++    config_path: str | Path | None, base_database: str, base_branch: str
++) -> str:
++    """Return a stable, non-secret key for one config/database/branch identity."""
++    resolved_config = (
++        str(Path(config_path).expanduser().resolve(strict=False)) if config_path else ""
++    )
++    identity = json.dumps(
++        [resolved_config, base_database, base_branch],
++        ensure_ascii=False,
++        separators=(",", ":"),
++    )
++    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
++
++
++class BranchDatabaseStateStore:
++    """Versioned registry for databases created by branch management."""
++
++    def __init__(
++        self,
++        common_dir: Path,
++        *,
++        config_path: str | Path | None,
++        base_database: str,
++        base_branch: str,
++    ):
++        self.path = common_dir / "oduit" / "branch-databases.json"
++        self.lock_path = self.path.with_suffix(self.path.suffix + ".lock")
++        self.environment_key = branch_database_environment_key(
++            config_path, base_database, base_branch
++        )
++        self.base_database = base_database
++        self.base_branch = base_branch
++
++    @staticmethod
++    def _empty_state() -> dict[str, Any]:
++        return {"schema_version": 1, "environments": {}}
++
++    def _read(self) -> dict[str, Any]:
++        if not self.path.exists():
++            return self._empty_state()
++        try:
++            state = json.loads(self.path.read_text(encoding="utf-8"))
++        except (OSError, json.JSONDecodeError) as error:
++            raise BranchDatabaseStateError(
++                f"Could not read branch database state file {self.path}: {error}"
++            ) from error
++        if (
++            not isinstance(state, dict)
++            or state.get("schema_version") != 1
++            or not isinstance(state.get("environments"), dict)
++        ):
++            raise BranchDatabaseStateError(
++                f"Unsupported or malformed branch database state file: {self.path}"
++            )
++        for key, environment in state["environments"].items():
++            if (
++                not isinstance(key, str)
++                or not isinstance(environment, dict)
++                or not isinstance(environment.get("databases"), dict)
++            ):
++                raise BranchDatabaseStateError(
++                    f"Malformed environment entry in branch database state: {key!r}"
++                )
++            for branch, record in environment["databases"].items():
++                if (
++                    not isinstance(branch, str)
++                    or not isinstance(record, dict)
++                    or not isinstance(record.get("database"), str)
++                    or not isinstance(record.get("source_database"), str)
++                    or not isinstance(record.get("created_at"), str)
++                    or not isinstance(record.get("neutralized"), bool)
++                ):
++                    raise BranchDatabaseStateError(
++                        f"Malformed database record for branch {branch!r}"
++                    )
++        return state
++
++    def _environment(self, state: dict[str, Any]) -> dict[str, Any]:
++        environments = state["environments"]
++        return environments.get(
++            self.environment_key,
++            {
++                "base_database": self.base_database,
++                "base_branch": self.base_branch,
++                "databases": {},
++            },
++        )
++
++    def environment(self) -> dict[str, Any]:
++        """Return the current environment's registry entry, or an empty entry."""
++        return self._environment(self._read())
++
++    def records(self) -> dict[str, dict[str, Any]]:
++        """Return a copy of managed records for the current environment."""
++        return dict(self.environment()["databases"])
++
++    def is_managed(self, branch: str, database: str) -> bool:
++        record = self.records().get(branch)
++        return bool(record and record.get("database") == database)
++
++    def _write(self, state: dict[str, Any]) -> None:
++        self.path.parent.mkdir(parents=True, exist_ok=True)
++        descriptor, temporary_name = tempfile.mkstemp(
++            prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent
++        )
++        try:
++            with os.fdopen(descriptor, "w", encoding="utf-8") as temporary_file:
++                json.dump(state, temporary_file, indent=2, sort_keys=True)
++                temporary_file.write("\n")
++                temporary_file.flush()
++                os.fsync(temporary_file.fileno())
++            os.replace(temporary_name, self.path)
++        except Exception:
++            try:
++                os.unlink(temporary_name)
++            except FileNotFoundError:
++                pass
++            raise
++
++    def _update(self, updater: Callable[[dict[str, Any]], None]) -> None:
++        self.path.parent.mkdir(parents=True, exist_ok=True)
++        with self.lock_path.open("a", encoding="utf-8") as lock_file:
++            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
++            state = self._read()
++            updater(state)
++            self._write(state)
++
++    def record_created(
++        self,
++        branch: str,
++        database: str,
++        source_database: str,
++        neutralized: bool,
++    ) -> None:
++        """Record a branch database after the caller proves creation succeeded."""
++        record = {
++            "database": database,
++            "source_database": source_database,
++            "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
++            "neutralized": neutralized,
++        }
++
++        def update(state: dict[str, Any]) -> None:
++            environment = self._environment(state)
++            environment["databases"][branch] = record
++            state["environments"][self.environment_key] = environment
++
++        self._update(update)
++
++    def remove(self, branch: str, database: str | None = None) -> bool:
++        """Remove a managed record, optionally requiring its expected DB name."""
++        removed = False
++
++        def update(state: dict[str, Any]) -> None:
++            nonlocal removed
++            environment = self._environment(state)
++            record = environment["databases"].get(branch)
++            if record is None or (
++                database is not None and record.get("database") != database
++            ):
++                return
++            del environment["databases"][branch]
++            removed = True
++            if environment["databases"]:
++                state["environments"][self.environment_key] = environment
++            else:
++                state["environments"].pop(self.environment_key, None)
++
++        self._update(update)
++        return removed
++
++
++class BranchDatabaseManager:
++    """Coordinate database existence, branch cloning, and conservative GC."""
++
++    def __init__(
++        self,
++        env_config: dict[str, Any],
++        resolution: BranchDatabaseResolution,
++        settings: BranchDatabaseSettings,
++        operations_factory: Callable[[dict[str, Any]], Any],
++        *,
++        config_path: str | Path | None = None,
++        state_store: BranchDatabaseStateStore | None = None,
++    ):
++        self.env_config = dict(env_config)
++        self.resolution = resolution
++        self.settings = settings
++        self.operations_factory = operations_factory
++        self.state_store = state_store
++        if self.state_store is None and resolution.common_dir is not None:
++            self.state_store = BranchDatabaseStateStore(
++                resolution.common_dir,
++                config_path=config_path,
++                base_database=resolution.base_database,
++                base_branch=resolution.base_branch,
++            )
++
++    def _operations(self, database: str) -> Any:
++        resolution = replace(self.resolution, database=database)
++        config = apply_branch_database_resolution(self.env_config, resolution)
++        return self.operations_factory(config)
++
++    def _exists(self, database: str) -> tuple[bool | None, dict[str, Any]]:
++        result = self._operations(database).db_exists(suppress_output=True)
++        if not result or not result.get("success", False):
++            return None, result or {"success": False, "error": "Database check failed"}
++        return bool(result.get("exists", False)), result
++
++    def _managed(self, database: str) -> bool:
++        if (
++            self.state_store is None
++            or self.resolution.branch is None
++            or self.resolution.is_base_branch
++        ):
++            return False
++        return self.state_store.is_managed(self.resolution.branch, database)
++
++    def status(self) -> dict[str, Any]:
++        """Return read-only status for the effective database."""
++        result: dict[str, Any] = {
++            "success": True,
++            "operation": "branch_db_status",
++            "enabled": self.resolution.enabled,
++            "branch": self.resolution.branch,
++            "base_branch": self.resolution.base_branch,
++            "base_database": self.resolution.base_database,
++            "database": self.resolution.database,
++            "is_base_branch": self.resolution.is_base_branch,
++            "exists": None,
++            "managed": False,
++            "clone_required": False,
++        }
++        if not self.resolution.enabled:
++            return result
++
++        exists, check = self._exists(self.resolution.database)
++        if exists is None:
++            result.update(
++                {
++                    "success": False,
++                    "error": check.get("error", "Database existence check failed"),
++                    "error_type": check.get("error_type", "DatabaseCheckError"),
++                }
++            )
++            return result
++        managed = self._managed(self.resolution.database)
++        result.update(
++            {
++                "exists": exists,
++                "managed": managed,
++                "clone_required": (
++                    not self.resolution.is_base_branch
++                    and not exists
++                    and self.settings.auto_create
++                ),
++            }
++        )
++        return result
++
++    @staticmethod
++    def _base_missing_result(database: str) -> dict[str, Any]:
++        return {
++            "success": False,
++            "error": (
++                f"Branch database provisioning requires base database {database!r}, "
++                "but it does not exist. Create the base database from the "
++                "base branch first."
++            ),
++            "error_type": "BranchDatabaseBaseMissing",
++            "remediation": [
++                "Switch to the configured base branch and run `oduit create-db`."
++            ],
++        }
++
++    def ensure(
++        self, *, before_duplicate: Callable[[], None] | None = None
++    ) -> dict[str, Any]:
++        """Ensure the effective database exists without overwriting any target."""
++        resolution = self.resolution
++        result: dict[str, Any] = {
++            "success": True,
++            "operation": "branch_db_ensure",
++            "enabled": resolution.enabled,
++            "branch": resolution.branch,
++            "base_database": resolution.base_database,
++            "database": resolution.database,
++            "created": False,
++            "managed": False,
++            "neutralized": self.settings.neutralize,
++        }
++        if not resolution.enabled:
++            result["message"] = "Branch-aware database management is disabled."
++            return result
++
++        target_exists, target_check = self._exists(resolution.database)
++        if target_exists is None:
++            return {
++                **result,
++                "success": False,
++                "error": target_check.get("error", "Database existence check failed"),
++                "error_type": target_check.get("error_type", "DatabaseCheckError"),
++            }
++        if resolution.is_base_branch:
++            if target_exists:
++                return {**result, "managed": False}
++            return {
++                **result,
++                **self._base_missing_result(resolution.base_database),
++            }
++        if target_exists:
++            return {**result, "managed": self._managed(resolution.database)}
++        if not self.settings.auto_create:
++            return {
++                **result,
++                "success": False,
++                "error": f"Branch database {resolution.database!r} does not exist.",
++                "error_type": "BranchDatabaseMissing",
++                "remediation": ["Run `oduit branch-db ensure` to create it."],
++            }
++
++        base_exists, base_check = self._exists(resolution.base_database)
++        if base_exists is None:
++            return {
++                **result,
++                "success": False,
++                "error": base_check.get(
++                    "error", "Base database existence check failed"
++                ),
++                "error_type": base_check.get("error_type", "DatabaseCheckError"),
++            }
++        if not base_exists:
++            return {**result, **self._base_missing_result(resolution.base_database)}
++
++        if before_duplicate is not None:
++            before_duplicate()
++        duplicate = self._operations(resolution.database).duplicate_db(
++            resolution.database,
++            source_database=resolution.base_database,
++            neutralize=self.settings.neutralize,
++            force=False,
++            suppress_output=True,
++        )
++        if not duplicate or not duplicate.get("success", False):
++            concurrent_exists, _ = self._exists(resolution.database)
++            if concurrent_exists:
++                return {
++                    **result,
++                    "success": True,
++                    "created": False,
++                    "managed": self._managed(resolution.database),
++                    "warning": "Another process may have created the branch database.",
++                    "warning_type": "concurrent_create_detected",
++                }
++            return {
++                **result,
++                "success": False,
++                "error": duplicate.get("error", "Odoo database duplication failed")
++                if duplicate
++                else "Odoo database duplication failed",
++                "error_type": duplicate.get(
++                    "error_type", "BranchDatabaseDuplicateError"
++                )
++                if duplicate
++                else "BranchDatabaseDuplicateError",
++                "duplicate_result": duplicate,
++            }
++
++        created_exists, created_check = self._exists(resolution.database)
++        if created_exists is not True:
++            return {
++                **result,
++                "success": False,
++                "error": created_check.get(
++                    "error",
++                    "Database duplication succeeded but target is not available",
++                ),
++                "error_type": "BranchDatabaseDuplicateVerificationError",
++                "duplicate_result": duplicate,
++            }
++        if self.state_store is not None and resolution.branch is not None:
++            self.state_store.record_created(
++                resolution.branch,
++                resolution.database,
++                resolution.base_database,
++                self.settings.neutralize,
++            )
++        return {
++            **result,
++            "created": True,
++            "managed": self._managed(resolution.database),
++        }
++
++    def gc_candidates(self) -> list[dict[str, str]]:
++        """Return stale managed databases without performing database operations."""
++        if not self.resolution.enabled or self.state_store is None:
++            return []
++        if self.resolution.common_dir is None:
++            raise BranchDatabaseGitError("Git common directory is unavailable for GC")
++        git_info = GitBranchInfo(
++            root=self.resolution.git_root or self.resolution.common_dir,
++            git_dir=self.resolution.git_dir or self.resolution.common_dir,
++            common_dir=self.resolution.common_dir,
++            branch=self.resolution.branch,
++            detached=False,
++        )
++        local_branches = list_local_git_branches(git_info)
++        candidates = []
++        for branch, record in self.state_store.records().items():
++            database = record["database"]
++            if (
++                branch == self.resolution.base_branch
++                or branch == self.resolution.branch
++                or branch in local_branches
++                or database == self.resolution.base_database
++                or database == self.resolution.database
++            ):
++                continue
++            candidates.append({"branch": branch, "database": database})
++        return sorted(candidates, key=lambda item: (item["branch"], item["database"]))
++
++    def gc(self, *, apply: bool = False) -> dict[str, Any]:
++        """List stale managed databases, or explicitly delete them when applied."""
++        candidates = self.gc_candidates()
++        result: dict[str, Any] = {
++            "success": True,
++            "operation": "branch_db_gc",
++            "dry_run": not apply,
++            "candidates": candidates,
++            "deleted": [],
++            "already_missing": [],
++            "errors": [],
++        }
++        if not apply:
++            return result
++
++        if self.state_store is None:
++            return result
++        for candidate in candidates:
++            branch = candidate["branch"]
++            database = candidate["database"]
++            exists, check = self._exists(database)
++            if exists is None:
++                result["errors"].append(
++                    {
++                        **candidate,
++                        "error": check.get("error", "Database existence check failed"),
++                    }
++                )
++                continue
++            if not exists:
++                self.state_store.remove(branch, database)
++                result["already_missing"].append(candidate)
++                continue
++
++            dropped = self._operations(database).drop_db_with_filestore(
++                database, suppress_output=True
++            )
++            if dropped and dropped.get("success", False):
++                self.state_store.remove(branch, database)
++                result["deleted"].append(candidate)
++            else:
++                result["errors"].append(
++                    {
++                        **candidate,
++                        "error": dropped.get("error", "Odoo database drop failed")
++                        if dropped
++                        else "Odoo database drop failed",
++                    }
++                )
++        result["success"] = not result["errors"]
++        return result
+diff --git a/oduit/builders.py b/oduit/builders.py
+index 490c0ee..847f246 100644
+--- a/oduit/builders.py
++++ b/oduit/builders.py
+@@ -1386,7 +1386,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+         """Build an idempotent command to enable an extension in db_name."""
+         self.config.validate_keys(["db_name"], "database extension command")
+         db_name = self.config.get_required("db_name")
+-        query = "CREATE EXTENSION IF NOT EXISTS " f"{self._sql_identifier(extension)};"
++        query = f"CREATE EXTENSION IF NOT EXISTS {self._sql_identifier(extension)};"
+         tokens = [
+             "psql",
+             "-X",
+@@ -1485,6 +1485,32 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+
+         return self
+
++    def _append_native_db_prefix(self) -> None:
++        self.config.validate_keys(["odoo_bin"], "native Odoo database command")
++        if python_bin := self.config.get_optional("python_bin"):
++            self._set_command(str(python_bin))
++        self._set_command(self.config.get_required("odoo_bin"))
++        self._set_command("db")
++
++        if config_file := self.config.get_optional("config_file"):
++            self._set_parameter("config", str(config_file))
++        if data_dir := self.config.get_optional("data_dir"):
++            self._set_parameter("data-dir", str(data_dir))
++        if addons_path := self.config.get_optional("addons_path"):
++            expanded_path = BaseOdooCommandBuilder(self.config)._expand_addons_path(
++                str(addons_path)
++            )
++            self._set_parameter("addons-path", expanded_path)
++        for key in (
++            "db_user",
++            "db_password",
++            "db_host",
++            "db_port",
++            "db_sslmode",
++        ):
++            if value := self.config.get_optional(key):
++                self._set_parameter(key, str(value))
++
+     def native_db_init_command(
+         self,
+         *,
+@@ -1501,30 +1527,7 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+         if with_demo and without_demo:
+             raise ValueError("--with-demo and --without-demo are mutually exclusive")
+
+-        if python_bin := self.config.get_optional("python_bin"):
+-            self._set_command(str(python_bin))
+-        self._set_command(self.config.get_required("odoo_bin"))
+-        self._set_command("db")
+-
+-        if config_file := self.config.get_optional("config_file"):
+-            self._set_parameter("config", str(config_file))
+-        if data_dir := self.config.get_optional("data_dir"):
+-            self._set_parameter("data-dir", str(data_dir))
+-        if addons_path := self.config.get_optional("addons_path"):
+-            expanded_path = BaseOdooCommandBuilder(self.config)._expand_addons_path(
+-                str(addons_path)
+-            )
+-            self._set_parameter("addons-path", expanded_path)
+-        if db_user := self.config.get_optional("db_user"):
+-            self._set_parameter("db_user", str(db_user))
+-        if db_password := self.config.get_optional("db_password"):
+-            self._set_parameter("db_password", str(db_password))
+-        if db_host := self.config.get_optional("db_host"):
+-            self._set_parameter("db_host", str(db_host))
+-        if db_port := self.config.get_optional("db_port"):
+-            self._set_parameter("db_port", str(db_port))
+-        if db_sslmode := self.config.get_optional("db_sslmode"):
+-            self._set_parameter("db_sslmode", str(db_sslmode))
++        self._append_native_db_prefix()
+
+         self._set_command("init")
+         self._set_value(str(self.config.get_required("db_name")))
+@@ -1544,6 +1547,42 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+
+         return self
+
++    def duplicate_db_command(
++        self,
++        source_database: str,
++        target_database: str,
++        *,
++        neutralize: bool = False,
++        force: bool = False,
++    ) -> "DatabaseCommandBuilder":
++        """Build Odoo's native database duplicate command."""
++        if (
++            not source_database
++            or not target_database
++            or source_database == target_database
++        ):
++            raise ValueError(
++                "source_database and target_database must be distinct and non-empty"
++            )
++        self._append_native_db_prefix()
++        self._set_command("duplicate")
++        self._set_value(source_database)
++        self._set_value(target_database)
++        if neutralize:
++            self._set_flag("neutralize")
++        if force:
++            self._set_flag("force")
++        return self
++
++    def native_db_drop_command(self, database: str) -> "DatabaseCommandBuilder":
++        """Build Odoo's native database drop command, including filestore cleanup."""
++        if not database:
++            raise ValueError("database must be non-empty")
++        self._append_native_db_prefix()
++        self._set_command("drop")
++        self._set_value(database)
++        return self
++
+     def init_command(
+         self,
+         *,
+@@ -1638,7 +1677,6 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+         return self._build_command_list()
+
+     def build_operation(self) -> CommandOperation:
+-        # Determine operation type based on command structure
+         operation_type = "create_db"
+         for part in self._command_parts:
+             if part.get("type") == "command":
+@@ -1646,40 +1684,65 @@ class DatabaseCommandBuilder(AbstractCommandBuilder):
+                 if "dropdb" in command_value:
+                     operation_type = "drop_db"
+                     break
+-                elif "createdb" in command_value:
++                if "createdb" in command_value:
+                     operation_type = "create_db"
+                     break
+-                elif "create role" in command_value:
++                if "create role" in command_value:
+                     operation_type = "create_role"
+                     break
+-                elif "alter role" in command_value:
++                if "alter role" in command_value:
+                     operation_type = "alter_role"
+                     break
+-                elif "create extension" in command_value:
++                if "create extension" in command_value:
+                     operation_type = "create_extension"
+                     break
+-                elif "psql -l" in command_value:
++                if "psql -l" in command_value:
+                     operation_type = "list_db"
+                     break
+-                elif "pg_database_collation_actual_version" in command_value:
++                if "pg_database_collation_actual_version" in command_value:
+                     operation_type = "collation_health"
+                     break
+-                elif "from pg_database" in command_value or "grep -qw" in command_value:
++                if "from pg_database" in command_value or "grep -qw" in command_value:
+                     operation_type = "exists_db"
+                     break
+             elif part.get("type") == "flag" and part.get("key") == "l":
+                 operation_type = "list_db"
+                 break
+
++        command = self.build()
++        native_metadata: dict[str, Any] = {}
++        database = self.config.get_optional("db_name")
++        for index, token in enumerate(command):
++            if token not in {"duplicate", "drop"} or "db" not in command[:index]:
++                continue
++            if token == "duplicate" and index + 2 < len(command):
++                operation_type = "duplicate_db"
++                source_database = command[index + 1]
++                target_database = command[index + 2]
++                database = target_database
++                native_metadata = {
++                    "source_database": source_database,
++                    "target_database": target_database,
++                    "neutralized": "--neutralize" in command,
++                    "forced": "--force" in command,
++                }
++            elif token == "drop" and index + 1 < len(command):
++                operation_type = "odoo_drop_db"
++                database = command[index + 1]
++                native_metadata = {"database": database, "filestore_removed": True}
++            break
++
++        expected_result_fields = {
++            "database": database,
++            "with_sudo": self.with_sudo,
++        }
++        expected_result_fields.update(native_metadata)
+         return CommandOperation(
+-            command=self.build(),
++            command=command,
+             operation_type=operation_type,
+-            database=self.config.get_optional("db_name"),
++            database=database,
+             modules=[],
+-            is_odoo_command=False,
+-            expected_result_fields={
+-                "database": self.config.get_optional("db_name"),
+-                "with_sudo": self.with_sudo,
+-            },
++            is_odoo_command=operation_type in {"duplicate_db", "odoo_drop_db"},
++            expected_result_fields=expected_result_fields,
+             result_parsers=[],
+         )
+diff --git a/oduit/cli/agent/planning.py b/oduit/cli/agent/planning.py
+index e865447..cd1ac07 100644
+--- a/oduit/cli/agent/planning.py
++++ b/oduit/cli/agent/planning.py
+@@ -60,8 +60,7 @@ def _build_recommended_next_steps(
+         if field_data.get("exists") and candidates:
+             primary = candidates[0]
+             recommendations.append(
+-                f"Review the existing `{field_name}` definition in "
+-                f"`{primary['path']}`."
++                f"Review the existing `{field_name}` definition in `{primary['path']}`."
+             )
+         elif insertion_candidate:
+             line_hint = insertion_candidate.get("line_hint")
+diff --git a/oduit/cli/agent/services.py b/oduit/cli/agent/services.py
+index bf5ea20..e032f6e 100644
+--- a/oduit/cli/agent/services.py
++++ b/oduit/cli/agent/services.py
+@@ -1,14 +1,44 @@
+ """Shared orchestration helpers for agent command modules."""
+
+ from dataclasses import replace
++from pathlib import Path
+ from typing import Any
+
+ import typer
+
++from ...branch_database import (
++    BranchDatabaseError,
++    apply_branch_database_resolution,
++    resolve_branch_database,
++)
+ from ...cli_types import GlobalConfig, OutputFormat
++from ...exceptions import ConfigError
+ from ...schemas import SAFE_READ_ONLY
+
+
++def _resolve_agent_branch_config(
++    env_config: dict[str, Any],
++    operation: str,
++    result_type: str,
++    *,
++    fail_fn: Any,
++) -> tuple[dict[str, Any], dict[str, Any], Any]:
++    base_env_config = dict(env_config)
++    try:
++        resolution = resolve_branch_database(base_env_config, Path.cwd())
++    except (ConfigError, BranchDatabaseError) as error:
++        fail_fn(
++            operation,
++            result_type,
++            str(error),
++            error_type=type(error).__name__,
++            remediation=["Check [branch_db] settings and the current Git branch."],
++        )
++        raise AssertionError("unreachable") from error
++    effective_config = apply_branch_database_resolution(base_env_config, resolution)
++    return base_env_config, effective_config, resolution
++
++
+ def resolve_agent_global_config(
+     ctx: typer.Context,
+     operation: str,
+@@ -33,13 +63,32 @@ def resolve_agent_global_config(
+         )
+
+     if isinstance(ctx.obj, GlobalConfig):
++        global_config = ctx.obj
++        if (
++            global_config.env_config is None
++            or global_config.branch_database is not None
++        ):
++            return replace(
++                global_config,
++                format=OutputFormat.JSON,
++                verbose=False,
++                non_interactive=True,
++            )
++        base_config = global_config.base_env_config
++        if base_config is None:
++            base_config = global_config.env_config
++        base_env_config, env_config, branch_database = _resolve_agent_branch_config(
++            base_config, operation, result_type, fail_fn=fail_fn
++        )
+         return replace(
+-            ctx.obj,
++            global_config,
+             format=OutputFormat.JSON,
+             verbose=False,
+             non_interactive=True,
++            env_config=env_config,
++            base_env_config=base_env_config,
++            branch_database=branch_database,
+         )
+-
+     options = dict(ctx.obj)
+     env = options.get("env")
+     no_http = bool(options.get("no_http", False))
+@@ -92,13 +141,22 @@ def resolve_agent_global_config(
+     config_source, config_path = resolve_config_source_fn(
+         config_loader, env, env_config
+     )
++    (
++        base_env_config,
++        effective_env_config,
++        branch_database,
++    ) = _resolve_agent_branch_config(
++        env_config, operation, result_type, fail_fn=fail_fn
++    )
+     return GlobalConfig(
+         env=env,
+         non_interactive=True,
+         format=OutputFormat.JSON,
+         verbose=False,
+         no_http=no_http,
+-        env_config=env_config,
++        env_config=effective_env_config,
++        base_env_config=base_env_config,
++        branch_database=branch_database,
+         env_name=env_name,
+         odoo_series=odoo_series,
+         config_source=config_source,
+diff --git a/oduit/cli/agent_support.py b/oduit/cli/agent_support.py
+index c96b5be..3a62f7e 100644
+--- a/oduit/cli/agent_support.py
++++ b/oduit/cli/agent_support.py
+@@ -26,19 +26,19 @@ from .runtime_context import AgentHelperContext
+
+ __all__ = [
+     "agent_fail",
++    "agent_require_mutation",
++    "build_agent_test_summary_details",
+     "build_error_output_excerpt",
++    "build_registration_helpers",
++    "build_validate_addon_change_discovery_result",
++    "build_validate_addon_change_payload",
+     "parse_json_list_option",
+     "parse_view_types",
+-    "agent_require_mutation",
+-    "require_agent_runtime_db_mutation",
+-    "build_agent_test_summary_details",
+     "require_agent_addons_path",
++    "require_agent_runtime_db_mutation",
+     "resolve_agent_global_config",
+     "resolve_agent_ops",
+-    "build_validate_addon_change_discovery_result",
+-    "build_validate_addon_change_payload",
+     "run_validate_addon_change_preflight",
+-    "build_registration_helpers",
+ ]
+
+
+diff --git a/oduit/cli/app.py b/oduit/cli/app.py
+index c73b92d..8fd7f7a 100644
+--- a/oduit/cli/app.py
++++ b/oduit/cli/app.py
+@@ -233,6 +233,15 @@ from .commands.addons import (
+     list_manifest_values_command as _list_manifest_values_command_impl,
+ )
+ from .commands.addons import print_manifest_command as _print_manifest_command_impl
++from .commands.branch_database import (
++    branch_database_ensure_command as _branch_database_ensure_command_impl,
++)
++from .commands.branch_database import (
++    branch_database_gc_command as _branch_database_gc_command_impl,
++)
++from .commands.branch_database import (
++    branch_database_status_command as _branch_database_status_command_impl,
++)
+ from .commands.database import create_db_command as _create_db_command_impl
+ from .commands.database import edit_config_command as _edit_config_command_impl
+ from .commands.database import extension_db_command as _extension_db_command_impl
+@@ -446,6 +455,9 @@ _app_runtime_context = _bootstrap_support.build_registration_helpers(
+     get_addons_path_manager_cls=lambda: AddonsPathManager,
+     get_module_manager_cls=lambda: ModuleManager,
+     get_odoo_operations_cls=lambda: OdooOperations,
++    require_cli_runtime_db_mutation_fn=_require_cli_runtime_db_mutation_impl,
++    confirmation_required_error_fn=confirmation_required_error,
++    print_command_error_result_fn=print_command_error_result,
+ )
+
+ _agent_helper_context = _agent_support.build_registration_helpers(
+@@ -523,6 +535,9 @@ _app_registration_context = AppRegistrationContext(
+     ),
+     implementations=AppCommandImplementations(
+         doctor_command_impl=_doctor_command_impl,
++        branch_database_status_command_impl=_branch_database_status_command_impl,
++        branch_database_ensure_command_impl=_branch_database_ensure_command_impl,
++        branch_database_gc_command_impl=_branch_database_gc_command_impl,
+         run_command_impl=_run_command_impl,
+         shell_command_impl=_shell_command_impl,
+         install_command_impl=_install_command_impl,
+diff --git a/oduit/cli/bootstrap_support.py b/oduit/cli/bootstrap_support.py
+index da446f3..e299935 100644
+--- a/oduit/cli/bootstrap_support.py
++++ b/oduit/cli/bootstrap_support.py
+@@ -6,11 +6,22 @@ from typing import Any, cast
+
+ import typer
+
++from ..branch_database import (
++    BranchDatabaseError,
++    apply_branch_database_resolution,
++    resolve_branch_database,
++)
+ from ..cli_types import GlobalConfig, OutputFormat
++from ..exceptions import ConfigError
+ from ..operation_sets import (
+     OperationSetLocationContext,
+     build_operation_set_location_context,
+ )
++from .branch_database_support import (
++    build_branch_database_manager,
++    ensure_branch_database,
++    prepare_branch_database,
++)
+ from .runtime_context import AppRuntimeContext
+
+
+@@ -80,7 +91,7 @@ def create_global_config(
+                 env_config = config_loader.load_local_config()
+                 env_name = "local"
+             except (FileNotFoundError, ImportError, ValueError) as exc:
+-                print_error_fn(f"[ERROR] {str(exc)}")
++                print_error_fn(f"[ERROR] {exc!s}")
+                 raise typer.Exit(1) from exc
+         else:
+             print_error_fn(
+@@ -92,16 +103,26 @@ def create_global_config(
+         try:
+             env_config = config_loader.load_config(env_name)
+         except (FileNotFoundError, ImportError, ValueError) as exc:
+-            print_error_fn(f"[ERROR] {str(exc)}")
++            print_error_fn(f"[ERROR] {exc!s}")
+             raise typer.Exit(1) from exc
+         except Exception as exc:
+-            print_error_fn(f"Error loading environment '{env_name}': {str(exc)}")
++            print_error_fn(f"Error loading environment '{env_name}': {exc!s}")
+             raise typer.Exit(1) from exc
+
+     config_source, config_path = resolve_config_source_fn(
+         config_loader, env, env_config
+     )
+
++    base_env_config = dict(env_config) if env_config is not None else None
++    branch_database = None
++    if env_config is not None:
++        try:
++            branch_database = resolve_branch_database(env_config, Path.cwd())
++            env_config = apply_branch_database_resolution(env_config, branch_database)
++        except (ConfigError, BranchDatabaseError) as exc:
++            print_error_fn(f"[ERROR] {exc}")
++            raise typer.Exit(1) from exc
++
+     return GlobalConfig(
+         env=env,
+         non_interactive=non_interactive,
+@@ -109,6 +130,8 @@ def create_global_config(
+         verbose=verbose,
+         no_http=no_http,
+         env_config=env_config,
++        base_env_config=base_env_config,
++        branch_database=branch_database,
+         env_name=env_name,
+         odoo_series=odoo_series,
+         config_source=config_source,
+@@ -214,6 +237,9 @@ def build_registration_helpers(
+     get_addons_path_manager_cls: Any,
+     get_module_manager_cls: Any,
+     get_odoo_operations_cls: Any,
++    require_cli_runtime_db_mutation_fn: Any,
++    confirmation_required_error_fn: Any,
++    print_command_error_result_fn: Any,
+ ) -> AppRuntimeContext:
+     """Build classic CLI helper callables for command registration."""
+
+@@ -239,6 +265,47 @@ def build_registration_helpers(
+             odoo_operations_cls=get_odoo_operations_cls(),
+         )
+
++    def build_branch_database_manager_fn(
++        global_config: GlobalConfig,
++    ) -> Any:
++        return build_branch_database_manager(global_config, build_odoo_operations_fn)
++
++    def ensure_branch_database_fn(
++        global_config: GlobalConfig,
++        *,
++        allow_mutation: bool,
++        operation: str,
++        action: str,
++    ) -> dict[str, Any]:
++        return ensure_branch_database(
++            global_config,
++            allow_mutation=allow_mutation,
++            operation=operation,
++            action=action,
++            build_odoo_operations_fn=build_odoo_operations_fn,
++            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
++            confirmation_required_error_fn=confirmation_required_error_fn,
++            print_command_error_result_fn=print_command_error_result_fn,
++        )
++
++    def prepare_branch_database_fn(
++        global_config: GlobalConfig,
++        *,
++        allow_mutation: bool,
++        operation: str,
++        action: str,
++    ) -> GlobalConfig:
++        return prepare_branch_database(
++            global_config,
++            allow_mutation=allow_mutation,
++            operation=operation,
++            action=action,
++            build_odoo_operations_fn=build_odoo_operations_fn,
++            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
++            confirmation_required_error_fn=confirmation_required_error_fn,
++            print_command_error_result_fn=print_command_error_result_fn,
++        )
++
+     def build_doctor_report_fn(global_config: GlobalConfig) -> dict[str, Any]:
+         return build_doctor_report(
+             global_config,
+@@ -252,5 +319,8 @@ def build_registration_helpers(
+         resolve_command_global_config_fn=resolve_command_global_config_fn,
+         resolve_command_env_config_fn=resolve_command_env_config_fn,
+         build_odoo_operations_fn=build_odoo_operations_fn,
++        prepare_branch_database_fn=prepare_branch_database_fn,
++        build_branch_database_manager_fn=build_branch_database_manager_fn,
++        ensure_branch_database_fn=ensure_branch_database_fn,
+         build_doctor_report_fn=build_doctor_report_fn,
+     )
+diff --git a/oduit/cli/branch_database_support.py b/oduit/cli/branch_database_support.py
+new file mode 100644
+index 0000000..02b022d
+--- /dev/null
++++ b/oduit/cli/branch_database_support.py
+@@ -0,0 +1,149 @@
++"""Classic CLI support for preparing branch-aware databases."""
++
++from __future__ import annotations
++
++from dataclasses import replace
++from typing import Any
++
++import typer
++
++from ..branch_database import (
++    BranchDatabaseError,
++    BranchDatabaseManager,
++    parse_branch_database_settings,
++)
++from ..cli_types import GlobalConfig
++from ..exceptions import ConfigError
++
++
++def build_branch_database_manager(
++    global_config: GlobalConfig,
++    build_odoo_operations_fn: Any,
++) -> BranchDatabaseManager | None:
++    """Build the branch database manager for a resolved classic config."""
++    resolution = global_config.branch_database
++    if resolution is None:
++        return None
++
++    base_env_config = global_config.base_env_config or global_config.env_config or {}
++    settings = parse_branch_database_settings(base_env_config)
++
++    def operations_factory(env_config: dict[str, Any]) -> Any:
++        return build_odoo_operations_fn(replace(global_config, env_config=env_config))
++
++    return BranchDatabaseManager(
++        base_env_config,
++        resolution,
++        settings,
++        operations_factory,
++        config_path=global_config.config_path,
++    )
++
++
++def ensure_branch_database(
++    global_config: GlobalConfig,
++    *,
++    allow_mutation: bool,
++    operation: str,
++    action: str,
++    build_odoo_operations_fn: Any,
++    require_cli_runtime_db_mutation_fn: Any,
++    confirmation_required_error_fn: Any,
++    print_command_error_result_fn: Any,
++) -> dict[str, Any]:
++    """Ensure a branch database, authorizing only a needed feature clone."""
++    manager = build_branch_database_manager(global_config, build_odoo_operations_fn)
++    if manager is None:
++        return {
++            "success": False,
++            "operation": operation,
++            "error": "Branch database resolution is unavailable.",
++            "error_type": "BranchDatabaseResolutionError",
++        }
++
++    def authorize_clone() -> None:
++        require_cli_runtime_db_mutation_fn(
++            global_config=global_config,
++            env_config=(
++                global_config.env_config or global_config.base_env_config or {}
++            ),
++            allow_mutation=allow_mutation,
++            operation=operation,
++            action=action,
++            print_command_error_result_fn=print_command_error_result_fn,
++            confirmation_required_error_fn=confirmation_required_error_fn,
++        )
++
++    return manager.ensure(before_duplicate=authorize_clone)
++
++
++def prepare_branch_database(
++    global_config: GlobalConfig,
++    *,
++    allow_mutation: bool,
++    operation: str,
++    action: str,
++    build_odoo_operations_fn: Any,
++    require_cli_runtime_db_mutation_fn: Any,
++    confirmation_required_error_fn: Any,
++    print_command_error_result_fn: Any,
++) -> GlobalConfig:
++    """Ensure the active branch database exists before a runtime workflow."""
++    resolution = global_config.branch_database
++    if resolution is None or not resolution.enabled:
++        return global_config
++
++    try:
++        result = ensure_branch_database(
++            global_config,
++            allow_mutation=allow_mutation,
++            operation=operation,
++            action=action,
++            build_odoo_operations_fn=build_odoo_operations_fn,
++            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
++            confirmation_required_error_fn=confirmation_required_error_fn,
++            print_command_error_result_fn=print_command_error_result_fn,
++        )
++        if not result.get("success", False):
++            _report_failure(
++                global_config,
++                operation,
++                result,
++                print_command_error_result_fn,
++            )
++    except (BranchDatabaseError, ConfigError) as error:
++        print_command_error_result_fn(
++            global_config,
++            operation,
++            str(error),
++            error_type=type(error).__name__,
++            details={
++                "branch": resolution.branch,
++                "database": resolution.database,
++                "base_database": resolution.base_database,
++            },
++        )
++        raise typer.Exit(1) from None
++
++    return global_config
++
++
++def _report_failure(
++    global_config: GlobalConfig,
++    operation: str,
++    result: dict[str, Any],
++    print_command_error_result_fn: Any,
++) -> None:
++    print_command_error_result_fn(
++        global_config,
++        operation,
++        result.get("error", "Branch database preparation failed."),
++        error_type=result.get("error_type", "BranchDatabaseError"),
++        details={
++            "branch": result.get("branch"),
++            "database": result.get("database"),
++            "base_database": result.get("base_database"),
++        },
++        remediation=result.get("remediation"),
++    )
++    raise typer.Exit(1) from None
+diff --git a/oduit/cli/command_inventory.py b/oduit/cli/command_inventory.py
+index 87ae016..f3ad593 100644
+--- a/oduit/cli/command_inventory.py
++++ b/oduit/cli/command_inventory.py
+@@ -44,6 +44,7 @@ TOP_LEVEL_COMMAND_TIERS: dict[str, CommandTier] = {
+     "install": HUMAN_ORIENTED,
+     "update": HUMAN_ORIENTED,
+     "set": HUMAN_ORIENTED,
++    "branch-db": HUMAN_ORIENTED,
+     "uninstall": HUMAN_ORIENTED,
+     "test": HUMAN_ORIENTED,
+     "create-db": HUMAN_ORIENTED,
+diff --git a/oduit/cli/commands/branch_database.py b/oduit/cli/commands/branch_database.py
+new file mode 100644
+index 0000000..6aa0967
+--- /dev/null
++++ b/oduit/cli/commands/branch_database.py
+@@ -0,0 +1,182 @@
++"""Branch-aware database command implementations."""
++
++from __future__ import annotations
++
++import json
++from typing import Any, NoReturn
++
++import typer
++
++from ...branch_database import BranchDatabaseError
++from ...cli_types import OutputFormat
++from ...exceptions import ConfigError
++from ...output import print_error, print_info
++
++
++def branch_database_status_command(
++    ctx: typer.Context,
++    *,
++    resolve_command_env_config_fn: Any,
++    build_branch_database_manager_fn: Any,
++    print_command_error_result_fn: Any,
++) -> None:
++    """Report branch database status without creating or deleting databases."""
++    global_config, _ = resolve_command_env_config_fn(ctx)
++    try:
++        manager = build_branch_database_manager_fn(global_config)
++        if manager is None:
++            raise BranchDatabaseError("Branch database resolution is unavailable.")
++        result = manager.status()
++    except (BranchDatabaseError, ConfigError) as error:
++        _report_exception(
++            global_config,
++            "branch_db_status",
++            error,
++            print_command_error_result_fn,
++        )
++
++    _emit_result(global_config, result)
++    if not result.get("success", False):
++        raise typer.Exit(1)
++
++
++def branch_database_ensure_command(
++    ctx: typer.Context,
++    *,
++    allow_mutation: bool,
++    resolve_command_env_config_fn: Any,
++    ensure_branch_database_fn: Any,
++    print_command_error_result_fn: Any,
++) -> None:
++    """Ensure the effective branch database exists."""
++    global_config, _ = resolve_command_env_config_fn(ctx)
++    try:
++        result = ensure_branch_database_fn(
++            global_config,
++            allow_mutation=allow_mutation,
++            operation="branch_db_ensure",
++            action="branch database creation",
++        )
++    except (BranchDatabaseError, ConfigError) as error:
++        _report_exception(
++            global_config,
++            "branch_db_ensure",
++            error,
++            print_command_error_result_fn,
++        )
++
++    _emit_result(global_config, result)
++    if not result.get("success", False):
++        raise typer.Exit(1)
++
++
++def branch_database_gc_command(
++    ctx: typer.Context,
++    *,
++    apply: bool,
++    allow_mutation: bool,
++    resolve_command_env_config_fn: Any,
++    build_branch_database_manager_fn: Any,
++    require_cli_runtime_db_mutation_fn: Any,
++    confirmation_required_error_fn: Any,
++    print_command_error_result_fn: Any,
++) -> None:
++    """List stale managed databases or explicitly drop them through Odoo."""
++    global_config, env_config = resolve_command_env_config_fn(ctx)
++    try:
++        manager = build_branch_database_manager_fn(global_config)
++        if manager is None:
++            raise BranchDatabaseError("Branch database resolution is unavailable.")
++        candidates = manager.gc_candidates()
++        if apply and candidates:
++            require_cli_runtime_db_mutation_fn(
++                global_config=global_config,
++                env_config=env_config,
++                allow_mutation=allow_mutation,
++                operation="branch_db_gc",
++                action="branch database cleanup",
++                print_command_error_result_fn=print_command_error_result_fn,
++                confirmation_required_error_fn=confirmation_required_error_fn,
++            )
++        result = manager.gc(apply=apply)
++    except (BranchDatabaseError, ConfigError) as error:
++        _report_exception(
++            global_config,
++            "branch_db_gc",
++            error,
++            print_command_error_result_fn,
++        )
++
++    _emit_result(global_config, result)
++    if not result.get("success", False):
++        raise typer.Exit(1)
++
++
++def _emit_result(global_config: Any, result: dict[str, Any]) -> None:
++    if global_config.format == OutputFormat.JSON:
++        print(json.dumps(result))
++        return
++
++    operation = result.get("operation")
++    if operation == "branch_db_gc":
++        _print_gc(result)
++        return
++    if not result.get("success", False):
++        print_error(result.get("error", "Branch database operation failed."))
++        for remediation in result.get("remediation", []):
++            print_info(f"Remediation: {remediation}")
++        return
++
++    if operation == "branch_db_status":
++        _print_status(result)
++    elif result.get("created"):
++        print_info(f"Created branch database '{result.get('database')}'.")
++    elif result.get("enabled"):
++        print_info(f"Branch database '{result.get('database')}' is ready.")
++    else:
++        print_info(
++            result.get("message", "Branch-aware database management is disabled.")
++        )
++
++
++def _print_status(result: dict[str, Any]) -> None:
++    print_info(
++        f"Branch-aware database: {'enabled' if result['enabled'] else 'disabled'}"
++    )
++    print_info(f"Git branch: {result.get('branch') or '(not available)'}")
++    print_info(f"Base branch: {result.get('base_branch')}")
++    print_info(f"Base database: {result.get('base_database')}")
++    print_info(f"Effective database: {result.get('database')}")
++    exists = result.get("exists")
++    exists_text = "not checked" if exists is None else ("yes" if exists else "no")
++    print_info(f"Database exists: {exists_text}")
++    print_info(f"Managed by oduit: {'yes' if result.get('managed') else 'no'}")
++
++
++def _print_gc(result: dict[str, Any]) -> None:
++    candidates = result.get("candidates", [])
++    if result.get("dry_run"):
++        print_info(f"Branch database GC dry run: {len(candidates)} candidate(s).")
++        for candidate in candidates:
++            print_info(f"  {candidate['branch']}: {candidate['database']}")
++    else:
++        print_info(
++            f"Branch database GC deleted {len(result.get('deleted', []))} database(s)."
++        )
++        for error in result.get("errors", []):
++            print_error(f"Could not drop '{error['database']}': {error['error']}")
++
++
++def _report_exception(
++    global_config: Any,
++    operation: str,
++    error: Exception,
++    print_command_error_result_fn: Any,
++) -> NoReturn:
++    print_command_error_result_fn(
++        global_config,
++        operation,
++        str(error),
++        error_type=type(error).__name__,
++    )
++    raise typer.Exit(1) from None
+diff --git a/oduit/cli/commands/dependencies.py b/oduit/cli/commands/dependencies.py
+index 04f331b..904f7f1 100644
+--- a/oduit/cli/commands/dependencies.py
++++ b/oduit/cli/commands/dependencies.py
+@@ -35,8 +35,7 @@ def _resolve_requested_modules(
+     module_list, module_source = resolve_module_names(modules)
+     if not module_list:
+         raise ValueError(
+-            "Either provide module names, pipe module names, "
+-            "or use --select-dir option"
++            "Either provide module names, pipe module names, or use --select-dir option"
+         )
+
+     missing_modules = [
+@@ -185,8 +184,7 @@ def list_depends_command(
+
+     if not module_list and select_dir is None:
+         print_error(
+-            "Either provide module names, pipe module names, "
+-            "or use --select-dir option"
++            "Either provide module names, pipe module names, or use --select-dir option"
+         )
+         raise typer.Exit(1) from None
+
+@@ -703,8 +701,7 @@ def list_missing_command(
+
+     if not module_list and select_dir is None:
+         print_error(
+-            "Either provide module names, pipe module names, "
+-            "or use --select-dir option"
++            "Either provide module names, pipe module names, or use --select-dir option"
+         )
+         raise typer.Exit(1) from None
+
+diff --git a/oduit/cli/commands/i18n.py b/oduit/cli/commands/i18n.py
+index 68efd60..5cd14ef 100644
+--- a/oduit/cli/commands/i18n.py
++++ b/oduit/cli/commands/i18n.py
+@@ -347,6 +347,7 @@ def i18n_import_command(
+     log_level: LogLevel | None,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    prepare_branch_database_fn: Any,
+     module_manager_cls: type[ModuleManager],
+     require_cli_runtime_db_mutation_fn: Any,
+     confirmation_required_error_fn: Any,
+@@ -389,6 +390,12 @@ def i18n_import_command(
+         print_command_error_result_fn=print_command_error_result_fn,
+         confirmation_required_error_fn=confirmation_required_error_fn,
+     )
++    global_config = prepare_branch_database_fn(
++        global_config,
++        allow_mutation=allow_mutation,
++        operation=operation,
++        action="translation import",
++    )
+     ops = build_odoo_operations_fn(global_config)
+     result = ops.import_translations(
+         files=normalized_files,
+@@ -425,6 +432,7 @@ def i18n_loadlang_command(
+     log_level: LogLevel | None,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    prepare_branch_database_fn: Any,
+     module_manager_cls: type[ModuleManager],
+     require_cli_runtime_db_mutation_fn: Any,
+     confirmation_required_error_fn: Any,
+@@ -465,6 +473,12 @@ def i18n_loadlang_command(
+         print_command_error_result_fn=print_command_error_result_fn,
+         confirmation_required_error_fn=confirmation_required_error_fn,
+     )
++    global_config = prepare_branch_database_fn(
++        global_config,
++        allow_mutation=allow_mutation,
++        operation=operation,
++        action="language loading",
++    )
+     ops = build_odoo_operations_fn(global_config)
+     result = ops.load_languages(
+         languages=normalized_languages,
+diff --git a/oduit/cli/commands/runtime.py b/oduit/cli/commands/runtime.py
+index cdec754..540f84b 100644
+--- a/oduit/cli/commands/runtime.py
++++ b/oduit/cli/commands/runtime.py
+@@ -154,9 +154,17 @@ def run_command(
+     stop_after_init: bool,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    allow_mutation: bool,
++    prepare_branch_database_fn: Any,
+ ) -> None:
+     """Run Odoo server."""
+     global_config, _ = resolve_command_env_config_fn(ctx)
++    global_config = prepare_branch_database_fn(
++        global_config,
++        allow_mutation=allow_mutation,
++        operation="run",
++        action="Odoo server startup",
++    )
+     odoo_operations = build_odoo_operations_fn(global_config)
+     odoo_operations.run_odoo(
+         no_http=global_config.no_http,
+@@ -174,9 +182,17 @@ def shell_command(
+     log_level: LogLevel | None,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    allow_mutation: bool,
++    prepare_branch_database_fn: Any,
+ ) -> None:
+     """Start Odoo shell."""
+     global_config, _ = resolve_command_env_config_fn(ctx)
++    global_config = prepare_branch_database_fn(
++        global_config,
++        allow_mutation=allow_mutation,
++        operation="shell",
++        action="Odoo shell startup",
++    )
+     odoo_operations = build_odoo_operations_fn(global_config)
+     odoo_operations.run_shell(
+         shell_interface=shell_interface.value if shell_interface else None,
+@@ -200,6 +216,7 @@ def install_command(
+     include_stdout: bool,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    prepare_branch_database_fn: Any,
+     require_cli_runtime_db_mutation_fn: Any,
+     confirmation_required_error_fn: Any,
+     print_command_error_result_fn: Any,
+@@ -220,6 +237,12 @@ def install_command(
+         print_command_error_result_fn=print_command_error_result_fn,
+         confirmation_required_error_fn=confirmation_required_error_fn,
+     )
++    global_config = prepare_branch_database_fn(
++        global_config,
++        allow_mutation=allow_mutation,
++        operation="install_module",
++        action="module install",
++    )
+     odoo_operations = build_odoo_operations_fn(global_config)
+     output = odoo_operations.install_module(
+         module,
+@@ -268,6 +291,7 @@ def update_command(
+     include_stdout: bool = False,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    prepare_branch_database_fn: Any,
+     require_cli_runtime_db_mutation_fn: Any,
+     confirmation_required_error_fn: Any,
+     print_command_error_result_fn: Any,
+@@ -293,6 +317,12 @@ def update_command(
+         if language is None:
+             language = "de_DE"
+
++    global_config = prepare_branch_database_fn(
++        global_config,
++        allow_mutation=allow_mutation,
++        operation="update_module",
++        action="module update",
++    )
+     odoo_operations = build_odoo_operations_fn(global_config)
+     result = odoo_operations.update_module(
+         module,
+@@ -323,6 +353,7 @@ def uninstall_command(
+     include_stdout: bool,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    prepare_branch_database_fn: Any,
+     require_cli_runtime_db_mutation_fn: Any,
+     confirmation_required_error_fn: Any,
+     print_command_error_result_fn: Any,
+@@ -366,6 +397,12 @@ def uninstall_command(
+                 "reviewing dependent modules.",
+             ],
+         )
++    global_config = prepare_branch_database_fn(
++        global_config,
++        allow_mutation=allow_mutation,
++        operation="uninstall_module",
++        action="module uninstall",
++    )
+
+     odoo_operations = build_odoo_operations_fn(global_config)
+     result = odoo_operations.uninstall_module(
+@@ -414,6 +451,7 @@ def test_command(
+     include_stdout: bool,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    prepare_branch_database_fn: Any,
+     require_cli_runtime_db_mutation_fn: Any,
+     confirmation_required_error_fn: Any,
+     print_command_error_result_fn: Any,
+@@ -431,6 +469,12 @@ def test_command(
+             print_command_error_result_fn=print_command_error_result_fn,
+             confirmation_required_error_fn=confirmation_required_error_fn,
+         )
++    global_config = prepare_branch_database_fn(
++        global_config,
++        allow_mutation=allow_mutation,
++        operation="test",
++        action="test execution",
++    )
+     odoo_operations = build_odoo_operations_fn(global_config)
+     result = odoo_operations.run_tests(
+         None,
+@@ -1368,12 +1412,12 @@ def _print_set_inspection_text(inspection: dict[str, Any]) -> None:
+     addons_by_role = inspection.get("addons_by_role", {})
+     if addons_by_role:
+         for role, addons in addons_by_role.items():
+-            print("")
++            print()
+             print(f"{role} ({len(addons)}):")
+             for addon in addons:
+                 print(f"  {addon}")
+
+-    print("")
++    print()
+     print("Validation:")
+     print(f"  addons_path: {inspection.get('addons_path_status')}")
+     missing = inspection.get("missing_addons", [])
+@@ -1399,6 +1443,7 @@ def set_apply_command(
+     config_loader_cls: Any,
+     resolve_command_env_config_fn: Any,
+     build_odoo_operations_fn: Any,
++    prepare_branch_database_fn: Any,
+     require_cli_runtime_db_mutation_fn: Any,
+     confirmation_required_error_fn: Any,
+     print_command_error_result_fn: Any,
+@@ -1441,6 +1486,12 @@ def set_apply_command(
+             confirmation_required_error_fn=confirmation_required_error_fn,
+         )
+
++        global_config = prepare_branch_database_fn(
++            global_config,
++            allow_mutation=allow_mutation,
++            operation=f"operation_set_{op_set.kind}",
++            action=f"operation set {op_set.kind}",
++        )
+     odoo_operations = build_odoo_operations_fn(global_config)
+
+     if not suppress_output:
+diff --git a/oduit/cli/dependency_output.py b/oduit/cli/dependency_output.py
+index c1a1f37..54456e1 100644
+--- a/oduit/cli/dependency_output.py
++++ b/oduit/cli/dependency_output.py
+@@ -32,9 +32,7 @@ def print_dependency_tree(
+         )
+         for module_part, version_part in lines:
+             typer.echo(module_part, nl=False)
+-            if version_part == " ⬆":
+-                typer.secho(version_part, fg="bright_black")
+-            elif version_part:
++            if version_part == " ⬆" or version_part:
+                 typer.secho(version_part, fg="bright_black")
+             else:
+                 typer.echo("")
+diff --git a/oduit/cli/doctor.py b/oduit/cli/doctor.py
+index 078ca55..ad47736 100644
+--- a/oduit/cli/doctor.py
++++ b/oduit/cli/doctor.py
+@@ -251,9 +251,7 @@ def build_doctor_report(
+
+         for path in configured_paths:
+             absolute_path = os.path.abspath(path)
+-            if not os.path.exists(absolute_path):
+-                invalid_paths.append(path)
+-            elif not os.path.isdir(absolute_path):
++            if not os.path.exists(absolute_path) or not os.path.isdir(absolute_path):
+                 invalid_paths.append(path)
+             else:
+                 valid_paths.append(absolute_path)
+diff --git a/oduit/cli/main_support.py b/oduit/cli/main_support.py
+index 14ec027..19d7a39 100644
+--- a/oduit/cli/main_support.py
++++ b/oduit/cli/main_support.py
+@@ -43,7 +43,7 @@ def handle_no_subcommand(
+         print("  print-config       Print environment configuration")
+         print("  edit-config        Open active configuration file")
+         print("  agent ...          Structured agent-first inspection commands")
+-        print("")
++        print()
+         print("Examples:")
+         print("  oduit run                         # Run with local .oduit.toml")
+         print("  oduit test --test-tags /sale      # Test sale module")
+@@ -51,9 +51,9 @@ def handle_no_subcommand(
+         raise typer.Exit(1) from None
+
+     print_error_fn("No command specified and no .oduit.toml found in current directory")
+-    print("")
++    print()
+     print("Usage: oduit [--env ENV] COMMAND [arguments]")
+-    print("")
++    print()
+     print("Available commands:")
+     print(
+         "  init, run, shell, install, update, test, create-db, list-db, "
+@@ -65,7 +65,7 @@ def handle_no_subcommand(
+         "list-duplicates"
+     )
+     print("  export-lang, print-config, edit-config, agent")
+-    print("")
++    print()
+     print("Examples:")
+     print("  oduit --env dev run               # Run Odoo server")
+     print("  oduit --env dev update sale       # Update module 'sale'")
+diff --git a/oduit/cli/register_app_commands.py b/oduit/cli/register_app_commands.py
+index afdb0e7..6336a4e 100644
+--- a/oduit/cli/register_app_commands.py
++++ b/oduit/cli/register_app_commands.py
+@@ -34,6 +34,9 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+     resolve_command_env_config_fn = context.runtime.resolve_command_env_config_fn
+     build_odoo_operations_fn = context.runtime.build_odoo_operations_fn
+     build_doctor_report_fn = context.runtime.build_doctor_report_fn
++    prepare_branch_database_fn = context.runtime.prepare_branch_database_fn
++    build_branch_database_manager_fn = context.runtime.build_branch_database_manager_fn
++    ensure_branch_database_fn = context.runtime.ensure_branch_database_fn
+     print_doctor_report_fn = context.dependencies.print_doctor_report_fn
+     confirmation_required_error_fn = context.dependencies.confirmation_required_error_fn
+     print_command_error_result_fn = context.dependencies.print_command_error_result_fn
+@@ -105,11 +108,76 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+     get_odoo_version_command_impl = (
+         context.implementations.get_odoo_version_command_impl
+     )
++    branch_database_status_command_impl = (
++        context.implementations.branch_database_status_command_impl
++    )
++    branch_database_ensure_command_impl = (
++        context.implementations.branch_database_ensure_command_impl
++    )
++    branch_database_gc_command_impl = (
++        context.implementations.branch_database_gc_command_impl
++    )
+     set_app = typer.Typer(help="Manage operation sets")
+     i18n_app = typer.Typer(help="Import, export, and load Odoo translations")
++    branch_db_app = typer.Typer(help="Manage branch-aware Odoo databases")
++    app.add_typer(branch_db_app, name="branch-db")
+     app.add_typer(set_app, name="set")
+     app.add_typer(i18n_app, name="i18n")
+
++    @branch_db_app.command("status")
++    def branch_db_status(ctx: typer.Context) -> None:
++        """Show the active branch database without modifying it."""
++        branch_database_status_command_impl(
++            ctx,
++            resolve_command_env_config_fn=resolve_command_env_config_fn,
++            build_branch_database_manager_fn=build_branch_database_manager_fn,
++            print_command_error_result_fn=print_command_error_result_fn,
++        )
++
++    @branch_db_app.command("ensure")
++    def branch_db_ensure(
++        ctx: typer.Context,
++        allow_mutation: bool = typer.Option(
++            False,
++            "--allow-mutation",
++            help="Confirm branch database creation when required by mutation policy",
++        ),
++    ) -> None:
++        """Create the active branch database if it is missing."""
++        branch_database_ensure_command_impl(
++            ctx,
++            allow_mutation=allow_mutation,
++            resolve_command_env_config_fn=resolve_command_env_config_fn,
++            ensure_branch_database_fn=ensure_branch_database_fn,
++            print_command_error_result_fn=print_command_error_result_fn,
++        )
++
++    @branch_db_app.command("gc")
++    def branch_db_gc(
++        ctx: typer.Context,
++        apply: bool = typer.Option(
++            False,
++            "--apply",
++            help="Delete stale managed databases; default is a dry run",
++        ),
++        allow_mutation: bool = typer.Option(
++            False,
++            "--allow-mutation",
++            help="Confirm runtime database mutation when required by policy",
++        ),
++    ) -> None:
++        """List or explicitly delete stale managed branch databases."""
++        branch_database_gc_command_impl(
++            ctx,
++            apply=apply,
++            allow_mutation=allow_mutation,
++            resolve_command_env_config_fn=resolve_command_env_config_fn,
++            build_branch_database_manager_fn=build_branch_database_manager_fn,
++            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
++            confirmation_required_error_fn=confirmation_required_error_fn,
++            print_command_error_result_fn=print_command_error_result_fn,
++        )
++
+     @app.command()
+     def doctor(ctx: typer.Context) -> None:
+         """Diagnose environment and configuration issues."""
+@@ -131,6 +199,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             "-s",
+             help="Stop the server after initialization",
+         ),
++        allow_mutation: bool = typer.Option(
++            False,
++            "--allow-mutation",
++            help="Confirm runtime database creation when required by mutation policy",
++        ),
+     ) -> None:
+         """Run Odoo server."""
+         run_command_impl(
+@@ -139,6 +212,8 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             log_level=log_level,
+             stop_after_init=stop_after_init,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
++            allow_mutation=allow_mutation,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
+         )
+
+@@ -152,6 +227,11 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             help="Suppress INFO logs at startup for cleaner output",
+         ),
+         log_level: LogLevel | None = log_level_option,
++        allow_mutation: bool = typer.Option(
++            False,
++            "--allow-mutation",
++            help="Confirm runtime database creation when required by mutation policy",
++        ),
+     ) -> None:
+         """Start Odoo shell."""
+         shell_command_impl(
+@@ -160,6 +240,8 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             compact=compact,
+             log_level=log_level,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
++            allow_mutation=allow_mutation,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
+         )
+
+@@ -169,8 +251,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+         module: str | None = typer.Argument(
+             None,
+             help=(
+-                "Module or comma-separated modules to install; "
+-                "reads stdin when omitted"
++                "Module or comma-separated modules to install; reads stdin when omitted"
+             ),
+         ),
+         without_demo: str | None = typer.Option(
+@@ -219,6 +300,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             include_stdout=include_stdout,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+             confirmation_required_error_fn=confirmation_required_error_fn,
+             print_command_error_result_fn=print_command_error_result_fn,
+@@ -230,8 +312,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+         module: str | None = typer.Argument(
+             None,
+             help=(
+-                "Module or comma-separated modules to update; "
+-                "reads stdin when omitted"
++                "Module or comma-separated modules to update; reads stdin when omitted"
+             ),
+         ),
+         without_demo: str | None = typer.Option(
+@@ -284,6 +365,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             include_stdout=include_stdout,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+             confirmation_required_error_fn=confirmation_required_error_fn,
+             print_command_error_result_fn=print_command_error_result_fn,
+@@ -331,6 +413,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             include_stdout=include_stdout,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+             confirmation_required_error_fn=confirmation_required_error_fn,
+             print_command_error_result_fn=print_command_error_result_fn,
+@@ -415,6 +498,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             include_stdout=include_stdout,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+             confirmation_required_error_fn=confirmation_required_error_fn,
+             print_command_error_result_fn=print_command_error_result_fn,
+@@ -453,24 +537,19 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+         verify_state: bool = typer.Option(
+             True,
+             "--verify-state/--no-verify-state",
+-            help=(
+-                "Verify requested addon states after " "install/update set operations"
+-            ),
++            help=("Verify requested addon states after install/update set operations"),
+         ),
+         retry_missing: int = typer.Option(
+             0,
+             "--retry-missing",
+             min=0,
+-            help=(
+-                "Retry addons that are still not installed " "after state verification"
+-            ),
++            help=("Retry addons that are still not installed after state verification"),
+         ),
+         one_by_one: bool = typer.Option(
+             False,
+             "--one-by-one",
+             help=(
+-                "Apply addon operations one by one with "
+-                "verification after each addon"
++                "Apply addon operations one by one with verification after each addon"
+             ),
+         ),
+         retry_failed_tests: int = typer.Option(
+@@ -483,8 +562,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             False,
+             "--continue-on-error",
+             help=(
+-                "In one-by-one mode, continue with later "
+-                "addons/tests after a failure"
++                "In one-by-one mode, continue with later addons/tests after a failure"
+             ),
+         ),
+     ) -> None:
+@@ -507,6 +585,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             config_loader_cls=get_config_loader_cls(),
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+             confirmation_required_error_fn=confirmation_required_error_fn,
+             print_command_error_result_fn=print_command_error_result_fn,
+@@ -1388,6 +1467,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             log_level=log_level,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             module_manager_cls=get_module_manager_cls(),
+             confirmation_required_error_fn=confirmation_required_error_fn,
+             print_command_error_result_fn=print_command_error_result_fn,
+@@ -1439,6 +1519,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             log_level=log_level,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             module_manager_cls=get_module_manager_cls(),
+             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+             confirmation_required_error_fn=confirmation_required_error_fn,
+@@ -1476,6 +1557,7 @@ def register_app_commands(context: AppRegistrationContext) -> None:  # noqa: C90
+             log_level=log_level,
+             resolve_command_env_config_fn=resolve_command_env_config_fn,
+             build_odoo_operations_fn=build_odoo_operations_fn,
++            prepare_branch_database_fn=prepare_branch_database_fn,
+             module_manager_cls=get_module_manager_cls(),
+             require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation_fn,
+             confirmation_required_error_fn=confirmation_required_error_fn,
+diff --git a/oduit/cli/register_inspection_commands.py b/oduit/cli/register_inspection_commands.py
+index 78a0dc6..c2c2fa4 100644
+--- a/oduit/cli/register_inspection_commands.py
++++ b/oduit/cli/register_inspection_commands.py
+@@ -53,9 +53,11 @@ def register_inspection_commands(context: AppRegistrationContext) -> None:  # no
+             raise typer.Exit(1) from None
+
+     def _print_value(value: Any) -> None:
+-        if isinstance(value, str):
+-            print(value)
+-        elif isinstance(value, int | float) and not isinstance(value, bool):
++        if (
++            isinstance(value, str)
++            or isinstance(value, int | float)
++            and not isinstance(value, bool)
++        ):
+             print(value)
+         elif isinstance(value, bool):
+             print("true" if value else "false")
+diff --git a/oduit/cli/runtime_context.py b/oduit/cli/runtime_context.py
+index 1154460..026cd4c 100644
+--- a/oduit/cli/runtime_context.py
++++ b/oduit/cli/runtime_context.py
+@@ -16,6 +16,9 @@ ResolveCommandEnvConfigFn = Callable[
+ ]
+ BuildOdooOperationsFn = Callable[[GlobalConfig], Any]
+ BuildDoctorReportFn = Callable[[GlobalConfig], dict[str, Any]]
++PrepareBranchDatabaseFn = Callable[..., GlobalConfig]
++BuildBranchDatabaseManagerFn = Callable[[GlobalConfig], Any]
++EnsureBranchDatabaseFn = Callable[..., dict[str, Any]]
+ ResolveAgentGlobalConfigFn = Callable[[typer.Context, str, str], GlobalConfig]
+ ResolveAgentOpsFn = Callable[[typer.Context, str, str], tuple[GlobalConfig, Any]]
+
+@@ -28,6 +31,9 @@ class AppRuntimeContext:
+     resolve_command_env_config_fn: ResolveCommandEnvConfigFn
+     build_odoo_operations_fn: BuildOdooOperationsFn
+     build_doctor_report_fn: BuildDoctorReportFn
++    prepare_branch_database_fn: PrepareBranchDatabaseFn
++    build_branch_database_manager_fn: BuildBranchDatabaseManagerFn
++    ensure_branch_database_fn: EnsureBranchDatabaseFn
+
+
+ @dataclass(frozen=True)
+@@ -81,6 +87,9 @@ class AppCommandImplementations:
+     """Classic CLI command implementations."""
+
+     doctor_command_impl: Any
++    branch_database_status_command_impl: Any
++    branch_database_ensure_command_impl: Any
++    branch_database_gc_command_impl: Any
+     run_command_impl: Any
+     shell_command_impl: Any
+     install_command_impl: Any
+diff --git a/oduit/cli_typer.py b/oduit/cli_typer.py
+index 1535bbb..7dccf27 100644
+--- a/oduit/cli_typer.py
++++ b/oduit/cli_typer.py
+@@ -38,18 +38,18 @@ from .utils import validate_addon_name
+
+ __all__ = [
+     "ADDON_TEMPLATE_OPTION",
+-    "AddonsPathManager",
+-    "ConfigLoader",
+     "DEV_OPTION",
+     "EXCLUDE_FILTER_OPTION",
+     "INCLUDE_FILTER_OPTION",
+     "LANGUAGE_OPTION",
+     "LOG_LEVEL_OPTION",
+-    "ModuleManager",
+     "ODOO_SERIES_OPTION",
+-    "OdooOperations",
+     "SHELL_INTERFACE_OPTION",
+     "SORT_OPTION",
++    "AddonsPathManager",
++    "ConfigLoader",
++    "ModuleManager",
++    "OdooOperations",
+     "_build_initial_config",
+     "_check_environment_exists",
+     "_detect_binaries",
+diff --git a/oduit/cli_types.py b/oduit/cli_types.py
+index 4f0df3d..a7170a5 100644
+--- a/oduit/cli_types.py
++++ b/oduit/cli_types.py
+@@ -12,6 +12,8 @@ from typing import Any
+
+ from manifestoo_core.odoo_series import OdooSeries
+
++from .branch_database import BranchDatabaseResolution
++
+
+ class OutputFormat(str, Enum):
+     """Output format options."""
+@@ -79,6 +81,8 @@ class GlobalConfig:
+     verbose: bool = False
+     no_http: bool = False
+     env_config: dict[str, Any] | None = None
++    base_env_config: dict[str, Any] | None = None
++    branch_database: BranchDatabaseResolution | None = None
+     env_name: str | None = None
+     odoo_series: OdooSeries | None = None
+     config_source: str | None = None
+diff --git a/oduit/config_loader.py b/oduit/config_loader.py
+index 92f9660..bcdeea5 100644
+--- a/oduit/config_loader.py
++++ b/oduit/config_loader.py
+@@ -367,7 +367,7 @@ class ConfigLoader:
+             oduit_config["proxy_mode"] = self._get_boolean_value(options, "proxy_mode")
+         if "xmlrpc_interface" in options:
+             oduit_config["xmlrpc_interface"] = options["xmlrpc_interface"]
+-        if "pidfile" in options and options["pidfile"]:
++        if options.get("pidfile"):
+             oduit_config["pidfile"] = options["pidfile"]
+
+     def _parse_limits_config(
+@@ -408,7 +408,7 @@ class ConfigLoader:
+             oduit_config["addons_path"] = options["addons_path"]
+         if "data_dir" in options:
+             oduit_config["data_dir"] = options["data_dir"]
+-        if "pg_path" in options and options["pg_path"]:
++        if options.get("pg_path"):
+             oduit_config["pg_path"] = options["pg_path"]
+
+     def _parse_logging_config(
+diff --git a/oduit/config_provider.py b/oduit/config_provider.py
+index a1d084c..1387ae8 100644
+--- a/oduit/config_provider.py
++++ b/oduit/config_provider.py
+@@ -16,7 +16,7 @@ from .exceptions import ConfigError
+ from .mutation_policy import raise_if_legacy_db_risk_level
+
+ _BINARY_CONFIG_KEYS = {"python_bin", "odoo_bin", "coverage_bin"}
+-_ODUIT_ONLY_TOP_LEVEL_KEYS = {"documentation"}
++_ODUIT_ONLY_TOP_LEVEL_KEYS = {"documentation", "branch_db"}
+ _ODUIT_ONLY_FLAT_KEYS = {"documentation_allowed_addon_dirs"}
+
+
+@@ -64,9 +64,10 @@ class ConfigProvider:
+                 if key not in ("binaries", "odoo_params"):
+                     if key in _BINARY_CONFIG_KEYS:
+                         self._binaries[key] = value
+-                    elif key in _ODUIT_ONLY_TOP_LEVEL_KEYS:
+-                        self._other_config[key] = value
+-                    elif key in _ODUIT_ONLY_FLAT_KEYS:
++                    elif (
++                        key in _ODUIT_ONLY_TOP_LEVEL_KEYS
++                        or key in _ODUIT_ONLY_FLAT_KEYS
++                    ):
+                         self._other_config[key] = value
+                     else:
+                         self._odoo_params[key] = value
+@@ -75,9 +76,7 @@ class ConfigProvider:
+             for key, value in self._raw_config.items():
+                 if key in _BINARY_CONFIG_KEYS:
+                     self._binaries[key] = value
+-                elif key in _ODUIT_ONLY_TOP_LEVEL_KEYS:
+-                    self._other_config[key] = value
+-                elif key in _ODUIT_ONLY_FLAT_KEYS:
++                elif key in _ODUIT_ONLY_TOP_LEVEL_KEYS or key in _ODUIT_ONLY_FLAT_KEYS:
+                     self._other_config[key] = value
+                 else:
+                     self._odoo_params[key] = value
+@@ -196,6 +195,7 @@ class ConfigProvider:
+                 "needs_mutation_flag",
+                 "agent_needs_mutation_flag",
+                 "documentation",
++                "branch_db",
+                 "documentation_allowed_addon_dirs",
+             }
+         )
+diff --git a/oduit/demo_process_manager.py b/oduit/demo_process_manager.py
+index ff7ef8d..8c0897a 100644
+--- a/oduit/demo_process_manager.py
++++ b/oduit/demo_process_manager.py
+@@ -1060,7 +1060,7 @@ class DemoProcessManager(BaseProcessManager):
+
+         except Exception as e:
+             result_builder.set_error(
+-                f"Failed to execute operation: {str(e)}", "OperationError"
++                f"Failed to execute operation: {e!s}", "OperationError"
+             )
+
+         return result_builder.finalize()
+diff --git a/oduit/documentation_tracking.py b/oduit/documentation_tracking.py
+index 389ba63..fa0a489 100644
+--- a/oduit/documentation_tracking.py
++++ b/oduit/documentation_tracking.py
+@@ -713,10 +713,8 @@ def parse_markdown_table(text: str) -> list[list[str]] | None:
+         if "|" not in line:
+             return None
+         raw = line.strip()
+-        if raw.startswith("|"):
+-            raw = raw[1:]
+-        if raw.endswith("|"):
+-            raw = raw[:-1]
++        raw = raw.removeprefix("|")
++        raw = raw.removesuffix("|")
+         return [cell.strip() for cell in raw.split("|")]
+
+     header = _split(lines[0])
+diff --git a/oduit/exceptions.py b/oduit/exceptions.py
+index 78106fd..07b2952 100644
+--- a/oduit/exceptions.py
++++ b/oduit/exceptions.py
+@@ -8,8 +8,6 @@
+ class ConfigError(Exception):
+     """Error for missing configuration values"""
+
+-    pass
+-
+
+ class OdooOperationError(Exception):
+     """Base exception for Odoo operations"""
+@@ -22,34 +20,22 @@ class OdooOperationError(Exception):
+ class ModuleOperationError(OdooOperationError):
+     """Base exception for module operations"""
+
+-    pass
+-
+
+ class ModuleUpdateError(ModuleOperationError):
+     """Raised when module update fails"""
+
+-    pass
+-
+
+ class ModuleInstallError(ModuleOperationError):
+     """Raised when module installation fails"""
+
+-    pass
+-
+
+ class ModuleUninstallError(ModuleOperationError):
+     """Raised when module uninstall fails"""
+
+-    pass
+-
+
+ class ModuleNotFoundError(ModuleOperationError):
+     """Raised when module doesn't exist"""
+
+-    pass
+-
+
+ class DatabaseOperationError(OdooOperationError):
+     """Raised when database operations fail"""
+-
+-    pass
+diff --git a/oduit/managed_markdown.py b/oduit/managed_markdown.py
+index f85be1e..8d89dfa 100644
+--- a/oduit/managed_markdown.py
++++ b/oduit/managed_markdown.py
+@@ -168,7 +168,7 @@ def parse_generated_blocks(markdown: str) -> list[ParsedMarkdownBlock]:
+             metadata = json.loads(start_match.group(1))
+         except json.JSONDecodeError as exc:
+             raise ValueError(
+-                f"Malformed generated block marker at line " f"{start_line}: {exc}"
++                f"Malformed generated block marker at line {start_line}: {exc}"
+             ) from exc
+         if not isinstance(metadata, dict):
+             raise ValueError(
+diff --git a/oduit/odoo_operations.py b/oduit/odoo_operations.py
+index c2ebe64..3673b1d 100644
+--- a/oduit/odoo_operations.py
++++ b/oduit/odoo_operations.py
+@@ -353,6 +353,44 @@ class OdooOperations:
+             raise_on_error=raise_on_error,
+         )
+
++    def duplicate_db(
++        self,
++        target_database: str,
++        *,
++        source_database: str | None = None,
++        neutralize: bool = False,
++        force: bool = False,
++        suppress_output: bool = False,
++        raise_on_error: bool = False,
++        odoo_series: OdooSeries | None = None,
++    ) -> dict[str, Any]:
++        """Duplicate a database through Odoo's native command."""
++        return self._database_service.duplicate_db(
++            target_database,
++            source_database=source_database,
++            neutralize=neutralize,
++            force=force,
++            suppress_output=suppress_output,
++            raise_on_error=raise_on_error,
++            odoo_series=odoo_series,
++        )
++
++    def drop_db_with_filestore(
++        self,
++        database: str,
++        *,
++        suppress_output: bool = False,
++        raise_on_error: bool = False,
++        odoo_series: OdooSeries | None = None,
++    ) -> dict[str, Any]:
++        """Drop a database and its filestore through Odoo's native command."""
++        return self._database_service.drop_db_with_filestore(
++            database,
++            suppress_output=suppress_output,
++            raise_on_error=raise_on_error,
++            odoo_series=odoo_series,
++        )
++
+     def create_db(
+         self,
+         with_sudo: bool = True,
+diff --git a/oduit/operation_result.py b/oduit/operation_result.py
+index 6d000ba..9a77e23 100644
+--- a/oduit/operation_result.py
++++ b/oduit/operation_result.py
+@@ -566,9 +566,7 @@ class OperationResult:
+                     # Only set success to False if the error mentions target modules
+                     # or if no target modules are specified
+                     target_modules = self.result.get("modules", [])
+-                    if not target_modules:
+-                        install_info["success"] = False
+-                    elif any(
++                    if not target_modules or any(
+                         target_module in clean_line for target_module in target_modules
+                     ):
+                         install_info["success"] = False
+diff --git a/oduit/operation_sets.py b/oduit/operation_sets.py
+index 15241dc..e9e596e 100644
+--- a/oduit/operation_sets.py
++++ b/oduit/operation_sets.py
+@@ -886,9 +886,7 @@ def build_operation_set_document(
+
+     addon_list = [addon for addon in addons if addon]
+     section: dict[str, Any] = {}
+-    if kind == "install":
+-        section["addons"] = addon_list
+-    elif kind == "update":
++    if kind == "install" or kind == "update":
+         section["addons"] = addon_list
+     else:
+         section["install"] = addon_list
+diff --git a/oduit/process_manager.py b/oduit/process_manager.py
+index 46d6d53..53de503 100644
+--- a/oduit/process_manager.py
++++ b/oduit/process_manager.py
+@@ -171,7 +171,7 @@ class ProcessManager(BaseProcessManager):
+                 )
+
+                 # Add warnings if captured
+-                if "warnings" in process_result and process_result["warnings"]:
++                if process_result.get("warnings"):
+                     result_builder.set_custom_data(warnings=process_result["warnings"])
+
+                 # Apply automatic parsing based on operation metadata
+@@ -184,7 +184,7 @@ class ProcessManager(BaseProcessManager):
+
+         except Exception as e:
+             result_builder.set_error(
+-                f"Failed to execute operation: {str(e)}", "OperationError"
++                f"Failed to execute operation: {e!s}", "OperationError"
+             )
+
+         return result_builder.finalize()
+diff --git a/oduit/technical_documentation.py b/oduit/technical_documentation.py
+index 43ce517..9060123 100644
+--- a/oduit/technical_documentation.py
++++ b/oduit/technical_documentation.py
+@@ -55,7 +55,7 @@ def resolve_addon_documentation_target(
+ ) -> AddonDocTarget:
+     """Resolve a technical-documentation target to one concrete addon root."""
+
+-    raw_target = target[1:] if target.startswith("@") else target
++    raw_target = target.removeprefix("@")
+     requested_path = Path(raw_target).expanduser()
+     base_dir = (
+         _resolve_path(Path(path_base_dir).expanduser())
+diff --git a/tests/test_branch_database.py b/tests/test_branch_database.py
+new file mode 100644
+index 0000000..db607ec
+--- /dev/null
++++ b/tests/test_branch_database.py
+@@ -0,0 +1,561 @@
++"""Tests for branch-aware database resolution and state management."""
++
++from __future__ import annotations
++
++import json
++import tempfile
++import unittest
++from pathlib import Path
++from types import SimpleNamespace
++from typing import Any
++from unittest.mock import MagicMock, patch
++
++from oduit.branch_database import (
++    BranchDatabaseDetachedHead,
++    BranchDatabaseGitError,
++    BranchDatabaseManager,
++    BranchDatabaseSettings,
++    BranchDatabaseStateError,
++    BranchDatabaseStateStore,
++    apply_branch_database_resolution,
++    build_branch_database_name,
++    inspect_git_branch,
++    list_local_git_branches,
++    parse_branch_database_settings,
++    resolve_branch_database,
++)
++from oduit.cli.agent.services import resolve_agent_global_config
++from oduit.cli.bootstrap_support import create_global_config
++from oduit.exceptions import ConfigError
++
++
++class TestBranchDatabaseResolution(unittest.TestCase):
++    def setUp(self) -> None:
++        self.temporary_directory = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temporary_directory.cleanup)
++        self.base = Path(self.temporary_directory.name)
++
++    @staticmethod
++    def _write(path: Path, content: str) -> None:
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(content, encoding="utf-8")
++
++    def _repository(self, branch: str = "main") -> Path:
++        root = self.base / "repo"
++        git_dir = root / ".git"
++        git_dir.mkdir(parents=True)
++        self._write(git_dir / "HEAD", f"ref: refs/heads/{branch}\n")
++        return root
++
++    @staticmethod
++    def _config(branch_db: dict[str, Any] | None = None) -> dict[str, Any]:
++        return {
++            "odoo_params": {"db_name": "project_dev"},
++            **({"branch_db": branch_db} if branch_db is not None else {}),
++        }
++
++    def test_inspect_normal_repository_and_nested_start_path(self) -> None:
++        root = self._repository("feature/fix7")
++        nested = root / "addons" / "custom"
++        nested.mkdir(parents=True)
++
++        info = inspect_git_branch(nested)
++
++        self.assertIsNotNone(info)
++        assert info is not None
++        self.assertEqual(info.root, root.resolve())
++        self.assertEqual(info.git_dir, (root / ".git").resolve())
++        self.assertEqual(info.common_dir, info.git_dir)
++        self.assertEqual(info.branch, "feature/fix7")
++        self.assertFalse(info.detached)
++
++    def test_inspect_worktree_uses_worktree_head_and_common_directory(self) -> None:
++        common_root = self._repository("main")
++        common_dir = common_root / ".git"
++        worktree = self.base / "worktree"
++        git_dir = common_dir / "worktrees" / "linked"
++        git_dir.mkdir(parents=True)
++        worktree.mkdir()
++        self._write(worktree / ".git", "gitdir: ../repo/.git/worktrees/linked\n")
++        self._write(git_dir / "commondir", "../..\n")
++        self._write(git_dir / "HEAD", "ref: refs/heads/feature/worktree\n")
++
++        info = inspect_git_branch(worktree)
++
++        self.assertIsNotNone(info)
++        assert info is not None
++        self.assertEqual(info.root, worktree.resolve())
++        self.assertEqual(info.git_dir, git_dir.resolve())
++        self.assertEqual(info.common_dir, common_dir.resolve())
++        self.assertEqual(info.branch, "feature/worktree")
++
++    def test_detached_head_is_reported(self) -> None:
++        root = self._repository()
++        self._write(root / ".git" / "HEAD", "abc123\n")
++
++        info = inspect_git_branch(root)
++
++        self.assertIsNotNone(info)
++        assert info is not None
++        self.assertIsNone(info.branch)
++        self.assertTrue(info.detached)
++
++    def test_malformed_git_file_fails_clearly(self) -> None:
++        root = self.base / "worktree"
++        root.mkdir()
++        self._write(root / ".git", "not a gitdir file\n")
++
++        with self.assertRaisesRegex(BranchDatabaseGitError, "Malformed Git worktree"):
++            inspect_git_branch(root)
++
++    def test_missing_head_fails_clearly(self) -> None:
++        root = self.base / "repo"
++        (root / ".git").mkdir(parents=True)
++
++        with self.assertRaisesRegex(BranchDatabaseGitError, "Git HEAD"):
++            inspect_git_branch(root)
++
++    def test_no_repository_returns_none(self) -> None:
++        directory = self.base / "not-a-repo"
++        directory.mkdir()
++
++        self.assertIsNone(inspect_git_branch(directory))
++
++    def test_local_branch_listing_includes_loose_and_packed_refs_only(self) -> None:
++        root = self._repository("main")
++        git_dir = root / ".git"
++        self._write(git_dir / "refs" / "heads" / "main", "main\n")
++        self._write(git_dir / "refs" / "heads" / "feature" / "loose", "abc\n")
++        self._write(
++            git_dir / "packed-refs",
++            "# pack-refs with: peeled fully-peeled\n"
++            "abc refs/heads/packed\n"
++            "def refs/remotes/origin/remote-only\n"
++            "^123 peeled-object\n",
++        )
++
++        info = inspect_git_branch(root)
++        assert info is not None
++
++        self.assertEqual(
++            list_local_git_branches(info), {"main", "feature/loose", "packed"}
++        )
++
++    def test_config_defaults_and_disabled_configuration(self) -> None:
++        self.assertEqual(
++            parse_branch_database_settings(self._config()), BranchDatabaseSettings()
++        )
++        self.assertEqual(
++            parse_branch_database_settings(
++                self._config({"enabled": False, "base_branch": "stable"})
++            ),
++            BranchDatabaseSettings(enabled=False, base_branch="stable"),
++        )
++        self.assertEqual(
++            parse_branch_database_settings(self._config({"enabled": True})),
++            BranchDatabaseSettings(enabled=True),
++        )
++
++    def test_config_rejects_invalid_section_and_empty_base_branch(self) -> None:
++        with self.assertRaises(ConfigError):
++            parse_branch_database_settings({"branch_db": True})
++        with self.assertRaisesRegex(ConfigError, "base_branch"):
++            parse_branch_database_settings(self._config({"base_branch": "  "}))
++        with self.assertRaisesRegex(ConfigError, "enabled requires"):
++            parse_branch_database_settings(
++                {"branch_db": {"enabled": True}, "odoo_params": {}}
++            )
++        with self.assertRaisesRegex(ConfigError, "enabled must be a boolean"):
++            parse_branch_database_settings(self._config({"enabled": 1}))
++
++    def test_branch_database_naming_is_stable_and_collision_resistant(self) -> None:
++        self.assertEqual(
++            build_branch_database_name("project_dev", "fix7"), "project_dev_fix7"
++        )
++
++        normalized = build_branch_database_name("project_dev", "feature/fix-7")
++        self.assertTrue(normalized.startswith("project_dev_feature_fix_7_"))
++        self.assertNotEqual(
++            normalized, build_branch_database_name("project_dev", "feature_fix_7")
++        )
++        self.assertNotEqual(
++            build_branch_database_name("project_dev", "fix7"),
++            build_branch_database_name("project_dev", "Fix7"),
++        )
++        self.assertTrue(
++            build_branch_database_name("project_dev", "feature/café").startswith(
++                "project_dev_feature_cafe_"
++            )
++        )
++        self.assertTrue(
++            build_branch_database_name("project_dev", "!!!").startswith(
++                "project_dev_branch_"
++            )
++        )
++
++    def test_branch_database_naming_respects_utf8_identifier_limit(self) -> None:
++        branch = "feature/" + "long-name" * 30
++        name = build_branch_database_name("project_dev", branch)
++        long_base_name = build_branch_database_name("database" * 20, "fix7")
++
++        self.assertLessEqual(len(name.encode("utf-8")), 63)
++        self.assertLessEqual(len(long_base_name.encode("utf-8")), 63)
++        self.assertRegex(name, r"_[0-9a-f]{8}$")
++        self.assertRegex(long_base_name, r"_[0-9a-f]{8}$")
++        self.assertEqual(name, build_branch_database_name("project_dev", branch))
++
++    def test_resolution_maps_base_and_feature_branches(self) -> None:
++        base_root = self._repository("main")
++        base = resolve_branch_database(self._config({"enabled": True}), base_root)
++        self.assertTrue(base.is_base_branch)
++        self.assertEqual(base.database, "project_dev")
++
++        self._write(base_root / ".git" / "HEAD", "ref: refs/heads/fix7\n")
++        feature = resolve_branch_database(self._config({"enabled": True}), base_root)
++        self.assertFalse(feature.is_base_branch)
++        self.assertEqual(feature.database, "project_dev_fix7")
++
++    def test_disabled_resolution_does_not_require_a_git_repository(self) -> None:
++        config = {"odoo_params": {"db_name": "project_dev"}}
++
++        resolution = resolve_branch_database(config, self.base)
++
++        self.assertFalse(resolution.enabled)
++        self.assertEqual(resolution.database, "project_dev")
++        self.assertEqual(config["odoo_params"]["db_name"], "project_dev")
++
++    def test_enabled_resolution_rejects_detached_head_and_missing_repository(
++        self,
++    ) -> None:
++        root = self._repository()
++        self._write(root / ".git" / "HEAD", "deadbeef\n")
++        with self.assertRaises(BranchDatabaseDetachedHead):
++            resolve_branch_database(self._config({"enabled": True}), root)
++
++        with self.assertRaisesRegex(BranchDatabaseGitError, "no Git repository"):
++            resolve_branch_database(self._config({"enabled": True}), self.base)
++
++    def test_apply_resolution_copies_sectioned_config(self) -> None:
++        root = self._repository("fix7")
++        config = self._config({"enabled": True})
++        resolution = resolve_branch_database(config, root)
++
++        effective = apply_branch_database_resolution(config, resolution)
++
++        self.assertEqual(effective["odoo_params"]["db_name"], "project_dev_fix7")
++        self.assertEqual(config["odoo_params"]["db_name"], "project_dev")
++        self.assertIsNot(effective["odoo_params"], config["odoo_params"])
++
++
++class TestBranchDatabaseStateAndManager(unittest.TestCase):
++    def setUp(self) -> None:
++        self.temporary_directory = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temporary_directory.cleanup)
++        self.base = Path(self.temporary_directory.name)
++        self.root = self.base / "repo"
++        self.common_dir = self.root / ".git"
++        self.common_dir.mkdir(parents=True)
++        self._write(self.common_dir / "HEAD", "ref: refs/heads/fix7\n")
++        self._write(self.common_dir / "refs" / "heads" / "main", "main\n")
++        self._write(self.common_dir / "refs" / "heads" / "fix7", "feature\n")
++        self.config = {
++            "odoo_params": {"db_name": "project_dev"},
++            "branch_db": {"enabled": True},
++        }
++        self.resolution = resolve_branch_database(self.config, self.root)
++        self.state_store = BranchDatabaseStateStore(
++            self.common_dir,
++            config_path=self.root / ".oduit.toml",
++            base_database="project_dev",
++            base_branch="main",
++        )
++        self.databases = {"project_dev"}
++        self.calls: list[tuple[str, str]] = []
++        self.fail_duplicate = False
++        self.race_duplicate = False
++        self.fail_drop = False
++
++    @staticmethod
++    def _write(path: Path, content: str) -> None:
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(content, encoding="utf-8")
++
++    def _manager(self, *, auto_create: bool = True) -> BranchDatabaseManager:
++        class FakeOperations:
++            def __init__(inner_self, config: dict[str, Any]):
++                section = config.get("odoo_params", {})
++                inner_self.database = section.get("db_name", config.get("db_name"))
++
++            def db_exists(
++                inner_self, *, suppress_output: bool = False
++            ) -> dict[str, Any]:
++                self.calls.append(("exists", inner_self.database))
++                return {
++                    "success": True,
++                    "exists": inner_self.database in self.databases,
++                }
++
++            def duplicate_db(
++                inner_self,
++                target_database: str,
++                *,
++                source_database: str,
++                neutralize: bool,
++                force: bool,
++                suppress_output: bool,
++            ) -> dict[str, Any]:
++                self.calls.append(("duplicate", target_database))
++                self.assertFalse(force)
++                self.assertEqual(source_database, "project_dev")
++                if self.race_duplicate:
++                    self.databases.add(target_database)
++                    return {"success": False, "error": "already exists"}
++                if self.fail_duplicate or target_database in self.databases:
++                    return {"success": False, "error": "duplicate failed"}
++                self.databases.add(target_database)
++                return {"success": True}
++
++            def drop_db_with_filestore(
++                inner_self, database: str, *, suppress_output: bool = False
++            ) -> dict[str, Any]:
++                self.calls.append(("drop", database))
++                if self.fail_drop:
++                    return {"success": False, "error": "drop failed"}
++                self.databases.discard(database)
++                return {"success": True}
++
++        return BranchDatabaseManager(
++            self.config,
++            self.resolution,
++            BranchDatabaseSettings(enabled=True, auto_create=auto_create),
++            FakeOperations,
++            config_path=self.root / ".oduit.toml",
++            state_store=self.state_store,
++        )
++
++    def test_state_absent_round_trip_and_environment_isolation(self) -> None:
++        self.assertFalse(self.state_store.path.exists())
++        self.assertEqual(self.state_store.records(), {})
++
++        self.state_store.record_created("old", "project_dev_old", "project_dev", False)
++        self.assertTrue(self.state_store.is_managed("old", "project_dev_old"))
++        self.assertEqual(
++            self.state_store.records()["old"]["source_database"], "project_dev"
++        )
++        self.assertTrue(self.state_store.path.exists())
++
++        other_environment = BranchDatabaseStateStore(
++            self.common_dir,
++            config_path=self.root / ".oduit.toml",
++            base_database="other_db",
++            base_branch="main",
++        )
++        self.assertEqual(other_environment.records(), {})
++        other_environment.record_created("old", "other_db_old", "other_db", False)
++        self.assertEqual(set(self.state_store.records()), {"old"})
++        self.assertEqual(set(other_environment.records()), {"old"})
++
++    def test_state_corruption_fails_safely(self) -> None:
++        self.state_store.path.parent.mkdir(parents=True)
++        self.state_store.path.write_text("{broken", encoding="utf-8")
++
++        with self.assertRaises(BranchDatabaseStateError):
++            self.state_store.records()
++
++    def test_atomic_state_write_leaves_valid_json_and_no_temporary_file(self) -> None:
++        self.state_store.record_created("old", "project_dev_old", "project_dev", False)
++
++        state = json.loads(self.state_store.path.read_text(encoding="utf-8"))
++
++        self.assertEqual(state["schema_version"], 1)
++        self.assertIn(self.state_store.environment_key, state["environments"])
++        self.assertEqual(list(self.state_store.path.parent.glob("*.tmp")), [])
++
++    def test_existing_unmanaged_database_is_not_adopted(self) -> None:
++        target = self.resolution.database
++        self.databases.add(target)
++
++        result = self._manager().ensure()
++
++        self.assertTrue(result["success"])
++        self.assertFalse(result["created"])
++        self.assertFalse(result["managed"])
++        self.assertNotIn(("duplicate", target), self.calls)
++        self.assertEqual(self.state_store.records(), {})
++
++    def test_successful_clone_is_recorded_only_after_target_exists(self) -> None:
++        result = self._manager().ensure()
++
++        self.assertTrue(result["success"])
++        self.assertTrue(result["created"])
++        self.assertTrue(result["managed"])
++        self.assertIn(self.resolution.database, self.databases)
++        self.assertEqual(
++            self.state_store.records()["fix7"]["database"], self.resolution.database
++        )
++        self.assertIn(("duplicate", self.resolution.database), self.calls)
++
++    def test_failed_duplicate_does_not_record_ownership(self) -> None:
++        self.fail_duplicate = True
++
++        result = self._manager().ensure()
++
++        self.assertFalse(result["success"])
++        self.assertFalse(result["managed"])
++        self.assertEqual(self.state_store.records(), {})
++
++    def test_duplicate_race_reuses_target_without_claiming_ownership(self) -> None:
++        self.race_duplicate = True
++
++        result = self._manager().ensure()
++
++        self.assertTrue(result["success"])
++        self.assertFalse(result["created"])
++        self.assertEqual(result["warning_type"], "concurrent_create_detected")
++        self.assertFalse(result["managed"])
++        self.assertEqual(self.state_store.records(), {})
++
++    def test_status_is_read_only_and_reports_managed_state(self) -> None:
++        self.databases.add(self.resolution.database)
++
++        result = self._manager().status()
++
++        self.assertTrue(result["success"])
++        self.assertTrue(result["exists"])
++        self.assertFalse(result["managed"])
++        self.assertFalse(any(action == "duplicate" for action, _ in self.calls))
++        self.assertFalse(any(action == "drop" for action, _ in self.calls))
++
++    def test_gc_candidates_exclude_base_current_and_existing_local_branches(
++        self,
++    ) -> None:
++        self._write(self.common_dir / "refs" / "heads" / "keep", "keep\n")
++        for branch, database in (
++            ("old", "project_dev_old"),
++            ("main", "project_dev"),
++            ("fix7", self.resolution.database),
++            ("keep", "project_dev_keep"),
++        ):
++            self.state_store.record_created(branch, database, "project_dev", False)
++
++        self.assertEqual(
++            self._manager().gc_candidates(),
++            [{"branch": "old", "database": "project_dev_old"}],
++        )
++
++    def test_gc_dry_run_does_not_drop_or_remove_records(self) -> None:
++        self.state_store.record_created("old", "project_dev_old", "project_dev", False)
++        self.databases.add("project_dev_old")
++
++        result = self._manager().gc()
++
++        self.assertTrue(result["success"])
++        self.assertTrue(result["dry_run"])
++        self.assertEqual(len(result["candidates"]), 1)
++        self.assertFalse(any(action == "drop" for action, _ in self.calls))
++        self.assertTrue(self.state_store.is_managed("old", "project_dev_old"))
++
++    def test_gc_apply_drops_managed_database_and_removes_record(self) -> None:
++        self.state_store.record_created("old", "project_dev_old", "project_dev", False)
++        self.databases.add("project_dev_old")
++
++        result = self._manager().gc(apply=True)
++
++        self.assertTrue(result["success"])
++        self.assertEqual(
++            result["deleted"], [{"branch": "old", "database": "project_dev_old"}]
++        )
++        self.assertNotIn("project_dev_old", self.databases)
++        self.assertEqual(self.state_store.records(), {})
++        self.assertIn(("drop", "project_dev_old"), self.calls)
++
++    def test_gc_prunes_missing_database_only_when_applied(self) -> None:
++        self.state_store.record_created("old", "project_dev_old", "project_dev", False)
++
++        result = self._manager().gc(apply=True)
++
++        self.assertEqual(
++            result["already_missing"],
++            [{"branch": "old", "database": "project_dev_old"}],
++        )
++        self.assertEqual(self.state_store.records(), {})
++        self.assertFalse(any(action == "drop" for action, _ in self.calls))
++
++    def test_gc_failed_drop_keeps_registry_entry(self) -> None:
++        self.state_store.record_created("old", "project_dev_old", "project_dev", False)
++        self.databases.add("project_dev_old")
++        self.fail_drop = True
++
++        result = self._manager().gc(apply=True)
++
++        self.assertFalse(result["success"])
++        self.assertEqual(len(result["errors"]), 1)
++        self.assertTrue(self.state_store.is_managed("old", "project_dev_old"))
++
++
++class TestBranchDatabaseConfigResolution(unittest.TestCase):
++    def setUp(self) -> None:
++        self.temporary_directory = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temporary_directory.cleanup)
++        self.root = Path(self.temporary_directory.name)
++        git_dir = self.root / ".git"
++        git_dir.mkdir()
++        (git_dir / "HEAD").write_text("ref: refs/heads/fix7\n", encoding="utf-8")
++        self.config = {
++            "odoo_params": {"db_name": "project_dev"},
++            "branch_db": {"enabled": True},
++        }
++
++    def test_classic_config_retains_base_and_resolves_effective_database(self) -> None:
++        loader = MagicMock()
++        loader.load_config.return_value = self.config
++        with patch("oduit.cli.bootstrap_support.Path.cwd", return_value=self.root):
++            result = create_global_config(
++                env="dev",
++                json=False,
++                non_interactive=False,
++                verbose=False,
++                no_http=False,
++                odoo_series=None,
++                configure_output_fn=MagicMock(),
++                config_loader_cls=lambda: loader,
++                print_error_fn=MagicMock(),
++                echo_fn=MagicMock(),
++                resolve_config_source_fn=lambda *_args: ("env", None),
++            )
++
++        self.assertEqual(result.base_env_config, self.config)
++        self.assertEqual(
++            result.env_config["odoo_params"]["db_name"], "project_dev_fix7"
++        )
++        self.assertEqual(result.branch_database.branch, "fix7")
++        self.assertEqual(self.config["odoo_params"]["db_name"], "project_dev")
++
++    def test_agent_config_resolves_effective_database_without_provisioning(
++        self,
++    ) -> None:
++        loader = MagicMock()
++        loader.load_config.return_value = self.config
++        with patch("oduit.cli.agent.services.Path.cwd", return_value=self.root):
++            result = resolve_agent_global_config(
++                SimpleNamespace(obj={"env": "dev"}),
++                "agent_context",
++                "context",
++                configure_output_fn=MagicMock(),
++                fail_fn=MagicMock(
++                    side_effect=AssertionError("unexpected config failure")
++                ),
++                config_loader_cls=lambda: loader,
++                resolve_config_source_fn=lambda *_args: ("env", None),
++            )
++
++        self.assertEqual(result.base_env_config, self.config)
++        self.assertEqual(
++            result.env_config["odoo_params"]["db_name"], "project_dev_fix7"
++        )
++        self.assertEqual(result.branch_database.branch, "fix7")
++        loader.load_config.assert_called_once_with("dev")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_branch_database_cli.py b/tests/test_branch_database_cli.py
+new file mode 100644
+index 0000000..5f84713
+--- /dev/null
++++ b/tests/test_branch_database_cli.py
+@@ -0,0 +1,393 @@
++"""Focused classic CLI tests for branch database preparation."""
++
++from __future__ import annotations
++
++import json
++import tempfile
++import unittest
++from contextlib import redirect_stdout
++from dataclasses import replace
++from io import StringIO
++from pathlib import Path
++from typing import Any
++from unittest.mock import MagicMock
++
++import typer
++
++from oduit.branch_database import (
++    BranchDatabaseResolution,
++    apply_branch_database_resolution,
++)
++from oduit.cli.branch_database_support import prepare_branch_database
++from oduit.cli.commands.branch_database import (
++    branch_database_ensure_command,
++    branch_database_gc_command,
++    branch_database_status_command,
++)
++from oduit.cli_types import GlobalConfig, OutputFormat
++from oduit.mutation_policy import require_cli_runtime_db_mutation
++
++
++class _FakeOperations:
++    def __init__(
++        self,
++        database: str,
++        existing_databases: set[str],
++        calls: list[tuple[str, Any]],
++    ) -> None:
++        self.database = database
++        self.existing_databases = existing_databases
++        self.calls = calls
++
++    def db_exists(self, *, suppress_output: bool) -> dict[str, Any]:
++        self.calls.append(("exists", self.database))
++        return {"success": True, "exists": self.database in self.existing_databases}
++
++    def duplicate_db(
++        self,
++        database: str,
++        *,
++        source_database: str,
++        neutralize: bool,
++        force: bool,
++        suppress_output: bool,
++    ) -> dict[str, Any]:
++        self.calls.append(
++            (
++                "duplicate",
++                {
++                    "database": database,
++                    "source_database": source_database,
++                    "neutralize": neutralize,
++                    "force": force,
++                },
++            )
++        )
++        if database in self.existing_databases:
++            return {"success": False, "error": "Database already exists"}
++        self.existing_databases.add(database)
++        return {"success": True}
++
++
++class BranchDatabaseCliTests(unittest.TestCase):
++    def setUp(self) -> None:
++        self.temp_dir = tempfile.TemporaryDirectory()
++        self.root = Path(self.temp_dir.name)
++        self.base_config: dict[str, Any] = {
++            "odoo_params": {"db_name": "project_dev"},
++            "branch_db": {"enabled": True, "base_branch": "main"},
++            "needs_mutation_flag": False,
++        }
++        self.resolution = BranchDatabaseResolution(
++            enabled=True,
++            branch="feature/task",
++            base_branch="main",
++            base_database="project_dev",
++            database="project_dev_feature_task",
++            is_base_branch=False,
++            git_root=self.root,
++            git_dir=self.root / ".git",
++            common_dir=self.root / ".git",
++        )
++        self.global_config = self._global_config(self.resolution)
++        self.databases = {"project_dev"}
++        self.calls: list[tuple[str, Any]] = []
++        self.errors: list[tuple[str, dict[str, Any]]] = []
++
++    def tearDown(self) -> None:
++        self.temp_dir.cleanup()
++
++    def _global_config(self, resolution: BranchDatabaseResolution) -> GlobalConfig:
++        return GlobalConfig(
++            env_config=apply_branch_database_resolution(self.base_config, resolution),
++            base_env_config=dict(self.base_config),
++            branch_database=resolution,
++            config_path=str(self.root / "oduit.toml"),
++        )
++
++    def _build_operations(self, config: GlobalConfig) -> _FakeOperations:
++        assert config.env_config is not None
++        database = config.env_config["odoo_params"]["db_name"]
++        return _FakeOperations(database, self.databases, self.calls)
++
++    def _print_error(
++        self,
++        _config: GlobalConfig,
++        operation: str,
++        message: str,
++        **details: Any,
++    ) -> None:
++        self.errors.append((operation, {"message": message, **details}))
++
++    @staticmethod
++    def _confirmation_required(*_args: Any, **_kwargs: Any) -> None:
++        raise typer.Exit(1)
++
++    def _prepare(
++        self,
++        *,
++        allow_mutation: bool = False,
++        config: GlobalConfig | None = None,
++    ) -> GlobalConfig:
++        return prepare_branch_database(
++            config or self.global_config,
++            allow_mutation=allow_mutation,
++            operation="run",
++            action="Odoo server startup",
++            build_odoo_operations_fn=self._build_operations,
++            require_cli_runtime_db_mutation_fn=require_cli_runtime_db_mutation,
++            confirmation_required_error_fn=self._confirmation_required,
++            print_command_error_result_fn=self._print_error,
++        )
++
++    def test_disabled_branch_database_does_not_check_or_clone(self) -> None:
++        disabled = replace(self.resolution, enabled=False)
++        config = self._global_config(disabled)
++
++        self.assertIs(self._prepare(config=config), config)
++        self.assertEqual(self.calls, [])
++        self.assertEqual(self.errors, [])
++
++    def test_existing_branch_database_is_reused_without_mutation_authorization(
++        self,
++    ) -> None:
++        self.databases.add(self.resolution.database)
++        self.base_config["needs_mutation_flag"] = True
++        config = self._global_config(self.resolution)
++
++        self.assertIs(self._prepare(config=config), config)
++        self.assertNotIn("duplicate", [call[0] for call in self.calls])
++        self.assertEqual(self.errors, [])
++
++    def test_missing_branch_database_is_duplicated_and_registered(self) -> None:
++        self._prepare()
++
++        duplicate_calls = [value for kind, value in self.calls if kind == "duplicate"]
++        self.assertEqual(
++            duplicate_calls,
++            [
++                {
++                    "database": self.resolution.database,
++                    "source_database": "project_dev",
++                    "neutralize": False,
++                    "force": False,
++                }
++            ],
++        )
++        self.assertIn(self.resolution.database, self.databases)
++        state_path = self.root / ".git" / "oduit" / "branch-databases.json"
++        self.assertTrue(state_path.is_file())
++
++    def test_missing_branch_database_honors_mutation_flag_policy(self) -> None:
++        self.base_config["needs_mutation_flag"] = True
++        config = self._global_config(self.resolution)
++
++        with self.assertRaises(typer.Exit):
++            self._prepare(config=config)
++
++        self.assertNotIn(self.resolution.database, self.databases)
++        self.assertNotIn("duplicate", [call[0] for call in self.calls])
++
++        self._prepare(allow_mutation=True, config=config)
++        self.assertIn(self.resolution.database, self.databases)
++
++    def test_auto_create_disabled_reports_explicit_ensure_remediation(self) -> None:
++        self.base_config["branch_db"]["auto_create"] = False
++        config = self._global_config(self.resolution)
++
++        with self.assertRaises(typer.Exit):
++            self._prepare(config=config)
++
++        self.assertEqual(
++            self.errors[-1][1]["remediation"],
++            ["Run `oduit branch-db ensure` to create it."],
++        )
++        self.assertNotIn("duplicate", [call[0] for call in self.calls])
++
++    def test_missing_base_database_fails_without_clone_or_mutation_gate(self) -> None:
++        base_resolution = replace(
++            self.resolution,
++            branch="main",
++            database="project_dev",
++            is_base_branch=True,
++        )
++        config = self._global_config(base_resolution)
++        self.databases.clear()
++
++        with self.assertRaises(typer.Exit):
++            self._prepare(config=config)
++
++        self.assertNotIn("duplicate", [call[0] for call in self.calls])
++        self.assertIn("base database 'project_dev'", self.errors[-1][1]["message"])
++
++    def test_missing_source_base_fails_before_mutation_authorization(self) -> None:
++        self.base_config["needs_mutation_flag"] = True
++        config = self._global_config(self.resolution)
++        self.databases.clear()
++
++        with self.assertRaises(typer.Exit):
++            self._prepare(config=config)
++
++        self.assertIn("base database 'project_dev'", self.errors[-1][1]["message"])
++        self.assertNotIn("duplicate", [call[0] for call in self.calls])
++
++    def test_status_command_only_checks_database_and_emits_structured_result(
++        self,
++    ) -> None:
++        config = GlobalConfig(format=OutputFormat.JSON)
++        manager = MagicMock()
++        manager.status.return_value = {
++            "success": True,
++            "operation": "branch_db_status",
++            "enabled": True,
++            "branch": "feature",
++            "base_branch": "main",
++            "base_database": "project_dev",
++            "database": "project_dev_feature",
++            "is_base_branch": False,
++            "exists": False,
++            "managed": False,
++            "clone_required": True,
++        }
++        output = StringIO()
++
++        with redirect_stdout(output):
++            branch_database_status_command(
++                None,
++                resolve_command_env_config_fn=lambda _ctx: (config, {}),
++                build_branch_database_manager_fn=lambda _config: manager,
++                print_command_error_result_fn=self._print_error,
++            )
++
++        self.assertEqual(json.loads(output.getvalue())["operation"], "branch_db_status")
++        manager.status.assert_called_once_with()
++        manager.ensure.assert_not_called()
++
++    def test_ensure_command_forwards_mutation_confirmation_and_result(self) -> None:
++        config = GlobalConfig(format=OutputFormat.JSON)
++        ensure_fn = MagicMock(
++            return_value={
++                "success": True,
++                "operation": "branch_db_ensure",
++                "branch": "feature",
++                "base_database": "project_dev",
++                "database": "project_dev_feature",
++                "created": False,
++                "managed": False,
++                "neutralized": False,
++            }
++        )
++        output = StringIO()
++
++        with redirect_stdout(output):
++            branch_database_ensure_command(
++                None,
++                allow_mutation=True,
++                resolve_command_env_config_fn=lambda _ctx: (config, {}),
++                ensure_branch_database_fn=ensure_fn,
++                print_command_error_result_fn=self._print_error,
++            )
++
++        ensure_fn.assert_called_once_with(
++            config,
++            allow_mutation=True,
++            operation="branch_db_ensure",
++            action="branch database creation",
++        )
++        self.assertFalse(json.loads(output.getvalue())["created"])
++
++    def test_gc_defaults_to_dry_run_without_mutation_authorization(self) -> None:
++        config = GlobalConfig(format=OutputFormat.JSON)
++        manager = MagicMock()
++        manager.gc_candidates.return_value = [{"branch": "old", "database": "old_db"}]
++        manager.gc.return_value = {
++            "success": True,
++            "operation": "branch_db_gc",
++            "dry_run": True,
++            "candidates": [{"branch": "old", "database": "old_db"}],
++            "deleted": [],
++            "already_missing": [],
++            "errors": [],
++        }
++        require_mutation = MagicMock()
++        output = StringIO()
++
++        with redirect_stdout(output):
++            branch_database_gc_command(
++                None,
++                apply=False,
++                allow_mutation=False,
++                resolve_command_env_config_fn=lambda _ctx: (config, {}),
++                build_branch_database_manager_fn=lambda _config: manager,
++                require_cli_runtime_db_mutation_fn=require_mutation,
++                confirmation_required_error_fn=self._confirmation_required,
++                print_command_error_result_fn=self._print_error,
++            )
++
++        manager.gc.assert_called_once_with(apply=False)
++        require_mutation.assert_not_called()
++        self.assertTrue(json.loads(output.getvalue())["dry_run"])
++
++    def test_gc_apply_with_no_candidates_does_not_require_mutation(self) -> None:
++        config = GlobalConfig()
++        manager = MagicMock()
++        manager.gc_candidates.return_value = []
++        manager.gc.return_value = {
++            "success": True,
++            "operation": "branch_db_gc",
++            "dry_run": False,
++            "candidates": [],
++            "deleted": [],
++            "already_missing": [],
++            "errors": [],
++        }
++        require_mutation = MagicMock()
++        output = StringIO()
++
++        with redirect_stdout(output):
++            branch_database_gc_command(
++                None,
++                apply=True,
++                allow_mutation=False,
++                resolve_command_env_config_fn=lambda _ctx: (config, {}),
++                build_branch_database_manager_fn=lambda _config: manager,
++                require_cli_runtime_db_mutation_fn=require_mutation,
++                confirmation_required_error_fn=self._confirmation_required,
++                print_command_error_result_fn=self._print_error,
++            )
++
++        manager.gc.assert_called_once_with(apply=True)
++        require_mutation.assert_not_called()
++
++    def test_gc_apply_requires_mutation_policy_for_candidates(self) -> None:
++        config = GlobalConfig()
++        manager = MagicMock()
++        manager.gc_candidates.return_value = [{"branch": "old", "database": "old_db"}]
++        manager.gc.return_value = {
++            "success": True,
++            "operation": "branch_db_gc",
++            "dry_run": False,
++            "candidates": [{"branch": "old", "database": "old_db"}],
++            "deleted": [{"branch": "old", "database": "old_db"}],
++            "already_missing": [],
++            "errors": [],
++        }
++        require_mutation = MagicMock()
++
++        branch_database_gc_command(
++            None,
++            apply=True,
++            allow_mutation=True,
++            resolve_command_env_config_fn=lambda _ctx: (config, {}),
++            build_branch_database_manager_fn=lambda _config: manager,
++            require_cli_runtime_db_mutation_fn=require_mutation,
++            confirmation_required_error_fn=self._confirmation_required,
++            print_command_error_result_fn=self._print_error,
++        )
++
++        require_mutation.assert_called_once()
++        manager.gc.assert_called_once_with(apply=True)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_cli_app.py b/tests/test_cli_app.py
+index c2fe2e6..6475313 100644
+--- a/tests/test_cli_app.py
++++ b/tests/test_cli_app.py
+@@ -158,6 +158,25 @@ class TestCLICommands(unittest.TestCase):
+             self.assertEqual(result.exit_code, 1)
+             self.assertIn("No command specified", result.output)
+
++    def test_run_and_shell_accept_allow_mutation(self):
++        for command in ("run", "shell"):
++            with self.subTest(command=command):
++                result = self.runner.invoke(app, [command, "--help"])
++
++                self.assertEqual(result.exit_code, 0)
++                self.assertIn("--allow-mutation", result.output)
++
++    def test_branch_db_commands_are_registered_in_inventory(self):
++        from oduit.cli.command_inventory import get_top_level_command_inventory
++
++        for command in ("status", "ensure", "gc"):
++            with self.subTest(command=command):
++                result = self.runner.invoke(app, ["branch-db", command, "--help"])
++                self.assertEqual(result.exit_code, 0)
++
++        names = {entry.name for entry in get_top_level_command_inventory()}
++        self.assertIn("branch-db", names)
++
+     @patch("oduit.cli.app.OdooOperations")
+     @patch("oduit.cli.app.ConfigLoader")
+     def test_run_command(self, mock_config_loader_class, mock_odoo_ops):
+@@ -1322,6 +1341,41 @@ class TestCLICommands(unittest.TestCase):
+         self.assertIn("module1", result.output)
+         self.assertIn("module2", result.output)
+
++    @patch("oduit.cli.app.OdooOperations")
++    @patch("oduit.cli.app.ConfigLoader")
++    def test_read_only_list_does_not_provision_branch_database(
++        self, mock_config_loader_class, mock_odoo_ops
++    ):
++        mock_loader_instance = MagicMock()
++        mock_loader_instance.load_config.return_value = {
++            **self.mock_config,
++            "branch_db": {"enabled": True, "base_branch": "main"},
++        }
++        mock_config_loader_class.return_value = mock_loader_instance
++        mock_ops_instance = MagicMock()
++        mock_ops_instance.list_installed_addons.return_value = InstalledAddonInventory(
++            success=True,
++            operation="list_installed_addons",
++            addons=[],
++            total=0,
++            states=["installed"],
++        )
++        mock_odoo_ops.return_value = mock_ops_instance
++
++        with tempfile.TemporaryDirectory() as temporary_directory:
++            root = Path(temporary_directory)
++            git_dir = root / ".git"
++            git_dir.mkdir()
++            (git_dir / "HEAD").write_text("ref: refs/heads/feature\n", encoding="utf-8")
++            with patch("oduit.cli.bootstrap_support.Path.cwd", return_value=root):
++                result = self.runner.invoke(
++                    app, ["--env", "dev", "list-installed-addons"]
++                )
++
++        self.assertEqual(result.exit_code, 0)
++        mock_ops_instance.list_installed_addons.assert_called_once()
++        mock_ops_instance.duplicate_db.assert_not_called()
++
+     @patch("oduit.cli.app.OdooOperations")
+     @patch("oduit.cli.app.ConfigLoader")
+     def test_list_installed_addons_command(
+@@ -3993,8 +4047,7 @@ class TestOperationSetCLI(unittest.TestCase):
+             mod_dir = addons_root / name
+             mod_dir.mkdir(parents=True)
+             (mod_dir / "__manifest__.py").write_text(
+-                f'{{"name": "{name}", "version": "19.0.1.0.0", '
+-                f'"depends": ["base"]}}'
++                f'{{"name": "{name}", "version": "19.0.1.0.0", "depends": ["base"]}}'
+             )
+
+         # Create test file
+@@ -4837,8 +4890,7 @@ class TestOperationSetCLI(unittest.TestCase):
+
+         set_path = self.sets_dir / "tests.toml"
+         set_path.write_text(
+-            'kind = "test"\n[test]\ninstall = ["has_base"]\n'
+-            'test_tags = ["/has_base"]\n'
++            'kind = "test"\n[test]\ninstall = ["has_base"]\ntest_tags = ["/has_base"]\n'
+         )
+
+         result = self.runner.invoke(
+diff --git a/tests/test_commands.py b/tests/test_commands.py
+index a5d9575..d0f2801 100644
+--- a/tests/test_commands.py
++++ b/tests/test_commands.py
+@@ -421,6 +421,68 @@ class TestDatabaseCommandBuilder(unittest.TestCase):
+                     provider, with_sudo=False
+                 ).create_extension_command(extension)
+
++    def test_native_duplicate_and_drop_commands_and_operation_metadata(self):
++        config = {
++            "python_bin": "/usr/bin/python3",
++            "odoo_bin": "/opt/odoo/odoo-bin",
++            "config_file": "/etc/odoo.conf",
++            "data_dir": "/var/lib/odoo",
++            "addons_path": "/opt/odoo/addons",
++            "db_name": "branch_db",
++            "db_user": "odoo",
++            "db_password": "secret",
++            "db_host": "localhost",
++            "db_port": 5432,
++            "db_sslmode": "prefer",
++        }
++        provider = ConfigProvider(config)
++        duplicate = (
++            DatabaseCommandBuilder(provider, with_sudo=False)
++            .duplicate_db_command("base_db", "branch_db", neutralize=True)
++            .build_operation()
++        )
++
++        self.assertEqual(
++            duplicate.command[:3], ["/usr/bin/python3", "/opt/odoo/odoo-bin", "db"]
++        )
++        self.assertIn("--config=/etc/odoo.conf", duplicate.command)
++        self.assertIn("--data-dir=/var/lib/odoo", duplicate.command)
++        self.assertIn("--addons-path=/opt/odoo/addons", duplicate.command)
++        self.assertIn("--db_user=odoo", duplicate.command)
++        self.assertIn("--db_password=secret", duplicate.command)
++        self.assertIn("--db_host=localhost", duplicate.command)
++        self.assertIn("--db_port=5432", duplicate.command)
++        self.assertIn("--db_sslmode=prefer", duplicate.command)
++        duplicate_index = duplicate.command.index("duplicate")
++        self.assertEqual(
++            duplicate.command[duplicate_index + 1 : duplicate_index + 3],
++            ["base_db", "branch_db"],
++        )
++        self.assertIn("--neutralize", duplicate.command)
++        self.assertNotIn("--force", duplicate.command)
++        self.assertEqual(duplicate.operation_type, "duplicate_db")
++        self.assertTrue(duplicate.is_odoo_command)
++        self.assertEqual(duplicate.database, "branch_db")
++        self.assertEqual(duplicate.expected_result_fields["source_database"], "base_db")
++
++        forced = (
++            DatabaseCommandBuilder(provider, with_sudo=False)
++            .duplicate_db_command("base_db", "branch_db", force=True)
++            .build()
++        )
++        self.assertIn("--force", forced)
++
++        dropped = (
++            DatabaseCommandBuilder(provider, with_sudo=False)
++            .native_db_drop_command("old_branch_db")
++            .build_operation()
++        )
++        drop_index = dropped.command.index("drop")
++        self.assertEqual(dropped.command[drop_index + 1], "old_branch_db")
++        self.assertEqual(dropped.operation_type, "odoo_drop_db")
++        self.assertTrue(dropped.is_odoo_command)
++        self.assertEqual(dropped.database, "old_branch_db")
++
+
+ class TestOdooOperations(unittest.TestCase):
+     def test_parse_install_results_unmet_dependencies(self):
+diff --git a/tests/test_config_loader.py b/tests/test_config_loader.py
+index 82eb13a..64136f6 100644
+--- a/tests/test_config_loader.py
++++ b/tests/test_config_loader.py
+@@ -294,9 +294,7 @@ class TestConfigLoader(unittest.TestCase):
+         mock_expanduser.return_value = "/mocked/home/.config/oduit"
+
+         def exists_side_effect(path):
+-            if path.endswith("toml_env.toml"):
+-                return True
+-            elif path.endswith("yaml_env.yaml"):
++            if path.endswith("toml_env.toml") or path.endswith("yaml_env.yaml"):
+                 return True
+             return False
+
+@@ -465,6 +463,28 @@ db_name = "test_db"
+             finally:
+                 os.chdir(original_cwd)
+
++    @patch("builtins.open", new_callable=mock_open)
++    @patch("os.path.exists")
++    @patch("os.path.expanduser")
++    def test_load_sectioned_toml_preserves_branch_db(
++        self, mock_expanduser, mock_exists, mock_file
++    ):
++        mock_expanduser.return_value = "/mocked/home/.config/oduit"
++        mock_exists.side_effect = lambda path: path.endswith("test.toml")
++        with patch.object(ConfigLoader, "_import_toml_libs") as mock_import:
++            toml = MagicMock()
++            toml.load.return_value = {
++                "binaries": {"python_bin": "/usr/bin/python3"},
++                "odoo_params": {"db_name": "project_dev"},
++                "branch_db": {"enabled": True, "base_branch": "main"},
++            }
++            mock_import.return_value = (toml, None)
++            details = ConfigLoader().load_config_details("test")
++
++        expected = {"enabled": True, "base_branch": "main"}
++        self.assertEqual(details.config["branch_db"], expected)
++        self.assertEqual(details.canonical_config["branch_db"], expected)
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_config_provider.py b/tests/test_config_provider.py
+index cefa5b2..eb34ebe 100644
+--- a/tests/test_config_provider.py
++++ b/tests/test_config_provider.py
+@@ -395,6 +395,25 @@ class TestConfigProvider(unittest.TestCase):
+             {"allowed_addon_dirs": ["./addons"]},
+         )
+
++    def test_branch_db_is_preserved_as_oduit_only_configuration(self):
++        branch_db = {"enabled": True}
++        provider = ConfigProvider(
++            {
++                "binaries": {"python_bin": "/usr/bin/python3"},
++                "odoo_params": {"db_name": "project_dev"},
++                "branch_db": branch_db,
++            }
++        )
++
++        self.assertEqual(provider.get_optional("branch_db"), branch_db)
++        self.assertTrue(
++            all(
++                "branch-db" not in parameter
++                for parameter in provider.get_odoo_params_list()
++            )
++        )
++        self.assertEqual(provider.to_sectioned_dict()["branch_db"], branch_db)
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_database_operations.py b/tests/test_database_operations.py
+index ac0784d..1333a15 100644
+--- a/tests/test_database_operations.py
++++ b/tests/test_database_operations.py
+@@ -415,6 +415,95 @@ class TestDatabaseOperationsService(unittest.TestCase):
+         self.assertIsNone(result["healthy"])
+         self.assertIn("postgres", result["error"])
+
++    def test_duplicate_db_returns_structured_native_operation_result(self):
++        ops = self._build_ops()
++
++        result = ops.duplicate_db(
++            "feature_db",
++            source_database="test_db",
++            neutralize=True,
++            suppress_output=True,
++        )
++
++        self.assertTrue(result["success"])
++        self.assertEqual(result["operation"], "duplicate_database")
++        self.assertEqual(result["source_database"], "test_db")
++        self.assertEqual(result["target_database"], "feature_db")
++        self.assertTrue(result["neutralized"])
++        self.assertFalse(result["forced"])
++        operation = ops.process_manager.run_operation.call_args.args[0]
++        self.assertEqual(operation.operation_type, "duplicate_db")
++        self.assertIn("duplicate", result["command"])
++        self.assertNotIn("--force", result["command"])
++
++    def test_duplicate_db_defaults_source_and_forwards_force(self):
++        ops = self._build_ops()
++
++        result = ops.duplicate_db("feature_db", force=True, suppress_output=True)
++
++        self.assertTrue(result["success"])
++        self.assertEqual(result["source_database"], "test_db")
++        self.assertTrue(result["forced"])
++        self.assertIn("--force", result["command"])
++
++    def test_duplicate_db_failure_and_raise_on_error(self):
++        from oduit.exceptions import DatabaseOperationError
++
++        ops = self._build_ops()
++        ops.process_manager.run_operation.return_value = {
++            "success": False,
++            "return_code": 1,
++            "stdout": "",
++            "stderr": "duplicate failed",
++        }
++
++        result = ops.duplicate_db("feature_db", suppress_output=True)
++        self.assertFalse(result["success"])
++        self.assertEqual(result["error"], "duplicate failed")
++        self.assertEqual(result["error_type"], "BranchDatabaseDuplicateError")
++
++        with self.assertRaises(DatabaseOperationError) as context:
++            ops.duplicate_db("feature_db", suppress_output=True, raise_on_error=True)
++        self.assertEqual(
++            context.exception.operation_result["operation"], "duplicate_database"
++        )
++
++    def test_duplicate_db_reports_unsupported_version_or_command(self):
++        ops = self._build_ops()
++
++        result = ops.duplicate_db(
++            "feature_db",
++            odoo_series=SimpleNamespace(value="16.0"),
++            suppress_output=True,
++        )
++
++        self.assertFalse(result["success"])
++        self.assertEqual(result["error_type"], "BranchDatabaseUnsupportedOdooVersion")
++        ops.process_manager.run_operation.assert_not_called()
++
++        ops = self._build_ops()
++        ops.process_manager.run_operation.return_value = {
++            "success": False,
++            "return_code": 2,
++            "stdout": "",
++            "stderr": "unknown command: duplicate",
++        }
++        result = ops.duplicate_db("feature_db", suppress_output=True)
++        self.assertEqual(result["error_type"], "BranchDatabaseUnsupportedOdooVersion")
++
++    def test_drop_db_with_filestore_uses_native_odoo_drop(self):
++        ops = self._build_ops()
++
++        result = ops.drop_db_with_filestore("old_feature_db", suppress_output=True)
++
++        self.assertTrue(result["success"])
++        self.assertEqual(result["operation"], "drop_db_with_filestore")
++        self.assertEqual(result["database"], "old_feature_db")
++        operation = ops.process_manager.run_operation.call_args.args[0]
++        self.assertEqual(operation.operation_type, "odoo_drop_db")
++        self.assertIn("drop", result["command"])
++        self.assertIn("old_feature_db", result["command"])
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_odoo_embedded_manager.py b/tests/test_odoo_embedded_manager.py
+index 1ea1181..5f85fb2 100644
+--- a/tests/test_odoo_embedded_manager.py
++++ b/tests/test_odoo_embedded_manager.py
+@@ -296,19 +296,21 @@ class TestOdooEmbeddedManager(unittest.TestCase):
+         mock_odoo.tools.config = mock_tools_config
+         mock_odoo.tools.config.parse_config = MagicMock()
+
+-        with patch.dict(
+-            "sys.modules",
+-            {
+-                "odoo": mock_odoo,
+-                "odoo.service.server": MagicMock(),
+-                "odoo.tools.config": mock_tools_config,
+-                "psycopg2": MagicMock(),
+-            },
++        with (
++            patch.dict(
++                "sys.modules",
++                {
++                    "odoo": mock_odoo,
++                    "odoo.service.server": MagicMock(),
++                    "odoo.tools.config": mock_tools_config,
++                    "psycopg2": MagicMock(),
++                },
++            ),
++            patch.object(self.manager, "_export_translation") as mock_export,
+         ):
+-            with patch.object(self.manager, "_export_translation") as mock_export:
+-                result = self.manager._run_odoo_server(
+-                    ["--translate-out=/path/to/export.po"]
+-                )
++            result = self.manager._run_odoo_server(
++                ["--translate-out=/path/to/export.po"]
++            )
+
+         mock_export.assert_called_once()
+         self.assertEqual(result, 0)
+diff --git a/tests/test_python_api.py b/tests/test_python_api.py
+index 0bde9b5..e9f90cc 100644
+--- a/tests/test_python_api.py
++++ b/tests/test_python_api.py
+@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
+
+ import pytest
+
+-import oduit.source_locator as source_locator
+ from oduit import (
+     AddonDocumentation,
+     AddonInfo,
+@@ -24,6 +23,7 @@ from oduit import (
+     SearchCountResult,
+     TechnicalDocumentation,
+     UpdatePlan,
++    source_locator,
+ )
+ from oduit.api_models import DocumentationRuntimeInventory, ModelViewInventory
+ from oduit.exceptions import ConfigError
+@@ -133,19 +133,21 @@ def test_export_translations_fails_when_series_cannot_be_resolved(
+     addons_dir.mkdir()
+     ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+-    with patch.object(
+-        ops,
+-        "get_odoo_version",
+-        return_value={"success": False, "version": None},
++    with (
++        patch.object(
++            ops,
++            "get_odoo_version",
++            return_value={"success": False, "version": None},
++        ),
++        pytest.raises(ConfigError, match="Unable to determine the Odoo series"),
+     ):
+-        with pytest.raises(ConfigError, match="Unable to determine the Odoo series"):
+-            ops.export_translations(
+-                modules=["sale"],
+-                languages=["de_DE"],
+-                output="/tmp/sale-de.po",
+-                suppress_output=True,
+-                raise_on_error=True,
+-            )
++        ops.export_translations(
++            modules=["sale"],
++            languages=["de_DE"],
++            output="/tmp/sale-de.po",
++            suppress_output=True,
++            raise_on_error=True,
++        )
+
+
+ def test_import_translations_runs_once_for_native_multi_file_import(
+@@ -244,25 +246,27 @@ def test_import_translations_raise_on_error_raises_operation_error(
+     translation_file.write_text('msgid ""\nmsgstr ""\n')
+     ops = OdooOperations(_config(tmp_path, str(addons_dir)))
+
+-    with patch.object(
+-        ops.process_manager,
+-        "run_operation",
+-        return_value={
+-            "success": False,
+-            "return_code": 1,
+-            "stdout": "",
+-            "stderr": "",
+-            "output": "",
+-            "error": "import failed",
+-        },
++    with (
++        patch.object(
++            ops.process_manager,
++            "run_operation",
++            return_value={
++                "success": False,
++                "return_code": 1,
++                "stdout": "",
++                "stderr": "",
++                "output": "",
++                "error": "import failed",
++            },
++        ),
++        pytest.raises(OdooOperationError, match="import failed"),
+     ):
+-        with pytest.raises(OdooOperationError, match="import failed"):
+-            ops.import_translations(
+-                files=[str(translation_file)],
+-                language="de_DE",
+-                suppress_output=True,
+-                raise_on_error=True,
+-            )
++        ops.import_translations(
++            files=[str(translation_file)],
++            language="de_DE",
++            suppress_output=True,
++            raise_on_error=True,
++        )
+
+
+ def test_export_module_language_delegates_to_export_translations(
+@@ -1352,21 +1356,23 @@ def test_uninstall_module_raise_on_error_raises(tmp_path: Path) -> None:
+     config["allow_uninstall"] = True
+     ops = OdooOperations(config)
+
+-    with patch.object(
+-        ops,
+-        "get_addon_install_state",
+-        return_value=AddonInstallState(
+-            success=True,
+-            operation="get_addon_install_state",
+-            module="sale",
+-            record_found=True,
+-            state="uninstalled",
+-            installed=False,
+-            database="test_db",
++    with (
++        patch.object(
++            ops,
++            "get_addon_install_state",
++            return_value=AddonInstallState(
++                success=True,
++                operation="get_addon_install_state",
++                module="sale",
++                record_found=True,
++                state="uninstalled",
++                installed=False,
++                database="test_db",
++            ),
+         ),
++        pytest.raises(ModuleUninstallError),
+     ):
+-        with pytest.raises(ModuleUninstallError):
+-            ops.uninstall_module("sale", allow_uninstall=True, raise_on_error=True)
++        ops.uninstall_module("sale", allow_uninstall=True, raise_on_error=True)
+
+
+ @pytest.mark.parametrize(
+diff --git a/tests/test_security_tasks.py b/tests/test_security_tasks.py
+index c33911e..81c7a59 100644
+--- a/tests/test_security_tasks.py
++++ b/tests/test_security_tasks.py
+@@ -153,7 +153,7 @@ class TestSec3TrustedExecution(unittest.TestCase):
+
+         class FakeEnvironment:
+             def __getitem__(self, item: str) -> Any:
+-                return types.SimpleNamespace(context_get=lambda: {})
++                return types.SimpleNamespace(context_get=dict)
+
+         odoo_stub = types.SimpleNamespace(
+             SUPERUSER_ID=1,
+@@ -210,7 +210,7 @@ class TestSec3TrustedExecution(unittest.TestCase):
+
+         class FakeEnvironment:
+             def __getitem__(self, item: str) -> Any:
+-                return types.SimpleNamespace(context_get=lambda: {})
++                return types.SimpleNamespace(context_get=dict)
+
+         odoo_stub = types.ModuleType("odoo")
+         odoo_stub.__path__ = []
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index bc6013b..409bca6 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -615,9 +615,9 @@ class TestModuleManager(unittest.TestCase):
+                 "_find_cycle_in_graph",
+                 return_value=["module_a", "module_b", "module_a"],
+             ) as mock_find_cycle,
++            self.assertRaises(ValueError) as context,
+         ):
+-            with self.assertRaises(ValueError) as context:
+-                self.module_manager.get_install_order("module_root", "module_a")
++            self.module_manager.get_install_order("module_root", "module_a")
+
+         self.assertEqual(
+             mock_find_cycle.call_args_list[0].args[0],
+@@ -646,9 +646,9 @@ class TestModuleManager(unittest.TestCase):
+             patch.object(
+                 self.module_manager, "_find_cycle_in_graph", return_value=None
+             ),
++            self.assertRaises(ValueError) as context,
+         ):
+-            with self.assertRaises(ValueError) as context:
+-                self.module_manager.get_install_order("module_root", "module_a")
++            self.module_manager.get_install_order("module_root", "module_a")
+
+         self.assertEqual(
+             str(context.exception),

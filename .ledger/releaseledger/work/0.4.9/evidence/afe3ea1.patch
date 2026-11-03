@@ -1,0 +1,1493 @@
+ README.md                      |   2 +
+ oduit/_operations/runtime.py   | 382 +++++++++++++++++++++++++++++++----------
+ oduit/builders.py              |  36 +++-
+ oduit/cli/agent/services.py    |  50 +++++-
+ oduit/cli/agent/validate.py    |  97 ++++++++++-
+ oduit/cli/commands/runtime.py  |  16 ++
+ oduit/operation_result.py      | 273 +++++++++++++++++++----------
+ oduit/utils.py                 |   9 +
+ skills/oduit/SKILL.md          |   6 +
+ tests/test_agent_cli.py        |  50 ++++++
+ tests/test_agent_services.py   |  29 ++++
+ tests/test_builders.py         |   9 +
+ tests/test_operation_result.py |  45 +++++
+ tests/test_python_api.py       |  18 ++
+ 14 files changed, 832 insertions(+), 190 deletions(-)
+
+diff --git a/README.md b/README.md
+index 1a7e43c..40d33a9 100644
+--- a/README.md
++++ b/README.md
+@@ -464,6 +464,8 @@ Runtime DB mutation policy is controlled by explicit config flags:
+ This applies to both classic CLI runtime commands (`install`, `update`, `uninstall`, `test`, `create-db`, `i18n import`, `i18n loadlang`) and agent runtime mutation commands. Source mutations such as `create-addon`, `i18n export`, and `export-lang` still use their own explicit mutation gate.
+ Plain `test` runs stay read-only; only `test --install/--update`, `agent test-summary --install/--update`, and `agent validate-addon-change` with install/update options enter the runtime DB mutation path.
+
++A successful test result is proof that at least one test executed. Zero-test results are non-success and identify whether the module was uninstalled, no tests matched, or the runner skipped execution. Plain tests never install modules automatically. When `--install` or `--update` is explicitly requested, oduit performs the mutation, verifies the installed state, and only then starts the test process.
++
+ ## Inspection and Agent Workflows
+
+ Use the first-class inspection commands before dropping to raw shell snippets.
+diff --git a/oduit/_operations/runtime.py b/oduit/_operations/runtime.py
+index c18917f..146a2e8 100644
+--- a/oduit/_operations/runtime.py
++++ b/oduit/_operations/runtime.py
+@@ -19,6 +19,7 @@ from ..builders import (
+     ShellCommandBuilder,
+     UpdateCommandBuilder,
+     VersionCommandBuilder,
++    extract_test_tag_modules,
+     odoo_series_major,
+ )
+ from ..exceptions import (
+@@ -158,6 +159,97 @@ class RuntimeOperationsService(OperationsService):
+             candidate_socket.bind((probe_host, 0))
+             return int(candidate_socket.getsockname()[1])
+
++    @staticmethod
++    def _resolve_selected_test_modules(
++        *,
++        module: str | None,
++        install: str | None,
++        update: str | None,
++        coverage: str | None,
++        test_tags: str | None,
++    ) -> list[str]:
++        """Resolve only module names that can be safely preflighted."""
++        values: list[str] = []
++        for raw_value in (module, install, update, coverage):
++            if raw_value:
++                values.extend(
++                    item.strip() for item in raw_value.split(",") if item.strip()
++                )
++        values.extend(extract_test_tag_modules(test_tags))
++        return list(dict.fromkeys(values))
++
++    def _query_test_module_states(self, selected_modules: list[str]) -> dict[str, Any]:
++        states: dict[str, str] = {}
++        installed_modules: list[str] = []
++        uninstalled_modules: list[str] = []
++        query_failures: list[dict[str, Any]] = []
++        for module in selected_modules:
++            state_result = self.operations.get_addon_install_state(module)
++            if not state_result.success:
++                query_failures.append(
++                    {
++                        "module": module,
++                        "error": state_result.error or "Module state lookup failed",
++                        "error_type": state_result.error_type or "QueryError",
++                    }
++                )
++                continue
++            state = state_result.state or "unknown"
++            states[module] = state
++            if state_result.installed:
++                installed_modules.append(module)
++            else:
++                uninstalled_modules.append(module)
++        return {
++            "success": not query_failures,
++            "states": states,
++            "installed_modules": installed_modules,
++            "uninstalled_modules": uninstalled_modules,
++            "query_failures": query_failures,
++        }
++
++    @staticmethod
++    def _test_not_run_result(
++        *,
++        status: str,
++        selected_modules: list[str],
++        module_states: dict[str, str],
++        error: str,
++        error_type: str,
++        remediation: list[str],
++        mutation: dict[str, Any] | None = None,
++        module_state_errors: list[dict[str, Any]] | None = None,
++    ) -> dict[str, Any]:
++        return {
++            "success": False,
++            "return_code": None,
++            "operation": "test",
++            "status": status,
++            "tests_run": False,
++            "test_process_started": False,
++            "total_tests": 0,
++            "passed_tests": 0,
++            "failed_tests": 0,
++            "error_tests": 0,
++            "failures": [],
++            "error_details": [],
++            "selected_modules": selected_modules,
++            "module_states": module_states,
++            "uninstalled_modules": [
++                module
++                for module, state in module_states.items()
++                if state != "installed"
++            ],
++            "module_state_errors": module_state_errors or [],
++            "mutation": mutation,
++            "aggregate_test_line": None,
++            "diagnostic_excerpts": [],
++            "warnings": [],
++            "remediation": remediation,
++            "error": error,
++            "error_type": error_type,
++        }
++
+     def _build_test_operation(
+         self,
+         *,
+@@ -182,11 +274,6 @@ class RuntimeOperationsService(OperationsService):
+         else:
+             builder = OdooTestCommandBuilder(config)
+
+-        if install:
+-            builder.test_module(install, install=True)
+-        elif update:
+-            builder.test_module(update, install=False)
+-
+         if test_file:
+             builder.test_file(test_file)
+         if test_tags:
+@@ -200,7 +287,9 @@ class RuntimeOperationsService(OperationsService):
+         elif log_level and isinstance(log_level, str):
+             builder.log_level(log_level)
+         builder.workers(0)
+-        return builder.build_operation()
++        operation = builder.build_operation()
++        operation.test_file = test_file
++        return operation
+
+     @staticmethod
+     def _add_http_port_retry_metadata(
+@@ -768,7 +857,7 @@ class RuntimeOperationsService(OperationsService):
+             suppress_output=suppress_output,
+         )
+
+-    def run_tests(
++    def run_tests(  # noqa: C901
+         self,
+         module: str | None = None,
+         stop_on_error: bool = False,
+@@ -782,33 +871,173 @@ class RuntimeOperationsService(OperationsService):
+         raise_on_error: bool = False,
+         log_level: str | None = None,
+     ) -> dict:
+-        """Run tests for a module
+-
+-        Args:
+-            module: Module name for testing (optional)
+-            stop_on_error: Stop execution on first error (optional)
+-            install: Module to install before testing (optional)
+-            update: Module to update before testing (optional)
+-            coverage: Module name to generate coverage report for (optional)
+-            test_file: Specific test file to run (optional)
+-            test_tags: Test tags to filter tests (optional)
+-            compact: Use compact output format (optional)
+-            suppress_output: Suppress all output (for programmatic use)
+-            raise_on_error: Raise exception on failure instead of returning error
+-            log_level: Set Odoo log level (optional)
+-
+-        Returns:
+-            Dictionary with operation result including test statistics and failures
+-
+-        Raises:
+-            ModuleUpdateError: If raise_on_error=True and operation fails
+-        """
++        """Run tests after state preflight and any explicit mutation."""
+         if self.operations.verbose and module and not suppress_output:
+             print_info(f"Testing module: {module}")
+
+-        test_result = None
++        selected_modules = self._resolve_selected_test_modules(
++            module=module,
++            install=install,
++            update=update,
++            coverage=coverage,
++            test_tags=test_tags,
++        )
++        module_states: dict[str, str] = {}
++        mutation: dict[str, Any] = {
++            "requested": bool(install or update),
++            "action": "install" if install else "update" if update else "none",
++            "module": install or update,
++            "performed": False,
++        }
++        state_info = (
++            self._query_test_module_states(selected_modules)
++            if selected_modules
++            else {
++                "success": True,
++                "states": {},
++                "installed_modules": [],
++                "uninstalled_modules": [],
++                "query_failures": [],
++            }
++        )
++        module_states = state_info["states"]
++        if not state_info["success"]:
++            result = self._test_not_run_result(
++                status="module_state_error",
++                selected_modules=selected_modules,
++                module_states=module_states,
++                error="Unable to verify selected module state before testing.",
++                error_type="TestModuleStateError",
++                remediation=[
++                    "Verify database access and retry the module-state lookup."
++                ],
++                mutation=mutation,
++                module_state_errors=state_info["query_failures"],
++            )
++            if raise_on_error:
++                raise ModuleUpdateError(result["error"], operation_result=result)
++            return result
++        uninstalled_modules = state_info["uninstalled_modules"]
++        if update and uninstalled_modules and not install:
++            result = self._test_not_run_result(
++                status="module_uninstalled",
++                selected_modules=selected_modules,
++                module_states=module_states,
++                error=(
++                    "Tests were not run because selected module(s) are not installed: "
++                    + ", ".join(uninstalled_modules)
++                ),
++                error_type="TestModuleUninstalled",
++                remediation=["Install the module explicitly before testing."],
++                mutation=mutation,
++            )
++            if raise_on_error:
++                raise ModuleUpdateError(result["error"], operation_result=result)
++            return result
++        if not install and not update and uninstalled_modules:
++            result = self._test_not_run_result(
++                status="module_uninstalled",
++                selected_modules=selected_modules,
++                module_states=module_states,
++                error=(
++                    "Tests were not run because selected module(s) are not installed: "
++                    + ", ".join(uninstalled_modules)
++                ),
++                error_type="TestModuleUninstalled",
++                remediation=[
++                    "Install the module explicitly, or select an installed module."
++                ],
++                mutation=mutation,
++            )
++            if raise_on_error:
++                raise ModuleUpdateError(result["error"], operation_result=result)
++            return result
++
++        if install or update:
++            action = "install" if install else "update"
++            module_value = install or update
++            assert module_value is not None
++            before_states = dict(module_states)
++            if install:
++                mutation_result = self.install_module(
++                    module_value,
++                    suppress_output=suppress_output,
++                    compact=compact,
++                    log_level=log_level,
++                )
++            else:
++                mutation_result = self.update_module(
++                    module_value,
++                    suppress_output=suppress_output,
++                    compact=compact,
++                    log_level=log_level,
++                )
++            mutation.update(
++                {
++                    "performed": True,
++                    "process_success": bool(mutation_result.get("success", False)),
++                    "before_state": before_states,
++                }
++            )
++            if not mutation_result.get("success", False):
++                result = self._test_not_run_result(
++                    status="mutation_failed",
++                    selected_modules=selected_modules,
++                    module_states=module_states,
++                    error=mutation_result.get("error", f"Module {action} failed."),
++                    error_type="TestMutationFailed",
++                    remediation=["Inspect the mutation result before retrying tests."],
++                    mutation=mutation,
++                )
++                if raise_on_error:
++                    raise ModuleUpdateError(result["error"], operation_result=result)
++                return result
++            state_info = (
++                self._query_test_module_states(selected_modules)
++                if selected_modules
++                else state_info
++            )
++            module_states = state_info["states"]
++            if not state_info["success"]:
++                result = self._test_not_run_result(
++                    status="module_state_error",
++                    selected_modules=selected_modules,
++                    module_states=module_states,
++                    error="Unable to verify module state after mutation.",
++                    error_type="TestModuleStateError",
++                    remediation=[
++                        "Verify database access and retry the module-state lookup."
++                    ],
++                    mutation=mutation,
++                    module_state_errors=state_info["query_failures"],
++                )
++                if raise_on_error:
++                    raise ModuleUpdateError(result["error"], operation_result=result)
++                return result
++            mutation["after_state"] = dict(module_states)
++            mutation["verified_installed"] = not state_info["uninstalled_modules"]
++            if state_info["uninstalled_modules"]:
++                result = self._test_not_run_result(
++                    status="module_not_installed_after_mutation",
++                    selected_modules=selected_modules,
++                    module_states=module_states,
++                    error=(
++                        "Module mutation succeeded but selected module(s) "
++                        "remain uninstalled: "
++                        + ", ".join(state_info["uninstalled_modules"])
++                    ),
++                    error_type="ModuleNotInstalledAfterMutation",
++                    remediation=[
++                        "Inspect the mutation output and verify the database state."
++                    ],
++                    mutation=mutation,
++                )
++                if raise_on_error:
++                    raise ModuleUpdateError(result["error"], operation_result=result)
++                return result
++
++        test_result: dict[str, Any] | None = None
+         coverage_result = None
+-        operation: CommandOperation | None = None
+         configured_http_port = self._coerce_http_port(
+             self.operations.config.get_optional("http_port")
+         )
+@@ -821,11 +1050,8 @@ class RuntimeOperationsService(OperationsService):
+             for attempt_index in range(self._TEST_HTTP_PORT_RETRY_LIMIT):
+                 if current_http_port is not None:
+                     attempted_ports.append(current_http_port)
+-
+                 operation = self._build_test_operation(
+                     module=module,
+-                    install=install,
+-                    update=update,
+                     coverage=coverage,
+                     test_file=test_file,
+                     test_tags=test_tags,
+@@ -833,93 +1059,73 @@ class RuntimeOperationsService(OperationsService):
+                     log_level=log_level,
+                     http_port_override=current_http_port,
+                 )
++                operation.modules = selected_modules or operation.modules
++                operation.test_file = test_file
+                 test_result = self.operations.process_manager.run_operation(
+                     operation,
+                     verbose=self.operations.verbose,
+                     suppress_output=suppress_output,
+                 )
+-
+                 output = test_result.get("stdout") or test_result.get("output") or ""
+                 if test_result.get("success") or not self._is_http_port_conflict(
+                     output
+                 ):
+                     break
+-
+                 if attempt_index == self._TEST_HTTP_PORT_RETRY_LIMIT - 1:
+                     break
+-
+                 conflicting_http_port = self._extract_conflicting_http_port(output)
+-                attempted_http_port = current_http_port
+-                if attempted_http_port is None:
+-                    attempted_http_port = (
+-                        conflicting_http_port or configured_http_port or 8069
+-                    )
++                attempted_http_port = (
++                    current_http_port
++                    or conflicting_http_port
++                    or configured_http_port
++                    or 8069
++                )
++                if not attempted_ports or attempted_ports[-1] != attempted_http_port:
+                     attempted_ports.append(attempted_http_port)
+-
+                 next_http_port = self._find_available_http_port(
+                     (conflicting_http_port or attempted_http_port) + 1,
+                     host=http_interface,
+                 )
+-                retry_warning = (
++                retry_warnings.append(
+                     f"HTTP port {attempted_http_port} is busy during test execution; "
+                     f"retrying with {next_http_port}."
+                 )
+-                retry_warnings.append(retry_warning)
+                 if not suppress_output:
+-                    print_warning(retry_warning)
++                    print_warning(retry_warnings[-1])
+                 current_http_port = next_http_port
+
+             if test_result is not None:
+                 self._add_http_port_retry_metadata(
+-                    test_result,
+-                    attempted_ports,
+-                    retry_warnings,
++                    test_result, attempted_ports, retry_warnings
+                 )
+-
+-            if coverage and test_result and test_result.get("success"):
++                test_result.setdefault("selected_modules", selected_modules)
++                test_result.setdefault("module_states", module_states)
++                test_result.setdefault(
++                    "uninstalled_modules", state_info["uninstalled_modules"]
++                )
++                test_result["mutation"] = mutation
++                test_result.setdefault("test_process_started", True)
++            if (
++                coverage
++                and test_result
++                and test_result.get("success")
++                and test_result.get("tests_run", True)
++            ):
+                 coverage_bin = self.operations.config.get_required("coverage_bin")
+-
+-                cmd2 = [coverage_bin, "report", "-m"]
+                 coverage_result = self.operations.process_manager.run_command(
+-                    cmd2,
++                    [coverage_bin, "report", "-m"],
+                     verbose=self.operations.verbose,
+                     suppress_output=suppress_output,
+                 )
+-
+-            if not suppress_output and _output_module._formatter.format_type == "json":
+-                test_success = (
+-                    test_result.get("success", False) if test_result else False
++            if (
++                test_result
++                and coverage_result is not None
++                and not coverage_result.get("success", False)
++            ):
++                test_result["success"] = False
++                test_result["error"] = (
++                    test_result.get("error") or "Coverage report failed"
+                 )
+-                test_additional_fields = {
+-                    "stop_on_error": stop_on_error,
+-                    "install": install,
+-                    "update": update,
+-                    "coverage": coverage,
+-                    "compact": compact,
+-                    "verbose": self.operations.verbose,
+-                    "test_success": test_success,
+-                }
+-
+-                if coverage_result is not None:
+-                    coverage_success = (
+-                        coverage_result.get("success", False)
+-                        if coverage_result
+-                        else False
+-                    )
+-                    test_additional_fields["coverage_success"] = coverage_success
+-
+-                    overall_success = (
+-                        test_result.get("success", False) if test_result else False
+-                    ) and (
+-                        coverage_result.get("success", False)
+-                        if coverage_result
+-                        else True
+-                    )
+-                    test_additional_fields["success"] = overall_success
+-
+-                if test_result:
+-                    test_result.update(test_additional_fields)
+-
+         except ConfigError as e:
+             test_result = {
+                 "success": False,
+@@ -936,13 +1142,11 @@ class RuntimeOperationsService(OperationsService):
+             "success": False,
+             "error": "Test execution failed",
+         }
+-
+         if raise_on_error and not final_result.get("success", False):
+             raise ModuleUpdateError(
+                 final_result.get("error", "Module test failed"),
+                 operation_result=final_result,
+             )
+-
+         return final_result
+
+     def get_odoo_version(
+diff --git a/oduit/builders.py b/oduit/builders.py
+index 11695c4..552467f 100644
+--- a/oduit/builders.py
++++ b/oduit/builders.py
+@@ -30,6 +30,21 @@ def _split_module_csv(value: str) -> list[str]:
+     return [item.strip() for item in value.split(",") if item.strip()]
+
+
++def extract_test_tag_modules(test_tags: str | None) -> list[str]:
++    """Return module names from positive, module-specific Odoo test tags."""
++    if not test_tags:
++        return []
++    modules: list[str] = []
++    for raw_tag in test_tags.split(","):
++        tag = raw_tag.strip()
++        if not tag.startswith("/") or tag.startswith("-/") or len(tag) == 1:
++            continue
++        module = tag[1:].split(":", 1)[0].strip()
++        if re.fullmatch(r"[A-Za-z0-9_]+", module) and module not in modules:
++            modules.append(module)
++    return modules
++
++
+ def _dedupe_preserving_order(values: Sequence[str]) -> list[str]:
+     seen: set[str] = set()
+     result: list[str] = []
+@@ -165,6 +180,7 @@ class CommandOperation:
+     test_tags: str | None = None
+     extra_args: list[str] = field(default_factory=list)
+     is_odoo_command: bool = True
++    test_file: str | None = None
+
+     # Result handling metadata
+     expected_result_fields: dict[str, Any] = field(default_factory=dict)
+@@ -842,6 +858,14 @@ class OdooTestCoverageCommandBuilder(BaseOdooCommandBuilder):
+             operation_type="test",
+             database=self.config.get_optional("db_name"),
+             modules=[self._module],
++            test_file=next(
++                (
++                    str(part.get("value"))
++                    for part in self._command_parts
++                    if part.get("key") == "test-file"
++                ),
++                None,
++            ),
+             test_tags=test_tags,
+             is_odoo_command=True,
+             expected_result_fields={
+@@ -896,9 +920,7 @@ class OdooTestCommandBuilder(BaseOdooCommandBuilder):
+         for part in self._command_parts:
+             if part.get("key") == "test-tags":
+                 test_tags = part.get("value")
+-                # Extract module from test-tags like "/module_name"
+-                if test_tags and test_tags.startswith("/"):
+-                    modules = [test_tags[1:]]
++                modules = extract_test_tag_modules(test_tags)
+             # Also extract modules from install (-i) and update (-u) parameters
+             elif part.get("key") in ("i", "u"):
+                 module_value = part.get("value")
+@@ -910,6 +932,14 @@ class OdooTestCommandBuilder(BaseOdooCommandBuilder):
+             operation_type="test",
+             database=self.config.get_optional("db_name"),
+             modules=modules,
++            test_file=next(
++                (
++                    str(part.get("value"))
++                    for part in self._command_parts
++                    if part.get("key") == "test-file"
++                ),
++                None,
++            ),
+             test_tags=test_tags,
+             is_odoo_command=True,
+             expected_result_fields={
+diff --git a/oduit/cli/agent/services.py b/oduit/cli/agent/services.py
+index 1e47170..bf5ea20 100644
+--- a/oduit/cli/agent/services.py
++++ b/oduit/cli/agent/services.py
+@@ -237,9 +237,13 @@ def build_agent_test_summary_details(
+ ) -> tuple[dict[str, Any], list[str], list[str]]:
+     """Normalize ``run_tests()`` output for agent-facing summaries."""
+     selected_modules = list(
+-        dict.fromkeys(value for value in [module, install, update, coverage] if value)
++        result.get("selected_modules")
++        or dict.fromkeys(
++            value for value in [module, install, update, coverage] if value
++        )
+     )
+     failures = list(result.get("failures", []))
++    error_details = list(result.get("error_details", []))
+     error_output_excerpt = (
+         build_error_output_excerpt_fn(result)
+         if not result.get("success", False)
+@@ -259,12 +263,39 @@ def build_agent_test_summary_details(
+         }
+         for failure in failures
+     ]
+-    suggested_next_steps: list[str] = []
+-    if failures:
++    status = result.get("status")
++    suggested_next_steps: list[str] = list(result.get("remediation", []))
++    status_remediation = {
++        "module_uninstalled": "Install the selected module explicitly before testing.",
++        "module_state_error": (
++            "Verify database access and retry the module-state lookup."
++        ),
++        "no_tests_matched": "Check the test selector and confirm matching tests exist.",
++        "tests_skipped": (
++            "Inspect skip evidence and test decorators or runner conditions."
++        ),
++        "no_tests_executed": (
++            "Confirm that the requested test operation selects executable tests."
++        ),
++        "failed": (
++            "Inspect the aggregate Odoo test result and the first "
++            "failure/error excerpt."
++        ),
++    }
++    if (
++        status in status_remediation
++        and status_remediation[status] not in suggested_next_steps
++    ):
++        suggested_next_steps.append(status_remediation[status])
++    if (
++        failures
++        and "Inspect the first failure traceback and reproduce it locally."
++        not in suggested_next_steps
++    ):
+         suggested_next_steps.append(
+             "Inspect the first failure traceback and reproduce it locally."
+         )
+-    if selected_modules:
++    if selected_modules and not suggested_next_steps and status not in {"passed", None}:
+         suggested_next_steps.append(
+             f"Retest the selected module set: {', '.join(selected_modules)}."
+         )
+@@ -275,6 +306,17 @@ def build_agent_test_summary_details(
+
+     data = {
+         "selected_modules": selected_modules,
++        "uninstalled_modules": result.get("uninstalled_modules", []),
++        "module_states": result.get("module_states", {}),
++        "status": status,
++        "tests_run": result.get("tests_run", False),
++        "test_process_started": result.get("test_process_started", False),
++        "mutation": result.get("mutation"),
++        "aggregate_test_line": result.get("aggregate_test_line"),
++        "test_summary_source": result.get("test_summary_source"),
++        "diagnostic_excerpts": result.get("diagnostic_excerpts", []),
++        "error_details": error_details,
++        "skip_evidence": result.get("skip_evidence", []),
+         "selection": {
+             "module": module,
+             "install": install,
+diff --git a/oduit/cli/agent/validate.py b/oduit/cli/agent/validate.py
+index f49d353..3f3325b 100644
+--- a/oduit/cli/agent/validate.py
++++ b/oduit/cli/agent/validate.py
+@@ -112,6 +112,7 @@ def build_validate_addon_change_payload(
+     sub_results: dict[str, dict[str, Any]],
+     completed_steps: list[str],
+     failed_step: str | None,
++    verified_installed_state: dict[str, Any] | None = None,
+ ) -> tuple[
+     dict[str, Any],
+     bool,
+@@ -135,6 +136,7 @@ def build_validate_addon_change_payload(
+             "discover_tests": discover_tests,
+         },
+         "installed_state": installed_state,
++        "verified_installed_state": verified_installed_state,
+         "mutation_action": mutation_action,
+         "sub_results": sub_results,
+         "verification_summary": {
+@@ -617,6 +619,7 @@ def agent_validate_addon_change_command(
+     ops = odoo_operations_cls(global_config.env_config, verbose=False)
+     resolved_test_tags = test_tags or f"/{module}"
+     mutation_action = {"action": "none", "performed": False}
++    verified_installed_state: dict[str, Any] | None = None
+     sub_results, completed_steps, failed_step, installed_state = (
+         run_validate_addon_change_preflight_fn(
+             ops,
+@@ -632,8 +635,21 @@ def agent_validate_addon_change_command(
+     if failed_step is None:
+         assert installed_state is not None
+         should_install = install_if_needed and not installed_state["installed"]
+-        should_update = update and not should_install
+-        if should_install:
++        should_update = update and installed_state["installed"]
++        if update and not install_if_needed and not installed_state["installed"]:
++            module_action_started = time.perf_counter()
++            result = {
++                "success": False,
++                "error": f"Module '{module}' is not installed; update cannot run.",
++                "error_type": "TestModuleUninstalled",
++                "status": "module_uninstalled",
++            }
++            mutation_action = {
++                "action": "update",
++                "performed": False,
++                "reason": "module_not_installed",
++            }
++        elif should_install:
+             module_action_started = time.perf_counter()
+             result = ops.install_module(
+                 module,
+@@ -720,6 +736,82 @@ def agent_validate_addon_change_command(
+             if not action_success:
+                 failed_step = "module_action"
+         completed_steps.append("module_action")
++        action_success = result is None or bool(result.get("success", False))
++        if result is not None and action_success and mutation_action.get("performed"):
++            verification_started = time.perf_counter()
++            verified_result = ops.get_addon_install_state(module)
++            if not verified_result.success:
++                sub_results["installed_state_after_mutation"] = _with_duration(
++                    agent_sub_result_fn(
++                        success=False,
++                        data={"module": module},
++                        error=verified_result.error
++                        or "Failed to verify installed state",
++                        error_type=verified_result.error_type or "TestModuleStateError",
++                        remediation=[
++                            "Verify database access and retry state verification."
++                        ],
++                    ),
++                    verification_started,
++                )
++                failed_step = "installed_state_after_mutation"
++            else:
++                verified_installed_state = {
++                    "module": module,
++                    "record_found": verified_result.record_found,
++                    "state": verified_result.state,
++                    "installed": verified_result.installed,
++                }
++                mutation_action["verified"] = verified_result.installed
++                sub_results["installed_state_after_mutation"] = _with_duration(
++                    agent_sub_result_fn(
++                        success=verified_result.installed,
++                        data=verified_installed_state,
++                        error=(
++                            None
++                            if verified_result.installed
++                            else f"Module '{module}' is not installed after mutation."
++                        ),
++                        error_type=(
++                            None
++                            if verified_result.installed
++                            else "ModuleNotInstalledAfterMutation"
++                        ),
++                        remediation=(
++                            []
++                            if verified_result.installed
++                            else [
++                                (
++                                    "Inspect the mutation output and verify "
++                                    "the database state."
++                                )
++                            ]
++                        ),
++                    ),
++                    verification_started,
++                )
++                completed_steps.append("installed_state_after_mutation")
++                if not verified_result.installed:
++                    failed_step = "installed_state_after_mutation"
++        if result is None and not installed_state["installed"]:
++            failed_step = "module_tests"
++            sub_results["module_tests"] = _with_duration(
++                agent_sub_result_fn(
++                    success=False,
++                    data={
++                        "status": "module_uninstalled",
++                        "tests_run": False,
++                        "test_process_started": False,
++                    },
++                    error=(
++                        f"Tests were not run because module '{module}' "
++                        "is not installed."
++                    ),
++                    error_type="TestModuleUninstalled",
++                    remediation=["Install the module explicitly before testing."],
++                ),
++                module_action_started,
++            )
+
+     if failed_step is None:
+         module_tests_started = time.perf_counter()
+@@ -792,6 +884,7 @@ def agent_validate_addon_change_command(
+             resolved_test_tags=resolved_test_tags,
+             discover_tests=discover_tests,
+             installed_state=installed_state,
++            verified_installed_state=verified_installed_state,
+             mutation_action=mutation_action,
+             sub_results=sub_results,
+             completed_steps=completed_steps,
+diff --git a/oduit/cli/commands/runtime.py b/oduit/cli/commands/runtime.py
+index 0ed79c2..cdec754 100644
+--- a/oduit/cli/commands/runtime.py
++++ b/oduit/cli/commands/runtime.py
+@@ -466,6 +466,22 @@ def test_command(
+             exclude_fields=exclude_fields,
+         )
+         print(json.dumps(result_json))
++    elif not result.get("success"):
++        status_messages = {
++            "module_uninstalled": (
++                "Tests were not run: selected module is not installed."
++            ),
++            "no_tests_matched": (
++                "Tests were not run successfully: no tests matched the selection."
++            ),
++            "tests_skipped": (
++                "Test process completed but no tests executed; "
++                "skip evidence was detected."
++            ),
++            "no_tests_executed": "Test process completed without executing tests.",
++        }
++        message = status_messages.get(result.get("status"))
++        print_error(message or result.get("error") or "Tests failed")
+
+     if not result.get("success"):
+         raise typer.Exit(1)
+diff --git a/oduit/operation_result.py b/oduit/operation_result.py
+index 3e6f2f2..31079c8 100644
+--- a/oduit/operation_result.py
++++ b/oduit/operation_result.py
+@@ -7,8 +7,23 @@
+ import re
+ import time
+ from datetime import datetime
++from enum import Enum
+ from typing import TYPE_CHECKING, Any
+
++
++class TestRunStatus(str, Enum):
++    MODULE_STATE_ERROR = "module_state_error"
++    MODULE_UNINSTALLED = "module_uninstalled"
++    MUTATION_FAILED = "mutation_failed"
++    MODULE_NOT_INSTALLED_AFTER_MUTATION = "module_not_installed_after_mutation"
++    NO_TESTS_MATCHED = "no_tests_matched"
++    TESTS_SKIPPED = "tests_skipped"
++    NO_TESTS_EXECUTED = "no_tests_executed"
++    PASSED = "passed"
++    FAILED = "failed"
++    EXECUTION_ERROR = "execution_error"
++
++
+ if TYPE_CHECKING:
+     from .builders import CommandOperation
+
+@@ -150,6 +165,7 @@ class OperationResult:
+             operation_type=command_operation.operation_type,
+             modules=command_operation.modules,
+             test_tags=command_operation.test_tags,
++            test_file=command_operation.test_file,
+             extra_args=command_operation.extra_args,
+             is_odoo_command=command_operation.is_odoo_command,
+             expected_result_fields=command_operation.expected_result_fields,
+@@ -352,19 +368,52 @@ class OperationResult:
+                 self.set_error(
+                     f"Module installation failed: {error_msg}", "InstallationError"
+                 )
+-
+-        # Handle semantic success logic for test operations
+-        elif self.result["operation"] == "test" and (
+-            parsed_results.get("failed_tests", 0) > 0
+-            or parsed_results.get("error_tests", 0) > 0
+-        ):
+-            self.set_success(False, self.result.get("return_code", 1))
++        elif self.result["operation"] == "test":
+             failed = parsed_results.get("failed_tests", 0)
+             errors = parsed_results.get("error_tests", 0)
+-            self.set_error(
+-                f"Tests failed: {failed} failed, {errors} errors", "TestFailure"
+-            )
+-
++            total = parsed_results.get("total_tests", 0)
++            problems = parsed_results.get("test_problems", [])
++            return_code = self.result.get("return_code")
++            self.result["test_process_started"] = True
++            self.result["tests_run"] = bool(total > 0 or problems)
++            if return_code not in (None, 0):
++                status = TestRunStatus.EXECUTION_ERROR
++                if not self.result.get("error"):
++                    self.set_error("Test process failed", "ExecutionError")
++            elif failed > 0 or errors > 0 or problems:
++                status = TestRunStatus.FAILED
++                if not self.result.get("error"):
++                    self.set_error(
++                        f"Tests failed: {failed} failed, {errors} errors",
++                        "TestFailure",
++                    )
++            elif total > 0:
++                status = TestRunStatus.PASSED
++                self.result["success"] = True
++            elif parsed_results.get("skip_evidence"):
++                status = TestRunStatus.TESTS_SKIPPED
++                self.set_error(
++                    (
++                        "Test process completed but no tests executed; "
++                        "skip evidence was detected."
++                    ),
++                    "TestsSkipped",
++                )
++            elif self.result.get("test_tags") or self.result.get("test_file"):
++                status = TestRunStatus.NO_TESTS_MATCHED
++                self.set_error(
++                    "No tests matched the requested test selection.",
++                    "NoTestsMatched",
++                )
++            else:
++                status = TestRunStatus.NO_TESTS_EXECUTED
++                self.set_error(
++                    "The test process completed without executing tests.",
++                    "NoTestsExecuted",
++                )
++            self.result["status"] = status.value
++            if status != TestRunStatus.PASSED:
++                self.result["success"] = False
+         return self
+
+     def _parse_install_results(self, output: str) -> dict[str, Any]:
+@@ -511,15 +560,21 @@ class OperationResult:
+
+         return install_info
+
+-    def _parse_test_failure(self, lines: list[str], start_index: int) -> dict[str, Any]:
+-        """Parse one traceback block starting at a FAIL header."""
++    def _parse_test_problem(
++        self,
++        lines: list[str],
++        start_index: int,
++        *,
++        kind: str = "failure",
++    ) -> dict[str, Any]:
++        """Parse one FAIL or ERROR traceback block."""
+         line = self._normalize_test_failure_line(lines[start_index])
+-        fail_match = re.search(r"FAIL:\s+(.+)", line)
+-        if fail_match is None:
++        header_match = re.search(r"(FAIL|ERROR):\s+(.+)", line)
++        if header_match is None:
+             return {}
+-
+-        failure_info: dict[str, Any] = {
+-            "test_name": fail_match.group(1),
++        problem: dict[str, Any] = {
++            "kind": kind,
++            "test_name": header_match.group(2),
+             "traceback": [],
+             "file": None,
+             "line": None,
+@@ -535,26 +590,23 @@ class OperationResult:
+         expect_source_line = False
+         expect_function_name = False
+         j = start_index + 1
+-
+         while j < len(lines):
+             raw_next_line = lines[j]
+             next_line = self._clean_test_log_line(raw_next_line).strip()
+             if (
+                 not next_line
+                 or "Starting" in lines[j]
++                or re.search(r"(?:FAIL|ERROR):\s+.+", next_line)
+                 or ("INFO" in next_line and "ERROR" not in next_line)
+                 or re.search(
+-                    r"odoo\.(?:tests\.result|modules\.loading):\s+\d+\s+failed,"
+-                    r"\s+\d+\s+error\(s\)\s+of\s+\d+\s+tests",
++                    r"odoo\.(?:tests\.result|modules\.loading):\s+\d+\s+failed,\s+\d+\s+error\(s\)\s+of\s+\d+\s+tests",
+                     next_line,
+                 )
+             ):
+                 break
+-
+             clean_line = self._normalize_test_failure_line(next_line)
+-            failure_info["traceback"].append(clean_line)
+-            failure_info["raw_failure_excerpt"].append(clean_line)
+-
++            problem["traceback"].append(clean_line)
++            problem["raw_failure_excerpt"].append(clean_line)
+             file_match = re.search(
+                 r'File\s+"([^"]+)",\s+line\s+(\d+)(?:,\s+in\s+(.+))?',
+                 clean_line,
+@@ -565,112 +617,113 @@ class OperationResult:
+                     "line": int(file_match.group(2)),
+                     "function": file_match.group(3),
+                 }
+-                failure_info["locations"].append(location)
+-                if failure_info["file"] is None:
+-                    failure_info["file"] = location["file"]
+-                    failure_info["line"] = location["line"]
+-                    failure_info["function_name"] = location["function"]
++                problem["locations"].append(location)
++                if problem["file"] is None:
++                    problem["file"] = location["file"]
++                    problem["line"] = location["line"]
++                    problem["function_name"] = location["function"]
+                 expect_source_line = True
+                 expect_function_name = location["function"] is None
+                 j += 1
+                 continue
+-
+             if expect_function_name and clean_line.startswith("in "):
+                 function_name = clean_line.removeprefix("in ").strip()
+-                if function_name:
+-                    failure_info["locations"][-1]["function"] = function_name
+-                    if failure_info["function_name"] is None:
+-                        failure_info["function_name"] = function_name
++                if function_name and problem["locations"]:
++                    problem["locations"][-1]["function"] = function_name
++                    if problem["function_name"] is None:
++                        problem["function_name"] = function_name
+                 expect_function_name = False
+                 j += 1
+                 continue
+             expect_function_name = False
+-
+-            is_error_line = any(
+-                error_type in clean_line
+-                for error_type in [
+-                    "AssertionError",
+-                    "ValueError",
+-                    "TypeError",
+-                    "Error:",
+-                ]
++            is_error_line = bool(
++                re.search(
++                    r"(?:[A-Za-z_][\w.]*\.(?:Error|Exception)|[A-Za-z_][\w]*(?:Error|Exception))(?::|$)",
++                    clean_line,
++                )
++                or re.search(r"(?:psycopg2\.errors\.|odoo\.exceptions\.)", clean_line)
+             )
+             if (
+                 expect_source_line
+-                and clean_line not in ("Traceback (most recent call last):",)
++                and clean_line != "Traceback (most recent call last):"
+                 and not is_error_line
+             ):
+-                failure_info["source_lines"].append(clean_line)
+-                if failure_info["source_line"] is None:
+-                    failure_info["source_line"] = clean_line
++                problem["source_lines"].append(clean_line)
++                if problem["source_line"] is None:
++                    problem["source_line"] = clean_line
+                 expect_source_line = False
+-
+             if is_error_line:
+-                failure_info["error_message"] = clean_line
++                problem["error_message"] = clean_line
+                 expect_source_line = False
+-
+             j += 1
+-
+-        failure_info["broken_line_count"] = len(failure_info["locations"]) + len(
+-            failure_info["source_lines"]
++        problem["broken_line_count"] = len(problem["locations"]) + len(
++            problem["source_lines"]
+         )
+-        if failure_info["file"] and failure_info["line"] is not None:
+-            excerpt = f"{failure_info['file']}:{failure_info['line']}"
+-            if failure_info["source_line"]:
+-                excerpt = f"{excerpt}: {failure_info['source_line']}"
+-            failure_info["failure_excerpt"] = excerpt
+-
+-        if not failure_info["locations"] or failure_info["error_message"] is None:
+-            failure_info["parser_warning"] = (
+-                f"Partially parsed failure '{failure_info['test_name']}'; "
++        if problem["file"] and problem["line"] is not None:
++            excerpt = f"{problem['file']}:{problem['line']}"
++            if problem["source_line"]:
++                excerpt = f"{excerpt}: {problem['source_line']}"
++            problem["failure_excerpt"] = excerpt
++        if not problem["locations"] or problem["error_message"] is None:
++            problem["parser_warning"] = (
++                f"Partially parsed {kind} '{problem['test_name']}'; "
+                 "preserved raw_failure_excerpt."
+             )
++        return problem
+
+-        return failure_info
++    def _parse_test_failure(self, lines: list[str], start_index: int) -> dict[str, Any]:
++        """Backward-compatible wrapper for parsing a failure block."""
++        return self._parse_test_problem(lines, start_index, kind="failure")
+
+     def _parse_test_results(self, output: str) -> dict[str, Any]:
+-        """Parse Odoo test output to extract test statistics and error details"""
++        """Parse test statistics, problem blocks, and runner evidence."""
+         test_info: dict[str, Any] = {
+             "total_tests": 0,
+             "passed_tests": 0,
+             "failed_tests": 0,
+             "error_tests": 0,
+             "failures": [],
++            "error_details": [],
++            "test_problems": [],
++            "aggregate_test_line": None,
++            "test_summary_source": None,
++            "test_stats_lines": [],
++            "skip_evidence": [],
+             "warnings": [],
+         }
+-
+-        if not output:
+-            return test_info
+-
+-        lines = output.split("\n")
+-
++        lines = output.split("\n") if output else []
+         authoritative_result_seen = False
++        legacy_summary_seen = False
+
+-        def _apply_summary(failed: int, errors: int, total: int) -> None:
++        def _apply_summary(
++            failed: int, errors: int, total: int, raw_line: str, source: str
++        ) -> None:
+             test_info["failed_tests"] = failed
+             test_info["error_tests"] = errors
+             test_info["total_tests"] = total
+             test_info["passed_tests"] = max(total - failed - errors, 0)
++            if source == "odoo.tests.result" or not authoritative_result_seen:
++                test_info["aggregate_test_line"] = self._clean_test_log_line(
++                    raw_line
++                ).strip()
++                test_info["test_summary_source"] = source
+
+-        # Extract test statistics from authoritative Odoo test loggers first.
+-        # Fall back to legacy loading summaries only when no
+-        # odoo.tests.result line exists.
+         for raw_line in lines:
+             line = self._clean_test_log_line(raw_line)
+             stats_match = re.search(
+                 r"odoo\.tests\.stats:\s+[\w.]+:\s+(\d+)\s+tests\s+[\d.]+s\s+\d+\s+queries",
+                 line,
+             )
+-            if stats_match:
+-                test_info["total_tests"] = int(stats_match.group(1))
+-
+             legacy_stats_match = re.search(
+                 r"odoo\.modules\.loading:\s+[\w.]+:\s+(\d+)\s+tests\s+[\d.]+s\s+\d+\s+queries",
+                 line,
+             )
+-            if legacy_stats_match and test_info["total_tests"] == 0:
+-                test_info["total_tests"] = int(legacy_stats_match.group(1))
+-
++            if stats_match or legacy_stats_match:
++                if len(test_info["test_stats_lines"]) < 10:
++                    test_info["test_stats_lines"].append(line.strip())
++                stats_match = stats_match or legacy_stats_match
++                if test_info["total_tests"] == 0 and stats_match:
++                    test_info["total_tests"] = int(stats_match.group(1))
+             result_match = re.search(
+                 r"odoo\.tests\.result:\s+(\d+)\s+failed,\s+(\d+)\s+error\(s\)\s+of\s+(\d+)\s+tests",
+                 line,
+@@ -680,36 +733,72 @@ class OperationResult:
+                     int(result_match.group(1)),
+                     int(result_match.group(2)),
+                     int(result_match.group(3)),
++                    raw_line,
++                    "odoo.tests.result",
+                 )
+                 authoritative_result_seen = True
+                 continue
+-
+             if authoritative_result_seen:
+                 continue
+-
+             legacy_result_match = re.search(
+                 r"odoo\.modules\.loading:\s+(\d+)\s+failed,\s+(\d+)\s+error\(s\)\s+of\s+(\d+)\s+tests",
+                 line,
+             )
+-            if legacy_result_match:
++            if legacy_result_match and not legacy_summary_seen:
+                 _apply_summary(
+                     int(legacy_result_match.group(1)),
+                     int(legacy_result_match.group(2)),
+                     int(legacy_result_match.group(3)),
++                    raw_line,
++                    "odoo.modules.loading",
+                 )
++                legacy_summary_seen = True
++            if re.search(
++                r"(?:test|tests|unittest|odoo).*\b(?:skip|skipped|SkipTest)",
++                line,
++                re.IGNORECASE,
++            ):
++                if len(test_info["skip_evidence"]) < 10:
++                    test_info["skip_evidence"].append(line.strip())
+
+-        # Extract failure details - look for FAIL patterns
+         for i, raw_line in enumerate(lines):
+             line = self._clean_test_log_line(raw_line)
+-            # Look for failure headers like: "FAIL: FastAPIDemoCase.test_no_key"
+-            # or "ERROR ... FAIL: AdvancedTestCase.test_workflow"
+-            if re.search(r"FAIL:\s+(.+)", line):
+-                failure = self._parse_test_failure(lines, i)
+-                parser_warning = failure.pop("parser_warning", None)
++            if re.search(r"(?:FAIL|ERROR):\s+.+", line):
++                problem = self._parse_test_problem(
++                    lines, i, kind="failure" if "FAIL:" in line else "error"
++                )
++                parser_warning = problem.pop("parser_warning", None)
+                 if parser_warning:
+                     test_info["warnings"].append(parser_warning)
+-                test_info["failures"].append(failure)
+-
++                if problem:
++                    test_info["test_problems"].append(problem)
++                    if problem.get("kind") == "failure":
++                        test_info["failures"].append(problem)
++                    else:
++                        test_info["error_details"].append(problem)
++
++        test_info["failed_tests"] = max(
++            test_info["failed_tests"], len(test_info["failures"])
++        )
++        test_info["error_tests"] = max(
++            test_info["error_tests"], len(test_info["error_details"])
++        )
++        if test_info["test_summary_source"] is None and test_info["total_tests"] > 0:
++            test_info["passed_tests"] = max(
++                test_info["total_tests"]
++                - test_info["failed_tests"]
++                - test_info["error_tests"],
++                0,
++            )
++        test_info["diagnostic_excerpts"] = [
++            {
++                "kind": problem.get("kind"),
++                "test_name": problem.get("test_name"),
++                "excerpt": "\n".join(problem.get("raw_failure_excerpt", [])[:8]),
++                "error_message": problem.get("error_message"),
++            }
++            for problem in test_info["test_problems"][:5]
++        ]
+         return test_info
+
+     def _check_for_failure_patterns(
+diff --git a/oduit/utils.py b/oduit/utils.py
+index b92f7d6..0d9b139 100644
+--- a/oduit/utils.py
++++ b/oduit/utils.py
+@@ -24,6 +24,15 @@ _SIMPLE_ERROR_CODES = {
+     "QueryError": "runtime.query_failed",
+     "ConnectionError": "runtime.query_failed",
+     "TestFailure": "runtime.test_failure",
++    "TestModuleUninstalled": "runtime.test_module_uninstalled",
++    "TestModuleStateError": "runtime.test_module_state_error",
++    "TestMutationFailed": "runtime.test_mutation_failed",
++    "ModuleNotInstalledAfterMutation": (
++        "runtime.test_module_not_installed_after_mutation"
++    ),
++    "NoTestsMatched": "runtime.test_no_match",
++    "TestsSkipped": "runtime.test_skipped",
++    "NoTestsExecuted": "runtime.test_no_tests_executed",
+     "ModuleOperationError": "runtime.module_operation_failed",
+ }
+
+diff --git a/skills/oduit/SKILL.md b/skills/oduit/SKILL.md
+index 5a70c8e..b42cdca 100644
+--- a/skills/oduit/SKILL.md
++++ b/skills/oduit/SKILL.md
+@@ -235,6 +235,12 @@ Rules:
+ - `agent_needs_mutation_flag = true` requires `--allow-mutation` for agent
+   runtime DB mutation.
+ - Plain `test-summary` without `--install` or `--update` is read-only.
++- A `test-summary` result is valid proof only when `success=true`, `tests_run=true`, and `total_tests > 0`.
++- `module_uninstalled` is a blocker, not a passing test. Do not silently install it.
++- Use `validate-addon-change --allow-mutation --install-if-needed ...` when installation is intentionally required.
++- Inspect `aggregate_test_line` and `diagnostic_excerpts` when tests fail.
++- Zero-test results are non-success and distinguish `module_uninstalled`, `no_tests_matched`, `tests_skipped`, and `no_tests_executed`.
++- Explicit `--install` or `--update` is performed and verified before the test process starts.
+
+ Never widen destructive behavior silently. If a task needs installation, update,
+ uninstall, cron triggering, source generation, or translation export, call that
+diff --git a/tests/test_agent_cli.py b/tests/test_agent_cli.py
+index b1243e9..c1459ac 100644
+--- a/tests/test_agent_cli.py
++++ b/tests/test_agent_cli.py
+@@ -4563,3 +4563,53 @@ def test_agent_technical_doc_diff_returns_read_only_payload(tmp_path: Path) -> N
+     assert payload["operation"] == "technical_doc_diff"
+     assert payload["read_only"] is True
+     assert payload["data"]["entries"][0]["diff"] == "---"
++
++
++def test_agent_test_summary_reports_uninstalled_module(tmp_path: Path) -> None:
++    runner = CliRunner()
++    config = _agent_config(tmp_path, str(tmp_path / "addons"))
++    loader = _loader_with_config(config, tmp_path)
++    with (
++        patch("oduit.cli.app.ConfigLoader", return_value=loader),
++        patch("oduit.cli.app.OdooOperations") as mock_ops_class,
++    ):
++        ops = MagicMock()
++        ops.run_tests.return_value = {
++            "success": False,
++            "status": "module_uninstalled",
++            "error_type": "TestModuleUninstalled",
++            "tests_run": False,
++            "test_process_started": False,
++            "selected_modules": ["x_sale"],
++            "uninstalled_modules": ["x_sale"],
++            "module_states": {"x_sale": "uninstalled"},
++            "total_tests": 0,
++            "passed_tests": 0,
++            "failed_tests": 0,
++            "error_tests": 0,
++            "return_code": None,
++            "error": (
++                "Tests were not run because selected module(s) are not "
++                "installed: x_sale"
++            ),
++        }
++        mock_ops_class.return_value = ops
++        result = runner.invoke(
++            app,
++            [
++                "--env",
++                "dev",
++                "agent",
++                "test-summary",
++                "--module",
++                "x_sale",
++                "--test-tags",
++                "/x_sale",
++            ],
++        )
++    assert result.exit_code == 1
++    payload = json.loads(result.output)
++    assert payload["success"] is False
++    assert payload["error_code"] == "runtime.test_module_uninstalled"
++    assert payload["data"]["status"] == "module_uninstalled"
++    assert payload["data"]["tests_run"] is False
+diff --git a/tests/test_agent_services.py b/tests/test_agent_services.py
+index 9947239..76e97c1 100644
+--- a/tests/test_agent_services.py
++++ b/tests/test_agent_services.py
+@@ -185,3 +185,32 @@ def test_agent_fail_uses_canonical_error_shape() -> None:
+     assert "generated_at" not in payload
+     assert "timestamp" in payload["meta"]
+     assert "generated_at" not in payload["meta"]
++
++
++def test_build_agent_test_summary_details_propagates_semantic_status() -> None:
++    data, _, remediation = build_agent_test_summary_details(
++        {
++            "success": False,
++            "status": "module_uninstalled",
++            "tests_run": False,
++            "test_process_started": False,
++            "selected_modules": ["x_sale"],
++            "uninstalled_modules": ["x_sale"],
++            "module_states": {"x_sale": "uninstalled"},
++            "total_tests": 0,
++            "error_details": [],
++            "diagnostic_excerpts": [],
++            "return_code": None,
++        },
++        module="x_sale",
++        install=None,
++        update=None,
++        coverage=None,
++        test_file=None,
++        test_tags="/x_sale",
++        build_error_output_excerpt_fn=build_error_output_excerpt,
++    )
++    assert data["status"] == "module_uninstalled"
++    assert data["tests_run"] is False
++    assert data["uninstalled_modules"] == ["x_sale"]
++    assert any("Install the selected module" in item for item in remediation)
+diff --git a/tests/test_builders.py b/tests/test_builders.py
+index 14b09b4..1ffb78b 100644
+--- a/tests/test_builders.py
++++ b/tests/test_builders.py
+@@ -702,4 +702,13 @@ class TestDatabaseCommandBuilder:
+         cmd = builder.native_db_init_command(without_demo=True).build()
+
+         assert "--with-demo" not in cmd
++
+         assert "--without-demo=all" not in cmd
++
++    def test_test_tag_module_metadata_strips_selector_suffix(self, config_provider):
++        operation = (
++            OdooTestCommandBuilder(config_provider)
++            .test_tags("/x_sale:TestClass.test_method")
++            .build_operation()
++        )
++        assert operation.modules == ["x_sale"]
+diff --git a/tests/test_operation_result.py b/tests/test_operation_result.py
+index 340ac71..ff7780c 100644
+--- a/tests/test_operation_result.py
++++ b/tests/test_operation_result.py
+@@ -913,6 +913,51 @@ AssertionError: 1 != 2
+         self.assertEqual(builder.result["operation"], "install")
+         self.assertEqual(builder.result["custom_field"], "value")
+
++    def test_zero_tests_are_not_successful(self):
++        builder = OperationResult("test", module="test_module")
++        builder.set_success(True, 0).set_custom_data(test_tags="/test_module")
++        builder.parse_and_merge_test_results(
++            "odoo.tests.result: 0 failed, 0 error(s) of 0 tests when loading database 'db'"
++        )
++        self.assertFalse(builder.result["success"])
++        self.assertEqual(builder.result["status"], "no_tests_matched")
++        self.assertFalse(builder.result["tests_run"])
++        self.assertEqual(builder.result["return_code"], 0)
++
++    def test_positive_test_run_is_passed(self):
++        builder = OperationResult("test", module="test_module")
++        builder.set_success(True, 0)
++        builder.parse_and_merge_test_results(
++            "odoo.tests.result: 0 failed, 0 error(s) of 5 tests when loading database 'db'"
++        )
++        self.assertTrue(builder.result["success"])
++        self.assertEqual(builder.result["status"], "passed")
++        self.assertTrue(builder.result["tests_run"])
++
++    def test_aggregate_and_error_blocks_are_retained(self):
++        builder = OperationResult("test", module="test_module")
++        builder.set_success(True, 0)
++        builder.parse_and_merge_test_results(
++            "ERROR: TestCase.test_error\nValueError: broken\n"
++            "odoo.tests.result: 1 failed, 4 error(s) of 171 tests"
++        )
++        self.assertEqual(builder.result["error_tests"], 4)
++        self.assertEqual(builder.result["failed_tests"], 1)
++        self.assertIn(
++            "1 failed, 4 error(s) of 171 tests", builder.result["aggregate_test_line"]
++        )
++        self.assertEqual(
++            builder.result["error_details"][0]["test_name"], "TestCase.test_error"
++        )
++        self.assertFalse(builder.result["success"])
++
++    def test_skip_evidence_has_distinct_status(self):
++        builder = OperationResult("test", module="test_module")
++        builder.set_success(True, 0)
++        builder.parse_and_merge_test_results("odoo.tests: test skipped")
++        self.assertEqual(builder.result["status"], "tests_skipped")
++        self.assertFalse(builder.result["tests_run"])
++
+
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_python_api.py b/tests/test_python_api.py
+index 5e0eb53..0bde9b5 100644
+--- a/tests/test_python_api.py
++++ b/tests/test_python_api.py
+@@ -1438,3 +1438,21 @@ def test_query_delegation_methods_return_typed_results(
+
+     assert isinstance(result, result_class)
+     assert result.success is True
++
++
++def test_run_tests_blocks_uninstalled_module_before_process(tmp_path: Path) -> None:
++    ops = OdooOperations(_config(tmp_path, str(tmp_path / "addons")))
++    state = AddonInstallState(
++        success=True,
++        operation="get_addon_install_state",
++        module="x_sale",
++        record_found=True,
++        state="uninstalled",
++        installed=False,
++    )
++    with patch.object(ops, "get_addon_install_state", return_value=state):
++        with patch.object(ops.process_manager, "run_operation") as run_operation:
++            result = ops.run_tests(module="x_sale", test_tags="/x_sale")
++    assert result["status"] == "module_uninstalled"
++    assert result["tests_run"] is False
++    run_operation.assert_not_called()

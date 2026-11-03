@@ -1,0 +1,220 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: 0.4.9
+git_base_ref: v0.4.8
+git_base_sha: a4325b44c3eec281a9c6f4d4a6d9d586b6f8251b
+git_head_ref: HEAD
+git_head_sha: a11b7cdf9c2406748d533c097855c618b21d2899
+git_range: a4325b44c3eec281a9c6f4d4a6d9d586b6f8251b..a11b7cdf9c2406748d533c097855c618b21d2899
+commit_count: 7
+rows:
+  - sha: d5faee936fdaff5323692ec04da27d328b7f485c
+    source_ref: git:d5faee936fdaff5323692ec04da27d328b7f485c
+    short_sha: d5faee9
+    changed_paths:
+      - docs/changelog.md
+    stats:
+      files_changed: 1
+      insertions: 139
+      deletions: 10
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "doc: update changelog"
+  - sha: afe3ea103be9c7bbb952b3a5b5fa1ee3e16dc68e
+    source_ref: git:afe3ea103be9c7bbb952b3a5b5fa1ee3e16dc68e
+    short_sha: afe3ea1
+    changed_paths:
+      - README.md
+      - oduit/_operations/runtime.py
+      - oduit/builders.py
+      - oduit/cli/agent/services.py
+      - oduit/cli/agent/validate.py
+      - oduit/cli/commands/runtime.py
+      - oduit/operation_result.py
+      - oduit/utils.py
+      - skills/oduit/SKILL.md
+      - tests/test_agent_cli.py
+      - tests/test_agent_services.py
+      - tests/test_builders.py
+      - tests/test_operation_result.py
+      - tests/test_python_api.py
+    stats:
+      files_changed: 14
+      insertions: 832
+      deletions: 190
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject:
+      "feat: show error when running tests on an  addon which is not
+      installed"
+  - sha: f6bf62dbf269e393861f0f4191c3dfcca89f1b35
+    source_ref: git:f6bf62dbf269e393861f0f4191c3dfcca89f1b35
+    short_sha: f6bf62d
+    changed_paths:
+      - oduit/_operations/runtime.py
+      - oduit/cli/agent/validate.py
+      - oduit/cli/agent_support.py
+    stats:
+      files_changed: 3
+      insertions: 47
+      deletions: 67
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "fix: runtime and validation fix"
+  - sha: aadc419fe9efe322d3db8b111a39f37e426a7294
+    source_ref: git:aadc419fe9efe322d3db8b111a39f37e426a7294
+    short_sha: aadc419
+    changed_paths:
+      - oduit/cli/agent/validate.py
+      - oduit/cli/agent_support.py
+      - tests/test_agent_cli.py
+    stats:
+      files_changed: 3
+      insertions: 238
+      deletions: 81
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: improved check if addon is installed"
+  - sha: 66c03bc0c476878da91d9c306db7f78605f63afa
+    source_ref: git:66c03bc0c476878da91d9c306db7f78605f63afa
+    short_sha: 66c03bc
+    changed_paths:
+      - README.md
+      - docs/cli.md
+      - docs/command_inventory.md
+      - oduit/_operations/database.py
+      - oduit/builders.py
+      - oduit/cli/app.py
+      - oduit/cli/command_inventory.py
+      - oduit/cli/commands/database.py
+      - oduit/cli/register_app_commands.py
+      - oduit/cli/runtime_context.py
+      - oduit/odoo_operations.py
+      - oduit/operation_result.py
+      - skills/oduit/SKILL.md
+      - tests/test_cli_app.py
+      - tests/test_commands.py
+      - tests/test_database_operations.py
+      - tests/test_operation_result.py
+    stats:
+      files_changed: 17
+      insertions: 776
+      deletions: 20
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: new command to create vector extension"
+  - sha: 48f4eee4cef37a408470ba2518ab071844ac1a31
+    source_ref: git:48f4eee4cef37a408470ba2518ab071844ac1a31
+    short_sha: 48f4eee
+    changed_paths:
+      - .ledger/ledger.toml
+      - .ledger/planledger/.ledger-project.toml
+      - .ledger/planledger/config.toml
+      - .ledger/taskledger/.ledger-project.toml
+      - .ledger/taskledger/config.toml
+      - docs/cli.md
+      - oduit/_operations/database.py
+      - oduit/builders.py
+      - oduit/cli/commands/database.py
+      - oduit/odoo_operations.py
+      - tests/test_builders.py
+      - tests/test_cli_app.py
+      - tests/test_database_operations.py
+    stats:
+      files_changed: 13
+      insertions: 622
+      deletions: 18
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: handle changed database version"
+  - sha: a11b7cdf9c2406748d533c097855c618b21d2899
+    source_ref: git:a11b7cdf9c2406748d533c097855c618b21d2899
+    short_sha: a11b7cd
+    changed_paths:
+      - .pre-commit-config.yaml
+      - .ruff.toml
+      - README.md
+      - oduit/__init__.py
+      - oduit/_operations/database.py
+      - oduit/arc42_renderer.py
+      - oduit/branch_database.py
+      - oduit/builders.py
+      - oduit/cli/agent/planning.py
+      - oduit/cli/agent/services.py
+      - oduit/cli/agent_support.py
+      - oduit/cli/app.py
+      - oduit/cli/bootstrap_support.py
+      - oduit/cli/branch_database_support.py
+      - oduit/cli/command_inventory.py
+      - oduit/cli/commands/branch_database.py
+      - oduit/cli/commands/dependencies.py
+      - oduit/cli/commands/i18n.py
+      - oduit/cli/commands/runtime.py
+      - oduit/cli/dependency_output.py
+      - oduit/cli/doctor.py
+      - oduit/cli/main_support.py
+      - oduit/cli/register_app_commands.py
+      - oduit/cli/register_inspection_commands.py
+      - oduit/cli/runtime_context.py
+      - oduit/cli_typer.py
+      - oduit/cli_types.py
+      - oduit/config_loader.py
+      - oduit/config_provider.py
+      - oduit/demo_process_manager.py
+      - oduit/documentation_tracking.py
+      - oduit/exceptions.py
+      - oduit/managed_markdown.py
+      - oduit/odoo_operations.py
+      - oduit/operation_result.py
+      - oduit/operation_sets.py
+      - oduit/process_manager.py
+      - oduit/technical_documentation.py
+      - tests/test_branch_database.py
+      - tests/test_branch_database_cli.py
+      - tests/test_cli_app.py
+      - tests/test_commands.py
+      - tests/test_config_loader.py
+      - tests/test_config_provider.py
+      - tests/test_database_operations.py
+      - tests/test_odoo_embedded_manager.py
+      - tests/test_python_api.py
+      - tests/test_security_tasks.py
+      - tests/test_utils.py
+    stats:
+      files_changed: 49
+      insertions: 3208
+      deletions: 286
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: branch awere databases"
