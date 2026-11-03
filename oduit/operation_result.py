@@ -827,13 +827,6 @@ class OperationResult:
         test_info["error_tests"] = max(
             test_info["error_tests"], len(test_info["error_details"])
         )
-        if test_info["test_summary_source"] is None and test_info["total_tests"] > 0:
-            test_info["passed_tests"] = max(
-                test_info["total_tests"]
-                - test_info["failed_tests"]
-                - test_info["error_tests"],
-                0,
-            )
         test_info["diagnostic_excerpts"] = [
             {
                 "kind": problem.get("kind"),

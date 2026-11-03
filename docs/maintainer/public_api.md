@@ -59,6 +59,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `uninstall`             | `human_oriented`     | Uninstall module.                                                    |
 | `test`                  | `human_oriented`     | Run module tests with various options.                               |
 | `create-db`             | `human_oriented`     | Create database.                                                     |
+| `extension-db`          | `human_oriented`     | Enable a PostgreSQL extension in the configured database.            |
 | `list-db`               | `human_oriented`     | List all databases.                                                  |
 | `list-env`              | `human_oriented`     | List available environments.                                         |
 | `print-config`          | `human_oriented`     | Print environment config.                                            |
@@ -81,6 +82,7 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `version`               | `human_oriented`     | Get Odoo version from odoo-bin.                                      |
 | `exec`                  | `human_oriented`     | Execute trusted Python within Odoo and return a structured result.   |
 | `exec-file`             | `human_oriented`     | Execute trusted Python from a file within Odoo.                      |
+| `branch-db`             | `human_oriented`     | Manage branch-aware Odoo databases                                   |
 | `set`                   | `human_oriented`     | Manage operation sets                                                |
 | `i18n`                  | `human_oriented`     | Import, export, and load Odoo translations                           |
 | `docs`                  | `human_oriented`     | Generate addon and model documentation bundles                       |
@@ -88,7 +90,6 @@ which reads the canonical Typer registration surface in `oduit.cli.app`.
 | `db`                    | `human_oriented`     | Database inspection through the live Odoo connection                 |
 | `performance`           | `human_oriented`     | Read-only PostgreSQL performance inspection                          |
 | `manifest`              | `human_oriented`     | Manifest inspection and validation                                   |
-
 ## `oduit agent` subcommands in `oduit.cli.app`
 
 | Command                    | Stability tier       | Safety level                  | Summary                                                                  |

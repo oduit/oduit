@@ -907,6 +907,8 @@ def agent_validate_addon_change_command(
         error=error,
         error_type=error_type,
     )
+    if verified_installed_state is None:
+        payload["data"]["verified_installed_state"] = None
     agent_emit_payload_fn(payload)
     if not success:
         raise typer.Exit(1)

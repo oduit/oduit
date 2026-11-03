@@ -102,6 +102,9 @@ This page is generated from the canonical Typer registration surface in
 * - `exec-file`
   - `human_oriented`
   - Execute trusted Python from a file within Odoo.
+* - `branch-db`
+  - `human_oriented`
+  - Manage branch-aware Odoo databases
 * - `set`
   - `human_oriented`
   - Manage operation sets

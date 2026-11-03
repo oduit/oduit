@@ -164,7 +164,10 @@ class TestCLICommands(unittest.TestCase):
                 result = self.runner.invoke(app, [command, "--help"])
 
                 self.assertEqual(result.exit_code, 0)
-                self.assertIn("--allow-mutation", result.output)
+                self.assertIn(
+                    "--allow-mutation",
+                    re.sub(r"\x1b\[[0-9;]*m", "", result.output),
+                )
 
     def test_branch_db_commands_are_registered_in_inventory(self):
         from oduit.cli.command_inventory import get_top_level_command_inventory

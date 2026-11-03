@@ -259,12 +259,19 @@ def i18n_export_command(
     log_level: LogLevel | None,
     resolve_command_env_config_fn: Any,
     build_odoo_operations_fn: Any,
+    prepare_branch_database_fn: Any,
     module_manager_cls: type[ModuleManager],
     confirmation_required_error_fn: Any,
     print_command_error_result_fn: Any,
 ) -> None:
     """Export translations through the version-aware i18n service."""
     global_config, env_config = resolve_command_env_config_fn(ctx)
+    global_config = prepare_branch_database_fn(
+        global_config,
+        allow_mutation=allow_mutation,
+        operation="i18n_export",
+        action="translation export",
+    )
     normalized_modules = _split_csv_values(modules)
     normalized_languages = _split_csv_values(languages)
 
