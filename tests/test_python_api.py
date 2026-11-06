@@ -1037,6 +1037,25 @@ def test_list_installed_dependents_handles_no_reverse_dependencies(
     assert result.addons == []
 
 
+def test_compact_test_operation_preserves_test_summary_loggers(
+    tmp_path: Path,
+) -> None:
+    addons_dir = tmp_path / "addons"
+    addons_dir.mkdir()
+    config = _config(tmp_path, str(addons_dir))
+    ops = OdooOperations(config)
+
+    operation = ops._runtime_service._build_test_operation(
+        module="has_looma",
+        test_tags="/has_looma:TestCommentQueue",
+        compact=True,
+    )
+
+    assert "--log-level=warn" in operation.command
+    assert "--log-handler=odoo.tests.stats:INFO" in operation.command
+    assert "--log-handler=odoo.tests.result:INFO" in operation.command
+
+
 def test_run_tests_retries_when_configured_http_port_is_occupied(
     tmp_path: Path,
 ) -> None:

@@ -284,6 +284,9 @@ class RuntimeOperationsService(OperationsService):
             builder.test_tags(f"/{module}")
         if compact:
             builder.log_level("warn")
+            # Keep test-summary evidence visible while general logs are compacted.
+            builder.log_handler("odoo.tests.stats:INFO")
+            builder.log_handler("odoo.tests.result:INFO")
         elif log_level and isinstance(log_level, str):
             builder.log_level(log_level)
         builder.workers(0)
